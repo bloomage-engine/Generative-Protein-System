@@ -1,0 +1,28 @@
+{
+  "name": "science-studio",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Research-agent platform for computational life-science R&D.",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n service,web -c blue,green \"npm run dev:service\" \"npm run dev:web\"",
+    "build": "npm run build -w @science-studio/record && npm run build -w @science-studio/transport && npm run build -w @science-studio/transport-openclaw && npm run build -w @science-studio/transport-service",
+    "dev:web": "npm run dev -w @science-studio/web",
+    "dev:service": "npm run dev -w @science-studio/transport-service",
+    "smoke:adapter": "node scripts/smoke-openclaw-adapter.mjs",
+    "smoke:replay": "node scripts/replay-sse-frames.mjs",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
