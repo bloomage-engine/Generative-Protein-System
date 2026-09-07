@@ -159,8 +159,10 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
         ["--composer-padding" as string]: "8px",
       }}
     >
+      {/* Classic chat anchoring: turnAnchor is left at its default "bottom" so
+          the viewport auto-scrolls to follow streamed content (turnAnchor="top"
+          would disable bottom-follow and pin the running turn to the top). */}
       <ThreadPrimitive.Viewport
-        turnAnchor="top"
         data-slot="aui_thread-viewport"
         className="relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth"
       >

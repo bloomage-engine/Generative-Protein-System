@@ -235,12 +235,38 @@ class SessionTranscript {
       const thinking = mapThinkingEvent(frame, this.sessionKey);
       if (thinking) {
         if (target !== null && thinking.runId !== target) return false;
-        const msg = this.ensureAssistant(thinking.runId);
-        this.emit({ type: "add-part", messageId: msg.id, part: { type: "reasoning", text: thinking.text } });
+        this.ensureAssistant(thinking.runId);
+        this.applyThinkingPart(thinking.runId, thinking.text);
         return false;
       }
     }
     return false;
+  }
+
+  /**
+   * Record a live `thinking` fragment. The gateway streams the reasoning text
+   * as the FULL cumulative text on every event (observed ~13 Hz), so appending
+   * one part per event would stack N copies of the same growing text into the
+   * canonical transcript, the wire `parts` arrays, and the client DOM (O(n²)
+   * churn per run — the main source of render jank during long reasoning
+   * phases). Collapse consecutive thinking events into ONE reasoning part and
+   * replace its text in place; a reasoning run therefore stays a single part.
+   */
+  private applyThinkingPart(runId: string, text: string): void {
+    const msg = this.state.messages.find((m) => m.id === runId);
+    if (!msg) return;
+    const i = msg.parts.length - 1;
+    const last = i >= 0 ? msg.parts[i] : undefined;
+    if (last && last.type === "reasoning") {
+      // Same reasoning run, later event with newer full text: replace.
+      if (last.text === text) return;
+      const next = [...msg.parts];
+      next[i] = { ...last, text };
+      this.emit({ type: "update-message", messageId: msg.id, patch: { parts: next } });
+      return;
+    }
+    // First thinking event (or reasoning resumed after other content).
+    this.emit({ type: "add-part", messageId: msg.id, part: { type: "reasoning", text } });
   }
 
   /**
@@ -296,8 +322,10 @@ class SessionTranscript {
  * run completes. NOTES:
  * - The gateway `sessionKey` is taken from `SessionState.sessionId`; mapping a
  *   Study `Session` to a gateway session is a later concern.
- * - Streaming is mapped conservatively: live text is cumulative (replaced via
- *   `update-message`) and tool/reasoning parts are appended (`add-part`).
+ * - Streaming is mapped conservatively: live text deltas (`deltaText`) grow a
+ *   single trailing text part; tool lifecycle events merge into ONE part per
+ *   toolCallId; thinking events collapse into ONE reasoning part replaced in
+ *   place (the gateway repeats the full cumulative text per event).
  *   Full timeline ordering should be verified against a live gateway.
  */
 export class OpenClawRuntimeAdapter implements RuntimeAdapter {
