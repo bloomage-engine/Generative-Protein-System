@@ -9,7 +9,7 @@ import "dotenv/config";
  * the runtime swaps (see docs/adr/0001).
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { RecordStoreLike, RuntimeAdapter, RuntimeInitOptions, SessionState, TransportCommand } from "@science-studio/transport";
+import type { CommandDescriptor, RecordStoreLike, RuntimeAdapter, RuntimeInitOptions, SessionState, TransportCommand } from "@science-studio/transport";
 import { createInMemoryRecordStore, type Artifact, type ArtifactKind, type RecordStore } from "@science-studio/record";
 import type { Session } from "@science-studio/record";
 import { OpenClawRuntimeAdapter } from "@science-studio/transport-openclaw";
@@ -90,6 +90,33 @@ function watchSessionKey(req: IncomingMessage): string {
   } catch {
     return fallback;
   }
+}
+
+/**
+ * Command catalog endpoint (JSON). Delegates to the runtime adapter's
+ * `listCommands()` (docs/adr/0003) so the frontend slash menu is driven by
+ * the runtime's own catalog; adapters without a command surface report an
+ * empty catalog and the client simply shows no menu.
+ */
+async function handleCommands(
+  res: ServerResponse,
+  adapters: RuntimeAdapter[],
+): Promise<void> {
+  const adapter = resolveAdapter(adapters, {} as Session);
+  let commands: CommandDescriptor[] = [];
+  if (typeof adapter.listCommands === "function") {
+    try {
+      commands = await adapter.listCommands();
+    } catch (err) {
+      console.error("[transport-service] commands.list failed", err);
+    }
+  }
+  res.writeHead(200, {
+    "content-type": "application/json",
+    "cache-control": "no-cache",
+    ...corsHeaders(),
+  });
+  res.end(JSON.stringify({ commands }));
 }
 
 /**
@@ -184,6 +211,16 @@ export function createTransportService(opts: TransportServiceOptions = {}): Retu
   return createServer((req, res) => {
     if (req.method === "OPTIONS") {
       res.writeHead(204, { ...corsHeaders() }).end();
+      return;
+    }
+    if (req.method === "GET" && req.url === "/api/transport/commands") {
+      void handleCommands(res, adapters).catch((e) => {
+        console.error("[transport-service] commands error", e);
+        if (!res.headersSent) {
+          res.writeHead(500, { ...corsHeaders() });
+          res.end("commands error");
+        }
+      });
       return;
     }
     if (req.method === "GET" && (req.url === "/api/transport/watch" || req.url?.startsWith("/api/transport/watch?"))) {

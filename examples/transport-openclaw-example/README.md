@@ -38,7 +38,11 @@ three layers, with no protocol code of its own:
   text parts and a **static-variant reasoning panel** (`reasoning-panel.tsx`,
   mirroring the assistant-ui `ReasoningPanel` element) for thinking traces —
   core ships no default renderer for either, so without them replies would be
-  raw markdown and reasoning invisible.
+  raw markdown and reasoning invisible. The composer (`composer.tsx`) adds a
+  **runtime slash command menu**: type "/" at the start of a message and the
+  adapter's command catalog (fetched from `GET /api/transport/commands`)
+  opens; picking a command sends its invocation text as a normal user message
+  (docs/adr/0003) — runtime commands never become research Runs.
 - **Tests** — [`test/example.test.ts`](./test/example.test.ts) drives the same
   wiring against a **scripted gateway** (the adapter's `createGateway` test
   seam, as in `packages/transport-openclaw/test/`) — no live gateway needed.
@@ -86,6 +90,11 @@ Against a live gateway, verify in the browser:
    pauses when you scroll up in it.
 5. **Run settlement** — the composer unlocks when the run ends; the stream
    always terminates (`[DONE]`), even for a no-command probe.
+6. **Slash commands** — type "/" (with a live gateway) and the runtime
+   command menu opens above the composer; picking one (e.g. `/status`) sends
+   it as a message, the gateway answers in-thread, and no research `Run` is
+   recorded for it. The menu stays closed while a run is in flight and when
+   the catalog has not loaded yet.
 
 ## Tests (no gateway required)
 
@@ -94,10 +103,13 @@ Against a live gateway, verify in the browser:
 npm run test -w @science-studio/transport-openclaw-example
 ```
 
-Two cases, both over real HTTP + SSE on an ephemeral port:
+Three cases, all over real HTTP + SSE on an ephemeral port:
 
 - a command-less **probe** converges to the scripted gateway's `chat.history`
   (both the user and assistant rows) and terminates with `[DONE]`;
 - an **`add-message` run** streams the scripted reply as `set` + `append-text`
   ops (exact part path asserted) between `running` → `idle` status flips,
-  terminating with `[DONE]`.
+  terminating with `[DONE]`;
+- the **command catalog endpoint** (`GET /api/transport/commands`) serves the
+  curated runtime descriptors (allowlisted native text commands only, no
+  required-argument commands) in JSON.

@@ -26,8 +26,9 @@ type GatewayFactory = NonNullable<OpenClawRuntimeAdapterOptions["createGateway"]
  * text deltas and a `final` frame (the exact shapes subscribe.test.ts drives)
  * before resolving with a runId — the second delta exercises the wire's
  * `append-text` path (first delta materializes as a `set` on the new part).
+ * `commands.list` serves `commandEntries` (empty by default).
  */
-function scriptedFactory(history: unknown[]): GatewayFactory {
+function scriptedFactory(history: unknown[], commandEntries: unknown[] = []): GatewayFactory {
   return (() => {
     let eventCb: ((frame: unknown) => void) | null = null;
     const readyListeners = new Set<() => void>();
@@ -40,6 +41,9 @@ function scriptedFactory(history: unknown[]): GatewayFactory {
       request: (method: string): Promise<unknown> => {
         if (method === "chat.history") {
           return Promise.resolve({ sessionKey: SESSION, messages: history });
+        }
+        if (method === "commands.list") {
+          return Promise.resolve({ commands: commandEntries });
         }
         if (method === "chat.send") {
           eventCb?.({
@@ -104,8 +108,13 @@ function parseSse(body: string): { ops: WireOp[]; done: boolean } {
 }
 
 /** Boot the example wiring (scripted adapter → transport-service) on an ephemeral port. */
-async function bootExample(history: unknown[]): Promise<{ base: string; close: () => Promise<void> }> {
-  const adapter = new OpenClawRuntimeAdapter({ createGateway: scriptedFactory(history) });
+async function bootExample(
+  history: unknown[],
+  commandEntries: unknown[] = [],
+): Promise<{ base: string; close: () => Promise<void> }> {
+  const adapter = new OpenClawRuntimeAdapter({
+    createGateway: scriptedFactory(history, commandEntries),
+  });
   const server: Server = createTransportService({ adapters: [adapter] });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -200,6 +209,45 @@ test("run (add-message) streams the reply as set/append-text ops and terminates 
       ops.every((op) => op.type === "set" || op.type === "append-text"),
       "only client-safe op types may appear on the wire",
     );
+  } finally {
+    await close();
+  }
+});
+
+test("GET /api/transport/commands serves the curated runtime command catalog", async () => {
+  const entries = [
+    { name: "status", description: "status desc", source: "native", scope: "both", acceptsArgs: false, category: "status" },
+    { name: "help", description: "help desc", source: "native", scope: "text", acceptsArgs: false, category: "status" },
+    {
+      name: "model",
+      description: "model desc",
+      source: "native",
+      scope: "both",
+      acceptsArgs: true,
+      args: [{ name: "name", description: "model", type: "string" }],
+    },
+    {
+      name: "think",
+      description: "think desc",
+      source: "native",
+      scope: "both",
+      acceptsArgs: true,
+      args: [{ name: "level", description: "level", type: "string", required: true }],
+    },
+    { name: "new", description: "new session", source: "native", scope: "both", acceptsArgs: false, category: "session" },
+    { name: "debug", description: "debug", source: "plugin", scope: "both", acceptsArgs: false },
+  ];
+  const { base, close } = await bootExample([], entries);
+  try {
+    const res = await fetch(`${base}/api/transport/commands`);
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { commands: { id: string; invocationText: string }[] };
+    assert.deepEqual(
+      body.commands.map((c) => c.id).sort(),
+      ["help", "model", "status"],
+      "only allowlisted native no-required-arg text commands are served",
+    );
+    assert.equal(body.commands.find((c) => c.id === "status")!.invocationText, "/status");
   } finally {
     await close();
   }

@@ -6,3 +6,9 @@ export {
   fetchSessionSnapshot,
   type RuntimeState,
 } from "./session-sync.js";
+export {
+  fetchCommandCatalog,
+  TransportApiProvider,
+  useRuntimeCommands,
+  useTransportApi,
+} from "./catalog.js";

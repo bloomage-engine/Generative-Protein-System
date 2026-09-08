@@ -2,7 +2,7 @@
 
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { Thread } from "@/components/assistant-ui/elements/thread.aui";
-import { useTransport } from "@science-studio/transport-client";
+import { TransportApiProvider, useTransport } from "@science-studio/transport-client";
 import { useTransportWatch } from "@/hooks/use-transport-watch";
 
 /**
@@ -36,9 +36,11 @@ export default function Home() {
         </p>
       </header>
       <div className="min-h-0 flex-1">
-        <AssistantRuntimeProvider runtime={runtime}>
-          <Thread />
-        </AssistantRuntimeProvider>
+        <TransportApiProvider api={api}>
+          <AssistantRuntimeProvider runtime={runtime}>
+            <Thread />
+          </AssistantRuntimeProvider>
+        </TransportApiProvider>
       </div>
     </main>
   );

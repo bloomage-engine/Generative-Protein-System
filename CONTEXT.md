@@ -73,6 +73,22 @@ A conversation between a Researcher and an Agent under a Study. Rendered as an
 assistant-ui thread. Each Researcher turn drives one Run.
 _Avoid_: Thread, Chat, Conversation
 
+**Runtime Command** (also **Slash command**):
+A runtime-level operation invoked by a standalone "/"-prefixed user message
+(e.g. "/status", "/model"). Handled by the agent runtime's own command surface,
+not by the Research turn machinery: a command is visible in the conversation
+but is **not** recorded as a Run. Invoked either from the composer slash menu or
+by typing it directly.
+_Avoid_: Tool, Special message, System command
+
+**Command Catalog**:
+The set of Runtime Commands a runtime exposes, surfaced in the composer slash
+menu. Each entry carries an id, description, and the exact invocation text to
+send. The catalog is produced by the runtime adapter (for openclaw, from the
+gateway's `commands.list`) and fetched over `GET /api/transport/commands`, so
+the frontend never hardcodes a runtime's command set.
+_Avoid_: Menu config, Slash list, Command registry
+
 **Workflow** (also **DAG**):
 A composition overlay that chains multiple Tasks so that one Run's output becomes
 a downstream Task's input. Optional in the first version; a later structured mode

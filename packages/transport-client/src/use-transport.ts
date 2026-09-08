@@ -12,6 +12,8 @@ import {
 
 const DEFAULT_API = "/api/transport";
 
+export { DEFAULT_API };
+
 export type UseTransportOptions = {
   /** Transport endpoint. Defaults to the same-origin `/api/transport`. */
   api?: string;

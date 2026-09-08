@@ -11,6 +11,7 @@ import "dotenv/config";
  *
  * Endpoints (implemented by the service):
  *   POST /api/transport        command-in / SSE state-out (runs + history probes)
+ *   GET  /api/transport/commands  runtime command catalog for the slash menu
  *   GET  /api/transport/watch  standing watch (remote replies from the gateway)
  */
 import { OpenClawRuntimeAdapter } from "@science-studio/transport-openclaw";

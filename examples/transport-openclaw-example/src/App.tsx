@@ -1,12 +1,12 @@
 import {
   AssistantRuntimeProvider,
-  ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
 } from "@assistant-ui/react";
 import { useTransport } from "@science-studio/transport-client";
 import { MarkdownText } from "./markdown";
 import { AssistantReasoning } from "./reasoning-panel";
+import { Composer } from "./composer";
 
 /**
  * Message renderers. Assistant text parts render as GitHub-flavored markdown
@@ -58,15 +58,7 @@ export default function App() {
                 components={{ UserMessage, AssistantMessage }}
               />
             </ThreadPrimitive.Viewport>
-            <ComposerPrimitive.Root className="composer">
-              <ComposerPrimitive.Input
-                className="composer-input"
-                placeholder="Message the agent…"
-                enterKeyHint="send"
-                aria-label="Message input"
-              />
-              <ComposerPrimitive.Send className="composer-send">Send</ComposerPrimitive.Send>
-            </ComposerPrimitive.Root>
+            <Composer />
           </ThreadPrimitive.Root>
         </AssistantRuntimeProvider>
       </main>

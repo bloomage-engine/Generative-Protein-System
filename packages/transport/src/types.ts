@@ -87,6 +87,31 @@ export type TransportCommand =
   | { type: "add-message"; message: { id: Id; role: "user" | "assistant"; content: string } }
   | { type: "add-tool-result"; toolCallId: Id; result: string };
 
+/**
+ * A runtime command surfaced to the frontend slash menu. Descriptors are
+ * produced by a runtime adapter from its own catalog (for openclaw, the
+ * gateway's `commands.list`) and are runtime-agnostic in shape, so the
+ * frontend can render a menu without knowing the runtime (see docs/adr/0003).
+ */
+export interface CommandDescriptor {
+  /** Stable command id (e.g. "model"). */
+  id: string;
+  /** Short human-readable name shown in the menu. */
+  label: string;
+  /** One-line description of what the command does. */
+  description: string;
+  /** Optional icon key; the client resolves it against its own icon set. */
+  icon?: string;
+  /** Optional grouping key for categorizing menu entries. */
+  category?: string;
+  /**
+   * The exact message text that invokes this command (e.g. "/status").
+   * Commands are plain "/"-prefixed messages end-to-end; the adapter sends
+   * this text to its runtime and never persists a Run for it.
+   */
+  invocationText: string;
+}
+
 /** Reserved seam for Artifact capture; wired up in a later iteration. */
 export interface ArtifactInput {
   runId: Id;
@@ -117,6 +142,15 @@ export interface RuntimeAdapter {
   approve(approvalId: string, decision: "approve" | "reject"): void;
   /** Reserved: Artifact capture, wired later. */
   onArtifact?(artifact: ArtifactInput): void;
+  /**
+   * Command catalog for the frontend slash menu, adapted from the runtime's
+   * own command list (for openclaw, the gateway's `commands.list`) into
+   * runtime-agnostic `CommandDescriptor`s. Executing a command is NOT a
+   * `Run`: adapters treat "/"-prefixed user text as a runtime command and
+   * never persist a Run for it (see docs/adr/0003).
+   * Optional — adapters without a command surface omit it.
+   */
+  listCommands?(): Promise<CommandDescriptor[]>;
   /**
    * Standing watch: keep pushing the session's canonical `WatchSnapshot`
    * whenever its transcript settles (e.g. a reply that arrived from another

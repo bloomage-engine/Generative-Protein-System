@@ -94,6 +94,7 @@ interface RuntimeAdapter {
   run(session: SessionState, commands: TransportCommand[]): AsyncIterable<StateDelta>;
   abort(reason?: string): void;
   approve(approvalId: string, decision: "approve" | "reject"): void;
+  listCommands?(): Promise<CommandDescriptor[]>;    // slash-menu catalog (ADR 0003)
   onArtifact?(artifact: ArtifactInput): void;       // reserved seam; wired later
 }
 ```
@@ -112,6 +113,33 @@ interface RuntimeAdapter {
   ported from `openclaw-adapter` and run server-side rather than in the browser.
 - Future adapters (e.g. codex) implement the same interface against their own
   protocol.
+
+### Runtime commands (slash commands)
+
+Runtime commands (openclaw slash commands today) are **plain "/"-prefixed user
+messages** end-to-end — there is no dedicated wire command type (docs/adr/0003).
+The gateway interprets a standalone `/command` message itself; the transcript,
+reconcile and watch paths treat command rows exactly like any other rows.
+
+- **Command ≠ Run.** A command message is never persisted as a `Run`: the
+  openclaw adapter tracks runIds driven by `/`-prefixed sends, and remote
+  settles are persisted only after the `chat.history` sync (whose transcript
+  guard skips settles whose immediately preceding user row starts with `/`), so
+  a remote command turn never becomes a research `Run`.
+- **Catalog.** `RuntimeAdapter.listCommands()` returns runtime-agnostic
+  `CommandDescriptor`s (`{ id, label, description, icon?, category?,
+  invocationText }`). The openclaw adapter proxies the gateway's `commands.list`
+  (60s cached) and curates it: a native-text, no-required-argument allowlist
+  (session controls + discovery), so availability is still gated by what the
+  gateway reports. The transport-service exposes it at
+  `GET /api/transport/commands` (JSON); the web route handler proxies it.
+- **Frontend.** `useRuntimeCommands` (transport-client) fetches the catalog on
+  mount (parallel to the history probe) through the `TransportApiProvider`
+  context. The composer (`elements/composer.aui.tsx`) wraps the registry
+  composer in `Unstable_TriggerPopoverRoot` and opens a "/" menu only while a
+  non-empty catalog is loaded and the thread is idle; picking a command appends
+  its invocation text as a normal user message (`aui.thread.append`), leaving
+  any partial draft untouched. Hand-typed `/commands` behave identically.
 
 ## 5. Record layer
 

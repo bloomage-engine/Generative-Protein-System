@@ -1,4 +1,5 @@
 import type {
+  CommandDescriptor,
   Message,
   RecordStoreLike,
   RuntimeAdapter,
@@ -12,6 +13,11 @@ import type {
 import { foldState } from "@science-studio/transport";
 import type { EventFrame } from "@openclaw/gateway-client/browser";
 import type { Run, RunStatus } from "@science-studio/record";
+import {
+  isCommandText,
+  mapCommandEntries,
+  type GatewayCommandEntry,
+} from "./commands.js";
 import { createBackendGateway, type BackendGateway, type BackendGatewayOptions } from "./connection.js";
 import {
   formatResultText,
@@ -22,6 +28,26 @@ import {
 } from "./mapping.js";
 
 const CLIENT_VERSION = "0.0.0";
+
+/** Freshness window for the cached command catalog (`listCommands`). */
+const COMMAND_CATALOG_TTL_MS = 60_000;
+
+/**
+ * Post-settle history-convergence poll (`convergeSettledHistory`). The gateway
+ * writes a settled turn's rows into `chat.history` a few tens of ms AFTER it
+ * broadcasts the terminal frame (native command replies never stream as
+ * events at all and only exist there), so convergence polls until the history
+ * stops growing, bounded by this deadline.
+ */
+const SETTLE_POLL_INTERVAL_MS = 40;
+const SETTLE_HISTORY_DEADLINE_MS = 1_500;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    timer.unref?.();
+  });
+}
 
 function newId(): string {
   const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
@@ -223,6 +249,9 @@ class SessionTranscript {
    * So whenever the parsed history is not a content-prefix of the current
    * transcript, the transcript is rebuilt from the gateway rows.
    *
+   * Returns true when the transcript changed (a rebuild or a session reset), so
+   * callers know a fresh snapshot should be pushed to watchers.
+   *
    * Guards: never touch an in-flight run (the gateway lags the live events,
    * and a rebuild would wipe the partially assembled assistant message); an
    * equal or gateway-lagging transcript keeps its local messages and ids (no
@@ -231,30 +260,32 @@ class SessionTranscript {
    * messages and is not mid-run, so a single never-persisted message (failed
    * `chat.send`) survives.
    */
-  syncFromHistory(rows: unknown[]): void {
-    if (this.state.status === "running") return;
+  syncFromHistory(rows: unknown[]): boolean {
+    if (this.state.status === "running") return false;
     const gateway = parseHistoryRows(rows);
     if (gateway.length === 0) {
       if (this.state.messages.length >= 2) {
         this.state.messages = [];
         this.state.status = "idle";
+        return true;
       }
-      return;
+      return false;
     }
     if (this.state.messages.length === 0) {
       this.state.messages = gateway;
-      return;
+      return true;
     }
     // Gateway rows are a content-prefix of the transcript: already converged
     // (equal), or the gateway simply lags our not-yet-persisted tail. Keep.
     if (gateway.length <= this.state.messages.length) {
       const local = this.state.messages;
-      if (gateway.every((m, i) => messageSignature(m) === messageSignature(local[i]!))) return;
+      if (gateway.every((m, i) => messageSignature(m) === messageSignature(local[i]!))) return false;
     }
     // Otherwise the gateway knows more (or something different) than we do:
     // it wins. Rebuild so the next reconcile converges clients — including
     // user turns that arrived remotely — onto the gateway conversation.
     this.state.messages = gateway;
+    return true;
   }
 
   /** The canonical transcript snapshot used to reconcile a client's state. */
@@ -435,6 +466,15 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
   /** Standing watchers per session (the transport-service watch endpoint). */
   private watch = new Map<string, Set<(s: WatchSnapshot) => void>>();
   private watchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /**
+   * Gateway runIds driven by runtime commands (user text starting with "/").
+   * Such runs settle like any other but must never persist a `Run` — commands
+   * are not research turns (see docs/adr/0003).
+   */
+  private commandRunIds = new Set<string>();
+  /** Cached command catalog (see `listCommands`). */
+  private commandCatalog: { fetchedAt: number; descriptors: CommandDescriptor[] } | null = null;
+  private commandCatalogInflight: Promise<CommandDescriptor[]> | null = null;
 
   constructor(options: OpenClawRuntimeAdapterOptions = {}) {
     this.createGateway = options.createGateway ?? createBackendGateway;
@@ -456,15 +496,25 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
       const ended = transcript.apply(frame);
       if (ended) {
         const runId = transcript.currentRunId();
-        if (runId) void this.persistRun(transcript, runId);
-        // No local run in flight ⇒ the settle came from another channel (openclaw
-        // TUI/UI). Remote user rows never arrive as `chat`/`agent` events —
-        // they exist only in `chat.history` — so the transcript is missing
-        // them until a local `syncFromHistory` (which only runs at the START of
-        // a local run). Fetch the history now so the pushed snapshot carries
-        // both the remote user turn and its assistant reply.
-        if (!transcript.hasActiveFlow()) void this.notifyWatchers(sessionKey);
-        else this.notifyNow(sessionKey);
+        const local = transcript.hasActiveFlow();
+        if (local) {
+          // Local run: the driving user row was echoed before `chat.send`, so
+          // persistence can run immediately.
+          if (runId) void this.persistRun(transcript, runId);
+          this.notifyNow(sessionKey);
+        }
+        // Converge with the gateway history as it settles. The gateway writes a
+        // turn's rows to chat.history only AFTER the terminal frame, and native
+        // command replies never stream as events at all — so the transcript (and
+        // any watcher snapshot) must be re-synced once the rows land, or a
+        // command's reply would only appear on the next run/probe.
+        // Remote settles additionally persist only after the sync: their driving
+        // user row exists only in history, and persistence must see it so a
+        // remote runtime command is never recorded as a research Run (see
+        // docs/adr/0003).
+        void this.convergeSettledHistory(sessionKey, transcript, !local).then(() => {
+          if (!local && runId) void this.persistRun(transcript, runId);
+        });
       }
     });
 
@@ -532,8 +582,11 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
       // Kick off `chat.send` without awaiting it: gateway events (mapped via
       // onEvent → transcript.apply) stream into the same flow while the
       // request is still in flight, and the runId attaches as soon as the
-      // gateway reports it.
+      // gateway reports it. Command messages (text starting with "/") are
+      // sent verbatim — the gateway interprets them — and their runIds are
+      // tracked so the settle never persists a research `Run`.
       for (const command of sends) {
+        const isCommand = isCommandText(command.message.content);
         void (async () => {
           try {
             const res = (await this.gateway!.request("chat.send", {
@@ -542,7 +595,10 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
               idempotencyKey: newId(),
               queueMode: "followup",
             })) as { runId?: string };
-            if (res?.runId) flow.targetRunId = res.runId;
+            if (res?.runId) {
+              flow.targetRunId = res.runId;
+              if (isCommand) this.commandRunIds.add(res.runId);
+            }
           } catch (err) {
             console.error("[openclaw] chat.send failed", err);
             transcript.emit({ type: "session-status", status: "error" });
@@ -566,8 +622,9 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
    * Standing watch seam. Registers a `sink` for a session, immediately pushes
    * the current canonical transcript (baseline, if one already exists), and
    * returns an unsubscribe. Subsequent settles coalesce through
-   * `notifyWatchers` and push a fresh `WatchSnapshot` (whole transcript, keyed
-   * by message id) that a consumer can adopt via `importExternalState`.
+   * `convergeSettledHistory` and push a fresh `WatchSnapshot` (whole
+   * transcript, keyed by message id) that a consumer can adopt via
+   * `importExternalState`.
    */
   subscribe(sessionKey: string, sink: (s: WatchSnapshot) => void): () => void {
     let set = this.watch.get(sessionKey);
@@ -591,6 +648,46 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
     };
   }
 
+  /**
+   * Curated runtime command catalog for the frontend slash menu. Proxies the
+   * gateway's `commands.list` and caches it with a short TTL so catalog
+   * freshness tracks gateway config changes without a WS round-trip per
+   * request; a failed refresh serves the last successful catalog (or empty).
+   */
+  async listCommands(): Promise<CommandDescriptor[]> {
+    if (!this.gateway) return [];
+    if (this.commandCatalog && Date.now() - this.commandCatalog.fetchedAt < COMMAND_CATALOG_TTL_MS) {
+      return this.commandCatalog.descriptors;
+    }
+    if (!this.commandCatalogInflight) {
+      this.commandCatalogInflight = this.refreshCommandCatalog();
+    }
+    return this.commandCatalogInflight;
+  }
+
+  private async refreshCommandCatalog(): Promise<CommandDescriptor[]> {
+    try {
+      await this.ready;
+      const res = (await this.gateway!.request("commands.list", {
+        includeArgs: true,
+      })) as { commands?: unknown[] };
+      const descriptors = mapCommandEntries((res.commands ?? []) as GatewayCommandEntry[]);
+      this.commandCatalog = { fetchedAt: Date.now(), descriptors };
+      return descriptors;
+    } catch (err) {
+      console.warn("[openclaw] commands.list failed; serving stale/empty catalog", err);
+      if (this.commandCatalog) {
+        // Serve the stale catalog, and defer the next refresh attempt so a
+        // down gateway doesn't spam a failed fetch on every request.
+        this.commandCatalog = { fetchedAt: Date.now(), descriptors: this.commandCatalog.descriptors };
+        return this.commandCatalog.descriptors;
+      }
+      return [];
+    } finally {
+      this.commandCatalogInflight = null;
+    }
+  }
+
   private snapshotOf(sessionKey: string): WatchSnapshot | null {
     const transcript = this.transcripts.get(sessionKey);
     if (!transcript) return null;
@@ -600,30 +697,57 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
   }
 
   /**
-   * Remote-settle path: the gateway owns the authoritative conversation and
-   * it is not the only writer, so a settle that arrived without a local run
-   * may have brought remote user turns that only live in `chat.history` (not
-   * in `chat`/`agent` events). Fetch the history and converge the transcript
-   * before pushing a snapshot, so the snapshot carries both the remote user
-   * row and its assistant reply. The local-run path already runs
-   * `syncFromHistory` at `run()` start, so it skips this re-fetch to avoid
-   * double-fetching on every local run's settle.
+   * Post-settle convergence for a session's transcript (local and remote).
+   *
+   * The gateway owns the authoritative conversation, and it is not the only
+   * writer: rows can arrive in `chat.history` that never streamed as
+   * `chat`/`agent` events — remote user turns, and native command replies,
+   * which are written only AFTER the terminal frame (a single fetch at settle
+   * time would miss them). Poll `chat.history` until it stops growing (bounded
+   * by `SETTLE_HISTORY_DEADLINE_MS`), then `syncFromHistory` so those rows
+   * enter the canonical transcript.
+   *
+   * `alwaysNotify` pushes a fresh snapshot regardless of whether the sync
+   * changed the transcript — the remote-settle case, where streamed content
+   * may never have reached a watcher. Local settles already fired `notifyNow`
+   * at settle time, so they only re-push when the sync actually changed the
+   * transcript (a command reply that just landed).
    */
-  private async notifyWatchers(sessionKey: string): Promise<void> {
-    if (this.gateway) {
+  private async convergeSettledHistory(
+    sessionKey: string,
+    transcript: SessionTranscript,
+    alwaysNotify: boolean,
+  ): Promise<void> {
+    if (!this.gateway) return;
+    const deadline = Date.now() + SETTLE_HISTORY_DEADLINE_MS;
+    let latest: unknown[] | null = null;
+    let previous: unknown[] | null = null;
+    // Consecutive samples whose length matched the previous sample. The settle's
+    // rows land a few tens of ms AFTER the terminal frame, so a sample that
+    // looks converged may still be mid-write; only treat the history as settled
+    // after three consecutive equal samples (kills the race where the write
+    // lands between two early equal samples).
+    let equalRuns = 0;
+    while (Date.now() < deadline) {
+      let rows: unknown[];
       try {
         const hist = (await this.gateway.request("chat.history", { sessionKey })) as {
           messages?: unknown[];
         };
-        if (Array.isArray(hist.messages)) {
-          const transcript = this.transcripts.get(sessionKey);
-          if (transcript) transcript.syncFromHistory(hist.messages);
-        }
+        rows = Array.isArray(hist.messages) ? hist.messages : [];
       } catch (err) {
-        console.warn("[openclaw] watch chat.history re-fetch failed; keeping transcript", err);
+        console.warn("[openclaw] settle chat.history poll failed; keeping transcript", err);
+        break;
       }
+      latest = rows;
+      if (previous !== null) equalRuns = rows.length === previous.length ? equalRuns + 1 : 0;
+      previous = rows;
+      if (equalRuns >= 2) break; // three consecutive equal samples
+      if (Date.now() >= deadline) break;
+      await delay(SETTLE_POLL_INTERVAL_MS);
     }
-    this.notifyNow(sessionKey);
+    if (latest === null) return;
+    if (transcript.syncFromHistory(latest) || alwaysNotify) this.notifyNow(sessionKey);
   }
 
   /**
@@ -660,6 +784,29 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
 
   private async persistRun(transcript: SessionTranscript, runId: string): Promise<void> {
     if (!this.recordStore) return;
+    // Runtime commands are not research turns — never persist them as Runs
+    // (docs/adr/0003). Two guards: runIds tracked from local command sends, and
+    // a transcript check that skips settles whose immediately preceding user
+    // row starts with "/" (covers command turns that arrived remotely and
+    // were synced from chat.history before their settle).
+    if (this.commandRunIds.has(runId)) {
+      this.commandRunIds.delete(runId);
+      return;
+    }
+    const messages = transcript.state.messages;
+    const runIndex = messages.findIndex((m) => m.id === runId);
+    if (runIndex !== -1) {
+      for (let i = runIndex - 1; i >= 0; i--) {
+        const prev = messages[i]!;
+        if (prev.role !== "user") continue;
+        const text = prev.parts
+          .filter((p) => p.type === "text")
+          .map((p) => (p as Extract<MessagePart, { type: "text" }>).text)
+          .join("");
+        if (isCommandText(text)) return;
+        break;
+      }
+    }
     const assistant = transcript.state.messages.find((m) => m.id === runId);
     const user = [...transcript.state.messages].reverse().find((m) => m.role === "user");
     const text = assistant?.parts
