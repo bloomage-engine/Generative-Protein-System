@@ -56,10 +56,25 @@ export function useTransportRuntime() {
     protocol: "assistant-transport",
     headers: {},
     initialState: createInitialRuntimeState(),
-    converter: (state) => ({
-      messages: messageConverter.toThreadMessages(Object.values(state.messages)),
-      isRunning: state.status === "running",
-    }),
+    converter: (state) => {
+      // Pass the session's running flag INTO the message conversion. assistant-ui
+      // derives per-part status from it (getAutoStatus → toMessagePartStatus):
+      // while the session is running, the trailing assistant message is marked
+      // `running`, which is what makes an in-flight reasoning part (streaming
+      // shimmer) and an executing tool-call part (no result yet → spinner)
+      // render their running state. Without this, every message converts as
+      // `complete` (and a message holding a result-less tool-call even becomes
+      // `requires-action`), so tool/reasoning UIs pop in looking finished and
+      // never animate while the backend is still working.
+      const isRunning = state.status === "running";
+      return {
+        messages: messageConverter.toThreadMessages(
+          Object.values(state.messages),
+          isRunning,
+        ),
+        isRunning,
+      };
+    },
     onFinish: () => console.log("[transport] run FINISHED"),
     onError: (error, { updateState }) => {
       updateState((s) => ({ ...s, status: "error" as const }));

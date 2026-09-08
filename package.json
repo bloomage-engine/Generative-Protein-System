@@ -16,6 +16,7 @@
     "dev:service": "npm run dev -w @science-studio/transport-service",
     "smoke:adapter": "node scripts/smoke-openclaw-adapter.mjs",
     "smoke:replay": "node scripts/replay-sse-frames.mjs",
+    "check:running-part-status": "node scripts/check-running-part-status.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"
   },
