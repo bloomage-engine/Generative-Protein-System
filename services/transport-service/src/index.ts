@@ -81,6 +81,63 @@ async function handleTransport(
   res.end();
 }
 
+/** Resolve the session key a watch connection should observe. */
+function watchSessionKey(req: IncomingMessage): string {
+  const fallback = process.env.OPENCLAW_DEFAULT_SESSION ?? "agent:main:main";
+  try {
+    const threadId = new URL(req.url ?? "/api/transport/watch", "http://localhost").searchParams.get("threadId");
+    return typeof threadId === "string" && threadId.startsWith("agent:") ? threadId : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Standing watch endpoint (NDJSON, long-lived, NOT `[DONE]`-terminated). Pushes
+ * the session's canonical `WatchSnapshot` on attach (baseline) and on each
+ * coalesced settle, so an open browser can adopt remote assistant replies via
+ * `importExternalState` without a request/response round-trip. The request-
+ * response run channel (`POST /api/transport`) is untouched.
+ */
+async function handleWatch(
+  req: IncomingMessage,
+  res: ServerResponse,
+  adapters: RuntimeAdapter[],
+): Promise<void> {
+  const sessionKey = watchSessionKey(req);
+  const adapter = resolveAdapter(adapters, {} as Session);
+  if (typeof adapter.subscribe !== "function") {
+    res.writeHead(400, { ...corsHeaders() }).end("adapter does not support watch");
+    return;
+  }
+
+  res.writeHead(200, {
+    "content-type": "application/x-ndjson",
+    "cache-control": "no-cache",
+    connection: "keep-alive",
+    ...corsHeaders(),
+  });
+  // Flush the baseline frame immediately (subscribe pushes it synchronously) so
+  // a fresh client converges before the first remote settle.
+  res.flushHeaders?.();
+
+  const unsub = adapter.subscribe(sessionKey, (snapshot) => {
+    if (res.destroyed || res.writableEnded) return;
+    try {
+      res.write(JSON.stringify(snapshot) + "\n");
+    } catch {
+      /* client hung up — the `close` handler below detaches the sink */
+    }
+  });
+  req.on("close", () => {
+    try {
+      unsub();
+    } catch {
+      /* never throw out of a server callback */
+    }
+  });
+}
+
 /** Narrow the authoritative record store to the runtime-agnostic adapter seam. */
 function toRecordStoreLike(store: RecordStore): RecordStoreLike {
   return {
@@ -127,6 +184,16 @@ export function createTransportService(opts: TransportServiceOptions = {}): Retu
   return createServer((req, res) => {
     if (req.method === "OPTIONS") {
       res.writeHead(204, { ...corsHeaders() }).end();
+      return;
+    }
+    if (req.method === "GET" && (req.url === "/api/transport/watch" || req.url?.startsWith("/api/transport/watch?"))) {
+      void handleWatch(req, res, adapters).catch((e) => {
+        console.error("[transport-service] watch error", e);
+        if (!res.headersSent) {
+          res.writeHead(500, { ...corsHeaders() });
+          res.end("watch error");
+        }
+      });
       return;
     }
     if (req.method === "POST" && req.url === "/api/transport") {

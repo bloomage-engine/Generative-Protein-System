@@ -28,6 +28,17 @@ export type MessagePart =
   | { type: "artifact"; artifactId: Id; name: string; kind: string };
 
 /**
+ * A whole (not incremental) snapshot of a session's canonical transcript,
+ * pushed to standing watchers (the transport-service's `subscribe` sink). This
+ * is the client's owned wire shape — `messages` keyed by id — so a frontend
+ * can adopt it verbatim via `importExternalState` without folding deltas.
+ */
+export interface WatchSnapshot {
+  status: SessionState["status"];
+  messages: Record<string, Message>;
+}
+
+/**
  * Incremental updates to a SessionState. A runtime adapter yields these; the
  * transport-service folds them into a state snapshot and streams it out.
  */
@@ -106,6 +117,18 @@ export interface RuntimeAdapter {
   approve(approvalId: string, decision: "approve" | "reject"): void;
   /** Reserved: Artifact capture, wired later. */
   onArtifact?(artifact: ArtifactInput): void;
+  /**
+   * Standing watch: keep pushing the session's canonical `WatchSnapshot`
+   * whenever its transcript settles (e.g. a reply that arrived from another
+   * channel — the openclaw TUI/UI — with no client-driven run in flight from
+   * us). Called once immediately on attach (baseline) and again on each
+   * coalesced settle. Return an unsubscribe to detach the sink.
+   * Optional — adapters that can't observe remote activity omit it.
+   */
+  subscribe?(
+    sessionId: string,
+    sink: (snapshot: WatchSnapshot) => void,
+  ): () => void;
 }
 
 export interface RuntimeInitOptions {

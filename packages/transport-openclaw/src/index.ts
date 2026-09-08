@@ -7,6 +7,7 @@ import type {
   StateDelta,
   TransportCommand,
   MessagePart,
+  WatchSnapshot,
 } from "@science-studio/transport";
 import { foldState } from "@science-studio/transport";
 import type { EventFrame } from "@openclaw/gateway-client/browser";
@@ -175,6 +176,11 @@ class SessionTranscript {
 
   detachFlow(flow: RunFlow): void {
     if (this.activeFlow === flow) this.activeFlow = null;
+  }
+
+  /** True while a local `run()`'s flow is attached (draining gateway events). */
+  hasActiveFlow(): boolean {
+    return this.activeFlow !== null;
   }
 
   /** Seed the transcript from a `chat.history` response (system rows excluded). */
@@ -426,6 +432,9 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
   private recordStore: RecordStoreLike | null = null;
   private transcripts = new Map<string, SessionTranscript>();
   private ready: Promise<void> | null = null;
+  /** Standing watchers per session (the transport-service watch endpoint). */
+  private watch = new Map<string, Set<(s: WatchSnapshot) => void>>();
+  private watchTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(options: OpenClawRuntimeAdapterOptions = {}) {
     this.createGateway = options.createGateway ?? createBackendGateway;
@@ -448,6 +457,14 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
       if (ended) {
         const runId = transcript.currentRunId();
         if (runId) void this.persistRun(transcript, runId);
+        // No local run in flight ⇒ the settle came from another channel (openclaw
+        // TUI/UI). Remote user rows never arrive as `chat`/`agent` events —
+        // they exist only in `chat.history` — so the transcript is missing
+        // them until a local `syncFromHistory` (which only runs at the START of
+        // a local run). Fetch the history now so the pushed snapshot carries
+        // both the remote user turn and its assistant reply.
+        if (!transcript.hasActiveFlow()) void this.notifyWatchers(sessionKey);
+        else this.notifyNow(sessionKey);
       }
     });
 
@@ -543,6 +560,90 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
     } finally {
       transcript.detachFlow(flow);
     }
+  }
+
+  /**
+   * Standing watch seam. Registers a `sink` for a session, immediately pushes
+   * the current canonical transcript (baseline, if one already exists), and
+   * returns an unsubscribe. Subsequent settles coalesce through
+   * `notifyWatchers` and push a fresh `WatchSnapshot` (whole transcript, keyed
+   * by message id) that a consumer can adopt via `importExternalState`.
+   */
+  subscribe(sessionKey: string, sink: (s: WatchSnapshot) => void): () => void {
+    let set = this.watch.get(sessionKey);
+    if (!set) {
+      set = new Set();
+      this.watch.set(sessionKey, set);
+    }
+    set.add(sink);
+    const snapshot = this.snapshotOf(sessionKey);
+    if (snapshot) sink(snapshot);
+    return () => {
+      const watchers = this.watch.get(sessionKey);
+      if (!watchers) return;
+      watchers.delete(sink);
+      if (watchers.size === 0) {
+        this.watch.delete(sessionKey);
+        const timer = this.watchTimers.get(sessionKey);
+        if (timer) clearTimeout(timer);
+        this.watchTimers.delete(sessionKey);
+      }
+    };
+  }
+
+  private snapshotOf(sessionKey: string): WatchSnapshot | null {
+    const transcript = this.transcripts.get(sessionKey);
+    if (!transcript) return null;
+    const messages: WatchSnapshot["messages"] = {};
+    for (const m of transcript.state.messages) messages[m.id] = structuredClone(m);
+    return { status: transcript.state.status, messages };
+  }
+
+  /**
+   * Remote-settle path: the gateway owns the authoritative conversation and
+   * it is not the only writer, so a settle that arrived without a local run
+   * may have brought remote user turns that only live in `chat.history` (not
+   * in `chat`/`agent` events). Fetch the history and converge the transcript
+   * before pushing a snapshot, so the snapshot carries both the remote user
+   * row and its assistant reply. The local-run path already runs
+   * `syncFromHistory` at `run()` start, so it skips this re-fetch to avoid
+   * double-fetching on every local run's settle.
+   */
+  private async notifyWatchers(sessionKey: string): Promise<void> {
+    if (this.gateway) {
+      try {
+        const hist = (await this.gateway.request("chat.history", { sessionKey })) as {
+          messages?: unknown[];
+        };
+        if (Array.isArray(hist.messages)) {
+          const transcript = this.transcripts.get(sessionKey);
+          if (transcript) transcript.syncFromHistory(hist.messages);
+        }
+      } catch (err) {
+        console.warn("[openclaw] watch chat.history re-fetch failed; keeping transcript", err);
+      }
+    }
+    this.notifyNow(sessionKey);
+  }
+
+  /**
+   * Coalesce settles into one push per trailing window: the first settle after
+   * a quiet period starts a 250ms timer; further settles within that window
+   * are captured by the single fire (which reads the latest transcript). Keeps
+   * a burst of frames from spamming the client once per frame.
+   */
+  private notifyNow(sessionKey: string): void {
+    if (this.watchTimers.get(sessionKey)) return;
+    const timer = setTimeout(() => {
+      this.watchTimers.delete(sessionKey);
+      const set = this.watch.get(sessionKey);
+      if (!set || set.size === 0) return;
+      const snapshot = this.snapshotOf(sessionKey);
+      if (!snapshot) return;
+      for (const sink of set) sink(snapshot);
+    }, 250);
+    timer.unref?.();
+    this.watchTimers.set(sessionKey, timer);
   }
 
   abort(_reason?: string): void {

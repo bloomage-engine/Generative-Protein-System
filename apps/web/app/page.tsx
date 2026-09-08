@@ -8,6 +8,7 @@ import {
   createInitialRuntimeState,
   fetchSessionSnapshot,
 } from "@/lib/session-sync";
+import { useTransportWatch } from "@/hooks/use-transport-watch";
 
 /**
  * Conversation page.
@@ -20,6 +21,11 @@ import {
  */
 export default function Home() {
   const runtime = useTransportRuntime();
+  const api = process.env.NEXT_PUBLIC_TRANSPORT_URL ?? "/api/transport";
+  // Standing watch: adopt remote assistant replies pushed by the transport-
+  // service (openclaw TUI/UI) without a page refresh. The one-shot probe
+  // below still seeds the initial snapshot.
+  useTransportWatch(api, runtime);
 
   useEffect(() => {
     // Load the session's history on first mount. The transport runtime only
@@ -28,7 +34,6 @@ export default function Home() {
     // reconciles every client against its canonical transcript on each request,
     // so a fresh page (and a page reload) always converges to the full history.
     let cancelled = false;
-    const api = process.env.NEXT_PUBLIC_TRANSPORT_URL ?? "/api/transport";
     void (async () => {
       const snapshot = await fetchSessionSnapshot(
         api,
