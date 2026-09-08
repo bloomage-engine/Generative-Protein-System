@@ -16,6 +16,7 @@ packages/record                   domain + record layer (Run is the atomic unit)
 packages/transport                runtime-agnostic seam (RuntimeAdapter, StateDelta)
 packages/transport-openclaw       openclaw runtime adapter (backend operator client; ports gateway WS)
 services/transport-service        backend assistant-transport service (SSE endpoint, port 3001)
+examples/transport-openclaw-example  minimal assistant-ui example app over the openclaw adapter (Vite + core primitives; dev-only, not in the root build)
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/adr/                         ADRs (0001 backend transport, 0002 record ownership)
@@ -27,6 +28,7 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 - `npm install` — install all workspaces
 - `npm run dev` — run service (3001) and web (3000) together via concurrently
 - `npm run dev:service` / `npm run dev:web` — individually
+- `npm run dev -w @science-studio/transport-openclaw-example` — the example app: Vite (5173, proxies `/api`) + the openclaw adapter behind `@science-studio/transport-service` (3200). Needs `examples/transport-openclaw-example/.env` (see its `.env.example`) and a live gateway, and `npm run build` first (imports deps from dist). Dev-only — intentionally NOT in the root build gate; its `npm run test` drives the same wiring against a scripted gateway (no live gateway needed).
 - `npm run build` — build record → transport → transport-openclaw → transport-service; this is the real type gate
 - `npm run typecheck` — **known-broken**: fails in transport-service with pre-existing TS6310 (composite refs + `--noEmit`). Other workspaces pass; use `npm run build` for the service.
 - `npm run smoke:adapter` — connect a real openclaw adapter to a live gateway and drive one `chat.send` (sends a real message to `OPENCLAW_DEFAULT_SESSION` unless `SMOKE_SESSION` overrides it). Needs `npm run build` first.
