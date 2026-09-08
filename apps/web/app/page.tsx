@@ -2,8 +2,11 @@
 
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { Thread } from "@/components/assistant-ui/elements/thread.aui";
-import { TransportApiProvider, useTransport } from "@science-studio/transport-client";
-import { useTransportWatch } from "@/hooks/use-transport-watch";
+import {
+  TransportApiProvider,
+  useTransport,
+  useTransportWatch,
+} from "@science-studio/transport-client";
 
 /**
  * Conversation page.
@@ -20,10 +23,11 @@ export default function Home() {
   // importExternalState), converging a fresh page or reload to the full
   // gateway history via the backend's reconcile.
   const runtime = useTransport({ api });
-  // Standing watch: adopt remote assistant replies pushed by the transport-
-  // service (openclaw TUI/UI) without a page refresh. The one-shot probe in
-  // useTransport still seeds the initial snapshot.
-  useTransportWatch(api, runtime);
+  // Standing watch: adopt replies pushed by the transport-service (remote
+  // openclaw TUI/UI turns and native command replies, which never stream over
+  // a run channel) without a page refresh. The one-shot probe in useTransport
+  // still seeds the initial snapshot.
+  useTransportWatch(runtime, api);
 
   return (
     <main className="flex h-svh flex-col">

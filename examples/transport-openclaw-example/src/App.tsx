@@ -3,7 +3,10 @@ import {
   MessagePrimitive,
   ThreadPrimitive,
 } from "@assistant-ui/react";
-import { useTransport } from "@science-studio/transport-client";
+import {
+  useTransport,
+  useTransportWatch,
+} from "@science-studio/transport-client";
 import { MarkdownText } from "./markdown";
 import { AssistantReasoning } from "./reasoning-panel";
 import { Composer } from "./composer";
@@ -39,6 +42,12 @@ export default function App() {
   // The backend reconciles every client against its canonical transcript, so
   // a fresh page (and a page reload) converges to the full gateway history.
   const runtime = useTransport();
+  // Standing watch: adopt canonical-snapshot pushes from the transport-service
+  // (remote openclaw turns, and native command replies — e.g. "/status" —
+  // which the gateway writes into chat.history only AFTER the run's terminal
+  // frame, so they never stream over this client's own run SSE). Without it a
+  // command reply would only appear on the next reload's history probe.
+  useTransportWatch(runtime);
 
   return (
     <div className="page">

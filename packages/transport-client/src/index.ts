@@ -12,3 +12,4 @@ export {
   useRuntimeCommands,
   useTransportApi,
 } from "./catalog.js";
+export { useTransportWatch } from "./watch.js";

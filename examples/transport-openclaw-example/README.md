@@ -32,7 +32,11 @@ three layers, with no protocol code of its own:
 - **Client** — [`src/`](./src/) is a Vite + React app on assistant-ui core
   primitives (no Tailwind/shadcn). It consumes `@science-studio/transport-client`
   (the `useTransport` hook: transport runtime, message converter, and the mount
-  probe that loads the session's history on first paint); `App.tsx` renders the
+  probe that loads the session's history on first paint; plus the standing
+  `useTransportWatch` consumer, which adopts canonical-snapshot pushes — remote
+  turns and native command replies land in `chat.history` only after the run's
+  terminal frame, so they never stream over the run SSE and need the watch to
+  render without a reload); `App.tsx` renders the
   thread with a hand-styled port of the registry `MarkdownText`
   (`markdown.tsx`, GitHub-flavored markdown + streaming caret) for assistant
   text parts and a **static-variant reasoning panel** (`reasoning-panel.tsx`,
@@ -92,8 +96,11 @@ Against a live gateway, verify in the browser:
    always terminates (`[DONE]`), even for a no-command probe.
 6. **Slash commands** — type "/" (with a live gateway) and the runtime
    command menu opens above the composer; picking one (e.g. `/status`) sends
-   it as a message, the gateway answers in-thread, and no research `Run` is
-   recorded for it. The menu stays closed while a run is in flight and when
+   it as a message and the gateway's reply appears in-thread **without a
+   refresh** (native command replies never stream — they land in `chat.history`
+   after the terminal frame and are adopted via the standing watch consumer,
+   which the example mounts in `App.tsx`); no research `Run` is recorded for
+   it. The menu stays closed while a run is in flight and when
    the catalog has not loaded yet.
 
 ## Tests (no gateway required)

@@ -10,11 +10,11 @@ Chinese.
 apps/web                          Next.js frontend (assistant-ui Thread UI, port 3000)
   app/page.tsx                      renders the registry-registered assistant-ui `Thread`
   components/assistant-ui/elements  Thread UI registered from the assistant-ui registry
-  components/ui + hooks + lib       shadcn/ui base, registry helpers, transport watch hook
+  components/ui + hooks + lib       shadcn/ui base, registry helpers
   (Tailwind v4 + shadcn/ui styling stack: postcss.config.mjs, components.json)
 packages/record                   domain + record layer (Run is the atomic unit)
 packages/transport                runtime-agnostic seam (RuntimeAdapter, StateDelta)
-packages/transport-client         assistant-ui client boundary (`useTransport` hook, state converter, mount probe)
+packages/transport-client         assistant-ui client boundary (`useTransport` hook, standing `useTransportWatch`, state converter, mount probe, command catalog)
 packages/transport-openclaw       openclaw runtime adapter (backend operator client; ports gateway WS)
 services/transport-service        backend assistant-transport service (SSE endpoint, port 3001)
 examples/transport-openclaw-example  minimal assistant-ui example app over the openclaw adapter (Vite + core primitives; dev-only, not in the root build)
@@ -104,8 +104,11 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   delegates to a registered adapter (docs/adr/0001).
 - **`Run` is the atomic traceable unit**; each Research turn produces one.
 - **Keep the transport package React-free.** The shared client package
-  (`@science-studio/transport-client`) owns the assistant-ui boundary, the state
-  converter, and the mount probe; the web app owns the Thread UI.
+  (`@science-studio/transport-client`) owns the assistant-ui boundary: the
+  `useTransport` hook + mount probe, the standing `useTransportWatch` consumer
+  (adopts canonical-snapshot pushes — remote turns and native command replies,
+  which never stream over a run channel), and the command catalog; the web app
+  and the openclaw example both use it, and each app owns only its Thread UI.
 - **Don't hand-roll the gateway WS state machine.** Use
   `@openclaw/gateway-client` / `@openclaw/gateway-protocol` primitives, pinned
   EXACTLY (calendar release train, not semver; `2026.8.1`). Reference
