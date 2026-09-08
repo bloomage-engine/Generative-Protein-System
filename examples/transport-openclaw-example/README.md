@@ -33,8 +33,12 @@ three layers, with no protocol code of its own:
   primitives (no Tailwind/shadcn). It consumes `@science-studio/transport-client`
   (the `useTransport` hook: transport runtime, message converter, and the mount
   probe that loads the session's history on first paint); `App.tsx` renders the
-  thread with assistant-ui's default part renderers (text, streaming, reasoning,
-  tool-calls).
+  thread with a hand-styled port of the registry `MarkdownText`
+  (`markdown.tsx`, GitHub-flavored markdown + streaming caret) for assistant
+  text parts and a **static-variant reasoning panel** (`reasoning-panel.tsx`,
+  mirroring the assistant-ui `ReasoningPanel` element) for thinking traces —
+  core ships no default renderer for either, so without them replies would be
+  raw markdown and reasoning invisible.
 - **Tests** — [`test/example.test.ts`](./test/example.test.ts) drives the same
   wiring against a **scripted gateway** (the adapter's `createGateway` test
   seam, as in `packages/transport-openclaw/test/`) — no live gateway needed.
@@ -71,12 +75,15 @@ Against a live gateway, verify in the browser:
    transcript immediately (the mount probe); a page reload re-converges to the
    same history (reconcile-first).
 2. **Token streaming** — the assistant reply appears as tokens stream in
-   (small `append-text` ops, not whole-message rewrites).
+   (small `append-text` ops, not whole-message rewrites), rendered live as
+   markdown with the blinking caret on the trailing token.
 3. **Tool calls** — a run that invokes tools renders one tool-call part per
    `toolCallId`, start + result merged, in event order; in-flight tools show a
    running state (spinner) until the result lands.
-4. **Reasoning** — thinking streams collapse into a single reasoning part that
-   updates in place.
+4. **Reasoning** — a thinking trace appears as a collapsible reasoning panel
+   above the reply: it is auto-expanded while thinking and settles to a
+   "Done thinking" row; the open trace is a bottom-pinned live preview that
+   pauses when you scroll up in it.
 5. **Run settlement** — the composer unlocks when the run ends; the stream
    always terminates (`[DONE]`), even for a no-command probe.
 

@@ -5,12 +5,15 @@ import {
   ThreadPrimitive,
 } from "@assistant-ui/react";
 import { useTransport } from "@science-studio/transport-client";
+import { MarkdownText } from "./markdown";
+import { AssistantReasoning } from "./reasoning-panel";
 
 /**
- * Message renderers. `MessagePrimitive.Parts` ships sensible web defaults for
- * every part type the wire contract produces — text, streaming (in-progress
- * indicator), reasoning, and tool-call (fallback UI with args/result) — so the
- * example adds no custom part components of its own.
+ * Message renderers. Assistant text parts render as GitHub-flavored markdown
+ * (`MarkdownText`, see `markdown.tsx`); reasoning gets the static-variant
+ * reasoning panel (see `reasoning-panel.tsx`) — core ships no default for
+ * either, so without these a reply would be raw text and a thinking trace
+ * invisible. User messages keep the default plain text renderer.
  */
 const UserMessage = () => (
   <div className="msg msg-user">
@@ -20,7 +23,9 @@ const UserMessage = () => (
 
 const AssistantMessage = () => (
   <div className="msg msg-assistant">
-    <MessagePrimitive.Parts />
+    {/* Reasoning leads the turn, so the panel sits above the other parts. */}
+    <AssistantReasoning />
+    <MessagePrimitive.Parts components={{ Text: MarkdownText }} />
     <MessagePrimitive.Error>
       <p className="error">Something went wrong.</p>
     </MessagePrimitive.Error>
