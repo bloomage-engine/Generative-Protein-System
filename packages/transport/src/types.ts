@@ -54,6 +54,18 @@ export type StateDelta =
       text: string;
       replace?: boolean;
     }
+  | {
+      /**
+       * Replace the text of the part at `partIndex` (only text or reasoning
+       * parts carry a `text` field). Collapses high-frequency full-cumulative-
+       * text events (e.g. gateway `thinking` streams, ~13 Hz) into one part
+       * updated in place instead of a whole-parts-array rewrite per event.
+       */
+      type: "set-part-text";
+      messageId: Id;
+      partIndex: number;
+      text: string;
+    }
   | { type: "approval-required"; approvalId: Id; kind: string; summary: string };
 
 /**

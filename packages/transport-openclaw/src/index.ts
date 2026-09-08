@@ -1,4 +1,5 @@
 import type {
+  Message,
   RecordStoreLike,
   RuntimeAdapter,
   RuntimeInitOptions,
@@ -7,10 +8,12 @@ import type {
   TransportCommand,
   MessagePart,
 } from "@science-studio/transport";
+import { foldState } from "@science-studio/transport";
 import type { EventFrame } from "@openclaw/gateway-client/browser";
 import type { Run, RunStatus } from "@science-studio/record";
-import { createBackendGateway, type BackendGateway } from "./connection.js";
+import { createBackendGateway, type BackendGateway, type BackendGatewayOptions } from "./connection.js";
 import {
+  formatResultText,
   mapChatEvent,
   mapThinkingEvent,
   mapToolEvent,
@@ -27,6 +30,18 @@ function newId(): string {
 
 /**
  * A resumable queue of streamed state deltas for one `run()` invocation.
+ *
+ * The queue is a SECOND consumer of every delta: the transcript folds each
+ * delta onto its live state when it is produced (SessionTranscript.emit folds
+ * FIRST, then pushes), and the wire mirror in the transport-service folds the
+ * very same deltas. Deltas that carry payloads (add-message / add-part /
+ * update-message) reference the transcript's LIVE objects, which later
+ * transcript folds mutate in place — so a delta left queued un-snapshotted
+ * would hand the wire mirror an object already mutated by folds the mirror
+ * has not seen yet (e.g. an add-message whose parts array already contains the
+ * reasoning part a later event added), doubling content and emitting ops the
+ * client cannot apply. Each delta is therefore deep-copied at enqueue time:
+ * every consumer folds from the same queue-time snapshot sequence.
  */
 class RunFlow {
   private deltas: StateDelta[] = [];
@@ -36,7 +51,7 @@ class RunFlow {
   targetRunId: string | null = null;
 
   push(delta: StateDelta): void {
-    this.deltas.push(delta);
+    this.deltas.push(structuredClone(delta));
     this.wake();
   }
 
@@ -59,6 +74,84 @@ class RunFlow {
       await new Promise<void>((resolve) => this.waiters.push(resolve));
     }
   }
+}
+
+/**
+ * Normalize `chat.history` rows into transcript messages (system rows and
+ * non-object rows excluded). Rows without a gateway id get positional
+ * `hist-<n>` ids, counting up from `offset` over accepted messages only.
+ * `toolResult` rows are not messages: their result is merged into the
+ * matching `tool-call` part of the latest assistant message (gateway
+ * transcripts persist tool output as its own row, unlike live events).
+ */
+function parseHistoryRows(rows: unknown[], offset = 0): Message[] {
+  const messages: Message[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const m = row as Record<string, unknown>;
+    const role = typeof m.role === "string" ? m.role.toLowerCase() : "";
+    // Skip non-conversational rows (gateway system "reset" frames, approvals…).
+    if (role === "system") continue;
+    if (TOOL_RESULT_ROLES.has(role)) {
+      attachHistoryToolResult(messages, m);
+      continue;
+    }
+    if (role !== "" && role !== "user" && role !== "assistant") continue;
+    const id = typeof m.id === "string" ? m.id : `hist-${offset + messages.length}`;
+    messages.push({
+      id,
+      role: role === "assistant" ? "assistant" : "user",
+      parts: parseParts(m),
+    });
+  }
+  return messages;
+}
+
+const TOOL_RESULT_ROLES = new Set(["toolresult", "tool_result", "tool-result"]);
+
+function attachHistoryToolResult(messages: Message[], row: Record<string, unknown>): void {
+  const toolCallId =
+    typeof row.toolCallId === "string"
+      ? row.toolCallId
+      : typeof row.tool_call_id === "string"
+        ? row.tool_call_id
+        : undefined;
+  if (!toolCallId) return;
+  const text = formatResultText(row.content ?? row.result ?? row.text);
+  const isError = row.isError === true;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const parts = messages[i]!.parts;
+    for (let j = parts.length - 1; j >= 0; j--) {
+      const p = parts[j]!;
+      if (p.type !== "tool-call" || p.id !== toolCallId) continue;
+      parts[j] = { ...p, result: text, ...(isError ? { isError: true } : {}) };
+      return;
+    }
+  }
+}
+
+/**
+ * A content fingerprint of a message, ignoring volatile ids: role plus the
+ * text of every part (text / reasoning / tool args+result). Two messages with
+ * equal signatures are the same conversational turn rendered from different
+ * sources (live stream events vs the persisted history row), so the sync can
+ * treat them as converged without churning transcript ids on every probe.
+ */
+function messageSignature(m: Message): string {
+  return JSON.stringify(
+    m.parts.map((p) => {
+      switch (p.type) {
+        case "text":
+          return ["t", p.text];
+        case "reasoning":
+          return ["r", p.text];
+        case "tool-call":
+          return ["c", p.id, p.name, p.args, p.result ?? "", p.isError === true];
+        case "artifact":
+          return ["a", p.artifactId, p.name, p.kind];
+      }
+    }),
+  );
 }
 
 /**
@@ -86,19 +179,7 @@ class SessionTranscript {
 
   /** Seed the transcript from a `chat.history` response (system rows excluded). */
   seedFromHistory(messages: unknown[]): void {
-    for (const row of messages) {
-      if (!row || typeof row !== "object") continue;
-      const m = row as Record<string, unknown>;
-      // Skip non-conversational rows (e.g. the gateway's system "reset" frames).
-      if (m.role === "system") continue;
-      const role = typeof m.role === "string" ? m.role : "user";
-      const id = typeof m.id === "string" ? m.id : `hist-${this.state.messages.length}`;
-      this.state.messages.push({
-        id,
-        role: (role === "assistant" ? "assistant" : "user") as "user" | "assistant",
-        parts: parseParts(m),
-      });
-    }
+    this.state.messages.push(...parseHistoryRows(messages, this.state.messages.length));
   }
 
   private ensureAssistant(runId: string) {
@@ -112,59 +193,62 @@ class SessionTranscript {
   }
 
   /**
-   * Apply a delta to the local canonical transcript (`state`), which is what
-   * later requests reconcile clients against. Every delta streamed to a client
-   * must also be reflected here so the transcript is never stale.
+   * Fold a delta onto the local canonical transcript (`state`) AND push it to
+   * the active flow. One fold (`foldState` in @science-studio/transport) is
+   * the single source of delta semantics — the wire projection in the
+   * transport-service folds the very same deltas, so the canonical transcript
+   * and the wire mirror can never drift apart. The fold is unconditional (a
+   * delta arriving between requests, with no flow attached, must still be
+   * reflected here); the push to the client is conditional on a flow.
    */
-  private reflect(delta: StateDelta): void {
-    switch (delta.type) {
-      case "session-status":
-        this.state.status = delta.status;
-        break;
-      case "add-message":
-        this.state.messages.push(delta.message);
-        break;
-      case "update-message": {
-        const msg = this.state.messages.find((m) => m.id === delta.messageId);
-        if (!msg) break;
-        if (delta.patch.role !== undefined) msg.role = delta.patch.role;
-        if (delta.patch.parts !== undefined) msg.parts = delta.patch.parts;
-        break;
-      }
-      case "add-part": {
-        const msg = this.state.messages.find((m) => m.id === delta.messageId);
-        msg?.parts.push(delta.part);
-        break;
-      }
-      case "append-text": {
-        const msg = this.state.messages.find((m) => m.id === delta.messageId);
-        msg?.parts.push({ type: "text", text: delta.text });
-        break;
-      }
-      case "stream-text": {
-        const msg = this.state.messages.find((m) => m.id === delta.messageId);
-        if (!msg) break;
-        const i = msg.parts.length - 1;
-        const last = i >= 0 ? msg.parts[i] : undefined;
-        if (last && last.type === "text") {
-          msg.parts[i] = {
-            ...last,
-            text: delta.replace ? delta.text : (last.text ?? "") + delta.text,
-          };
-        } else {
-          msg.parts.push({ type: "text", text: delta.text });
-        }
-        break;
-      }
-      default:
-        break;
-    }
+  emit(delta: StateDelta): void {
+    foldState(this.state, delta);
+    this.activeFlow?.push(delta);
   }
 
-  /** Push a delta onto the active flow (if any) AND mirror it in `state`. */
-  emit(delta: StateDelta): void {
-    this.activeFlow?.push(delta);
-    this.reflect(delta);
+  /**
+   * Converge the canonical transcript with the gateway's current history on
+   * every run. The gateway owns the conversation, and it is not the only
+   * writer: turns can arrive from other clients (e.g. the openclaw UI) between
+   * two of our runs, and their user rows never pass through this process —
+   * seeding only when empty would strand the transcript on stale rows and
+   * reconcile would keep serving a transcript missing those user turns (with
+   * orphan assistant messages where streaming events happened to leak in).
+   * So whenever the parsed history is not a content-prefix of the current
+   * transcript, the transcript is rebuilt from the gateway rows.
+   *
+   * Guards: never touch an in-flight run (the gateway lags the live events,
+   * and a rebuild would wipe the partially assembled assistant message); an
+   * equal or gateway-lagging transcript keeps its local messages and ids (no
+   * reconcile churn after every local run); clearing is guarded — an empty
+   * gateway history only counts as a reset when the transcript holds >= 2
+   * messages and is not mid-run, so a single never-persisted message (failed
+   * `chat.send`) survives.
+   */
+  syncFromHistory(rows: unknown[]): void {
+    if (this.state.status === "running") return;
+    const gateway = parseHistoryRows(rows);
+    if (gateway.length === 0) {
+      if (this.state.messages.length >= 2) {
+        this.state.messages = [];
+        this.state.status = "idle";
+      }
+      return;
+    }
+    if (this.state.messages.length === 0) {
+      this.state.messages = gateway;
+      return;
+    }
+    // Gateway rows are a content-prefix of the transcript: already converged
+    // (equal), or the gateway simply lags our not-yet-persisted tail. Keep.
+    if (gateway.length <= this.state.messages.length) {
+      const local = this.state.messages;
+      if (gateway.every((m, i) => messageSignature(m) === messageSignature(local[i]!))) return;
+    }
+    // Otherwise the gateway knows more (or something different) than we do:
+    // it wins. Rebuild so the next reconcile converges clients — including
+    // user turns that arrived remotely — onto the gateway conversation.
+    this.state.messages = gateway;
   }
 
   /** The canonical transcript snapshot used to reconcile a client's state. */
@@ -258,11 +342,10 @@ class SessionTranscript {
     const i = msg.parts.length - 1;
     const last = i >= 0 ? msg.parts[i] : undefined;
     if (last && last.type === "reasoning") {
-      // Same reasoning run, later event with newer full text: replace.
+      // Same reasoning run, later event with newer full text: replace in place
+      // via a path-level text delta — never a whole-parts-array rewrite.
       if (last.text === text) return;
-      const next = [...msg.parts];
-      next[i] = { ...last, text };
-      this.emit({ type: "update-message", messageId: msg.id, patch: { parts: next } });
+      this.emit({ type: "set-part-text", messageId: msg.id, partIndex: i, text });
       return;
     }
     // First thinking event (or reasoning resumed after other content).
@@ -328,16 +411,29 @@ class SessionTranscript {
  *   place (the gateway repeats the full cumulative text per event).
  *   Full timeline ordering should be verified against a live gateway.
  */
+export interface OpenClawRuntimeAdapterOptions {
+  /**
+   * Test seam: inject the gateway factory (defaults to the real backend
+   * gateway). Lets a harness drive `run()` against a scripted gateway.
+   */
+  createGateway?: (opts: BackendGatewayOptions) => BackendGateway;
+}
+
 export class OpenClawRuntimeAdapter implements RuntimeAdapter {
   runtime = "openclaw";
+  private readonly createGateway: (opts: BackendGatewayOptions) => BackendGateway;
   private gateway: BackendGateway | null = null;
   private recordStore: RecordStoreLike | null = null;
   private transcripts = new Map<string, SessionTranscript>();
   private ready: Promise<void> | null = null;
 
+  constructor(options: OpenClawRuntimeAdapterOptions = {}) {
+    this.createGateway = options.createGateway ?? createBackendGateway;
+  }
+
   async init(opts: RuntimeInitOptions): Promise<void> {
     this.recordStore = opts.recordStore;
-    this.gateway = createBackendGateway({
+    this.gateway = this.createGateway({
       url: opts.gateway.url,
       token: opts.gateway.token,
       version: CLIENT_VERSION,
@@ -378,12 +474,17 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
     if (!transcript) {
       transcript = new SessionTranscript(sessionKey, session);
       this.transcripts.set(sessionKey, transcript);
-      try {
-        const hist = (await this.gateway.request("chat.history", { sessionKey })) as { messages?: unknown[] };
-        if (Array.isArray(hist.messages)) transcript.seedFromHistory(hist.messages);
-      } catch (err) {
-        console.warn("[openclaw] chat.history failed; starting from an empty transcript", err);
-      }
+    }
+    // The gateway owns the conversation. Re-sync the canonical transcript
+    // against its current history on EVERY run (not just the first): a session
+    // reset done on the gateway side empties the history, and the cached
+    // transcript must follow or reconcile would keep feeding clients stale
+    // messages the gateway has already forgotten.
+    try {
+      const hist = (await this.gateway.request("chat.history", { sessionKey })) as { messages?: unknown[] };
+      if (Array.isArray(hist.messages)) transcript.syncFromHistory(hist.messages);
+    } catch (err) {
+      console.warn("[openclaw] chat.history failed; keeping the in-memory transcript", err);
     }
 
     // Reconcile this client against the canonical transcript first. The

@@ -53,6 +53,20 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   state the client claimed in the request body (`state`) and streams a
   whole-message-map `set` when they differ (and a `status` `set` when the status
   drifted) — so a fresh page or a reload always converges to the full history.
+  The adapter re-syncs its canonical transcript against gateway `chat.history`
+  at the START of every `run()` (not just the first): the gateway owns the
+  conversation and is not the only writer, so turns that arrived remotely
+  (e.g. on the openclaw UI — including their USER rows, which never pass
+  through this process) are converged by rebuilding the transcript from the
+  gateway rows whenever the history is not a content-prefix (role + part
+  texts) of the transcript. A gateway session reset therefore also clears the
+  stale in-memory transcript, and standalone `toolResult` history rows merge
+  into their assistant tool-call part instead of becoming messages. Sync
+  never runs mid-run (a rebuild would wipe the partially assembled assistant
+  message), and a lagging gateway keeps the local tail — an empty or
+  shorter-matching history is not a reset unless the transcript holds ≥ 2
+  messages and is not mid-run, so a single never-persisted message (failed
+  `chat.send`) survives.
 - **History on load is driven by a client probe**, not a library behaviour:
   `apps/web/app/page.tsx` POSTs an empty-command request on mount
   (`apps/web/lib/session-sync.ts`) and imports the folded snapshot via
