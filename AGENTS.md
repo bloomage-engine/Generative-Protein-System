@@ -8,12 +8,13 @@ Chinese.
 
 ```
 apps/web                          Next.js frontend (assistant-ui Thread UI, port 3000)
-  app/page.tsx                      renders the registry-registered assistant-ui `Thread` + history sync
+  app/page.tsx                      renders the registry-registered assistant-ui `Thread`
   components/assistant-ui/elements  Thread UI registered from the assistant-ui registry
-  components/ui + hooks + lib       shadcn/ui base, registry helpers, transport hook, session probe
+  components/ui + hooks + lib       shadcn/ui base, registry helpers, transport watch hook
   (Tailwind v4 + shadcn/ui styling stack: postcss.config.mjs, components.json)
 packages/record                   domain + record layer (Run is the atomic unit)
 packages/transport                runtime-agnostic seam (RuntimeAdapter, StateDelta)
+packages/transport-client         assistant-ui client boundary (`useTransport` hook, state converter, mount probe)
 packages/transport-openclaw       openclaw runtime adapter (backend operator client; ports gateway WS)
 services/transport-service        backend assistant-transport service (SSE endpoint, port 3001)
 examples/transport-openclaw-example  minimal assistant-ui example app over the openclaw adapter (Vite + core primitives; dev-only, not in the root build)
@@ -29,7 +30,7 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 - `npm run dev` — run service (3001) and web (3000) together via concurrently
 - `npm run dev:service` / `npm run dev:web` — individually
 - `npm run dev -w @science-studio/transport-openclaw-example` — the example app: Vite (5173, proxies `/api`) + the openclaw adapter behind `@science-studio/transport-service` (3200). Needs `examples/transport-openclaw-example/.env` (see its `.env.example`) and a live gateway, and `npm run build` first (imports deps from dist). Dev-only — intentionally NOT in the root build gate; its `npm run test` drives the same wiring against a scripted gateway (no live gateway needed).
-- `npm run build` — build record → transport → transport-openclaw → transport-service; this is the real type gate
+- `npm run build` — build record → transport → transport-client → transport-openclaw → transport-service; this is the real type gate
 - `npm run typecheck` — **known-broken**: fails in transport-service with pre-existing TS6310 (composite refs + `--noEmit`). Other workspaces pass; use `npm run build` for the service.
 - `npm run smoke:adapter` — connect a real openclaw adapter to a live gateway and drive one `chat.send` (sends a real message to `OPENCLAW_DEFAULT_SESSION` unless `SMOKE_SESSION` overrides it). Needs `npm run build` first.
 - `npm run smoke:replay -- <file>` — fold recorded SSE frames through the client decoder/accumulator (verifies a stream terminates with `[DONE]` and only uses `set` ops).
@@ -70,8 +71,9 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   messages and is not mid-run, so a single never-persisted message (failed
   `chat.send`) survives.
 - **History on load is driven by a client probe**, not a library behaviour:
-  `apps/web/app/page.tsx` POSTs an empty-command request on mount
-  (`apps/web/lib/session-sync.ts`) and imports the folded snapshot via
+  `apps/web/app/page.tsx` mounts `useTransport` (from
+  `@science-studio/transport-client`), which POSTs the empty-command request on
+  mount and imports the folded snapshot via
   `runtime.thread.importExternalState`. That probe **must end with `data: [DONE]`**
   (the service always writes it), otherwise the import never settles and the
   composer stays locked. The same is true for any run whose flow never ends —
@@ -101,8 +103,9 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   assistant-ui's `useAssistantTransportRuntime` protocol; backend transport-service
   delegates to a registered adapter (docs/adr/0001).
 - **`Run` is the atomic traceable unit**; each Research turn produces one.
-- **Keep the transport package React-free.** The web app owns the assistant-ui
-  boundary and the state converter.
+- **Keep the transport package React-free.** The shared client package
+  (`@science-studio/transport-client`) owns the assistant-ui boundary, the state
+  converter, and the mount probe; the web app owns the Thread UI.
 - **Don't hand-roll the gateway WS state machine.** Use
   `@openclaw/gateway-client` / `@openclaw/gateway-protocol` primitives, pinned
   EXACTLY (calendar release train, not semver; `2026.8.1`). Reference

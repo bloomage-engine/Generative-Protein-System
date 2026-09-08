@@ -14,6 +14,7 @@
   "dependencies": {
     "@assistant-ui/react": "^0.15.0",
     "@science-studio/transport": "*",
+        "@science-studio/transport-client": "*",
     "@science-studio/transport-openclaw": "*",
     "@science-studio/transport-service": "*",
     "assistant-stream": "^0.3.41",

@@ -12,6 +12,7 @@
     "@assistant-ui/react": "^0.15.0",
     "@assistant-ui/react-markdown": "0.14.14",
     "@science-studio/transport": "*",
+        "@science-studio/transport-client": "*",
     "@tailwindcss/postcss": "4.3.3",
     "assistant-stream": "^0.3.41",
     "class-variance-authority": "0.7.1",

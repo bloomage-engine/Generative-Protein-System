@@ -1,0 +1,36 @@
+{
+  "name": "@science-studio/transport-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@science-studio/transport": "*"
+  },
+  "peerDependencies": {
+    "@assistant-ui/react": "^0.15.0",
+    "assistant-stream": "^0.3.41",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@assistant-ui/react": "^0.15.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "assistant-stream": "^0.3.41",
+    "react": "^19.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}

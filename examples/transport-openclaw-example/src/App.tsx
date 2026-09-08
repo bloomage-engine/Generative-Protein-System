@@ -1,14 +1,10 @@
-import { useEffect } from "react";
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
 } from "@assistant-ui/react";
-import { useTransportRuntime } from "./runtime";
-import { createInitialRuntimeState, fetchSessionSnapshot } from "./session-sync";
-
-const API = "/api/transport";
+import { useTransport } from "@science-studio/transport-client";
 
 /**
  * Message renderers. `MessagePrimitive.Parts` ships sensible web defaults for
@@ -32,35 +28,12 @@ const AssistantMessage = () => (
 );
 
 export default function App() {
-  const runtime = useTransportRuntime();
-
-  useEffect(() => {
-    // Load the session's history on first mount: the transport runtime only
-    // starts a request when the user sends a message, so fire a command-less
-    // probe and import the returned snapshot. The backend reconciles every
-    // client against its canonical transcript, so a fresh page (and a page
-    // reload) converges to the full gateway history.
-    let cancelled = false;
-    void (async () => {
-      const snapshot = await fetchSessionSnapshot(API, createInitialRuntimeState(), null);
-      if (cancelled || snapshot === null) return;
-      const threadState = runtime.thread.getState();
-      // If a send started while the probe was in flight, that run's own
-      // reconcile already streamed the history — importing an older snapshot
-      // here could clobber it.
-      if (
-        threadState.isRunning ||
-        threadState.isLoading ||
-        threadState.messages.length > 0
-      ) {
-        return;
-      }
-      runtime.thread.importExternalState(snapshot);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [runtime]);
+  // useTransport also loads the session's history on mount: the transport
+  // runtime only starts a request when the user sends a message, so the
+  // package fires a command-less probe and imports the returned snapshot.
+  // The backend reconciles every client against its canonical transcript, so
+  // a fresh page (and a page reload) converges to the full gateway history.
+  const runtime = useTransport();
 
   return (
     <div className="page">
@@ -77,7 +50,7 @@ export default function App() {
           <ThreadPrimitive.Root className="thread">
             <ThreadPrimitive.Viewport className="thread-viewport">
               <ThreadPrimitive.Messages
-                components={{ UserMessage: UserMessage, AssistantMessage: AssistantMessage }}
+                components={{ UserMessage, AssistantMessage }}
               />
             </ThreadPrimitive.Viewport>
             <ComposerPrimitive.Root className="composer">

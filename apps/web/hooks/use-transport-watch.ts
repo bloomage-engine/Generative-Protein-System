@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import type { AssistantRuntime } from "@assistant-ui/react";
-import type { RuntimeState } from "@/lib/session-sync";
+import type { RuntimeState } from "@science-studio/transport-client";
 
 /**
  * Standing watch consumer: keeps a long-lived NDJSON connection to

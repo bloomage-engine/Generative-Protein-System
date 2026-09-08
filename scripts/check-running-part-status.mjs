@@ -2,7 +2,7 @@
  * Regression check: does the assistant-ui client state mark an in-flight
  * tool-call / reasoning part as `running`?
  *
- * Guards a past bug: the transport converter in apps/web/lib/transport.tsx did
+ * Guards a past bug: the transport converter in packages/transport-client/src/converter.ts did
  * not pass the session running flag into `toThreadMessages`, so assistant-ui
  * auto-status never produced `running` — reasoning shimmer and tool-call
  * spinners never appeared and the tool card popped in already-looking-finished
@@ -22,7 +22,7 @@
 import { convertExternalMessages } from "../node_modules/@assistant-ui/core/dist/runtime/utils/external-message-conversion.js";
 import { toMessagePartStatus } from "../node_modules/@assistant-ui/core/dist/utils/normalizePartStatus.js";
 
-// --- converter callback: byte-for-byte mirror of apps/web/lib/transport.tsx ---
+// --- converter callback: byte-for-byte mirror of packages/transport-client/src/converter.ts ---
 function tryParse(value) {
   try {
     return JSON.parse(value);

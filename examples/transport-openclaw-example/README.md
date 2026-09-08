@@ -30,11 +30,11 @@ three layers, with no protocol code of its own:
   wire contract (reconcile-first history snapshots, client-safe op types,
   `[DONE]` termination, the standing watch endpoint).
 - **Client** — [`src/`](./src/) is a Vite + React app on assistant-ui core
-  primitives (no Tailwind/shadcn). `runtime.tsx` wires
-  `useAssistantTransportRuntime` with the message converter; `session-sync.ts`
-  implements the mount probe that loads the session's history on first paint;
-  `App.tsx` renders the thread with assistant-ui's default part renderers
-  (text, streaming, reasoning, tool-calls).
+  primitives (no Tailwind/shadcn). It consumes `@science-studio/transport-client`
+  (the `useTransport` hook: transport runtime, message converter, and the mount
+  probe that loads the session's history on first paint); `App.tsx` renders the
+  thread with assistant-ui's default part renderers (text, streaming, reasoning,
+  tool-calls).
 - **Tests** — [`test/example.test.ts`](./test/example.test.ts) drives the same
   wiring against a **scripted gateway** (the adapter's `createGateway` test
   seam, as in `packages/transport-openclaw/test/`) — no live gateway needed.
