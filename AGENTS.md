@@ -13,8 +13,8 @@ apps/web                          Next.js frontend (assistant-ui Thread UI, port
   components/ui + hooks + lib       shadcn/ui base, registry helpers
   (Tailwind v4 + shadcn/ui styling stack: postcss.config.mjs, components.json)
 packages/record                   domain + record layer (Run is the atomic unit)
-packages/transport                runtime-agnostic seam (RuntimeAdapter, StateDelta)
-packages/transport-client         assistant-ui client boundary (`useTransport` hook, standing `useTransportWatch`, state converter, mount probe, command catalog)
+packages/transport                runtime-agnostic seam (RuntimeAdapter, StateDelta) + shared adapter kit (Transcript base / RunFlow queue)
+packages/transport-client         assistant-ui client boundary (single `useTransport` session hook = history probe + standing watch + guarded import; state converter; command catalog + slash-menu / reasoning-trace helpers)
 packages/transport-openclaw       openclaw runtime adapter (backend operator client; ports gateway WS)
 packages/transport-dsh            dsh runtime adapter (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC)
 services/transport-service        backend assistant-transport service (SSE endpoint, port 3001; TRANSPORT_RUNTIME=openclaw|dsh picks the default adapter)
@@ -77,11 +77,13 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `apps/web/app/page.tsx` mounts `useTransport` (from
   `@science-studio/transport-client`), which POSTs the empty-command request on
   mount and imports the folded snapshot via
-  `runtime.thread.importExternalState`. That probe **must end with `data: [DONE]`**
+  `runtime.thread.importExternalState`. The same hook also mounts the standing
+  watch behind the SAME guarded-import interlock (see Architecture rules). That
+  probe **must end with `data: [DONE]`**
   (the service always writes it), otherwise the import never settles and the
   composer stays locked. The same is true for any run whose flow never ends —
-  `RunFlow` must be ended on a terminal chat event (`apply()` →
-  `activeFlow.end()`) and immediately for empty command batches.
+  the attached `RunFlow` must be ended on a terminal chat event (`apply()`
+  ends the flow via the transcript) and immediately for empty command batches.
 - The service fold seeds its mirror from the claimed/`reconcile` state; if a
   client's claimed state already matches the canonical transcript, the probe
   returns only `[DONE]` (no redundant snapshot).
@@ -109,9 +111,16 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   adapter retries that exact failure once on a fresh child-scoped session id
   (`sessionKey-<ts>-<rand>`) instead of settling the turn to error; the UI
   transcript mirror is unaffected, but the AGENT forgets pre-restart turns.
+  (5) `subscribe` pushes a baseline on attach — warm sessions synchronously,
+  COLD sessions (service restart, nothing in memory) asynchronously from its
+  own mirror — and one snapshot after every settled run, so a watcher that
+  attached before any content still wakes on the first settle instead of
+  hanging on an open stream (dsh has no remote settles to coalesce).
   assistant-ui mints a per-page local `threadId` (`__LOCALID_*`) on send
-  while the mount probe sends none — the service funnels both to the runtime's
-  default session, so probe history and sends always converge.
+  while the mount probe sends none — each adapter's `resolveSessionKey` maps
+  those (and absent ids) to its own default session, so the runtime-agnostic
+  service only funnels the id through and probe history and sends always
+  converge.
 - Service-adjacent verification without the browser:
   `curl -sN -X POST http://localhost:3001/api/transport -H 'content-type: application/json' -d '{"commands":[{"type":"add-message","message":{"role":"user","parts":[{"type":"text","text":"hi"}]}}]}'`
   — with a live gateway this streams real frames and must terminate with `[DONE]`.
@@ -126,11 +135,22 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   delegates to a registered adapter (docs/adr/0001).
 - **`Run` is the atomic traceable unit**; each Research turn produces one.
 - **Keep the transport package React-free.** The shared client package
-  (`@science-studio/transport-client`) owns the assistant-ui boundary: the
-  `useTransport` hook + mount probe, the standing `useTransportWatch` consumer
-  (adopts canonical-snapshot pushes — remote turns and native command replies,
-  which never stream over a run channel), and the command catalog; the web app
-  and the openclaw example both use it, and each app owns only its Thread UI.
+  (`@science-studio/transport-client`) owns the assistant-ui boundary as ONE
+  session module: `useTransport` mounts the mount-time history probe and the
+  standing watch behind a single guarded-import interlock (adopting
+  canonical-snapshot pushes — remote turns and native command replies, which
+  never stream over a run channel), plus the command catalog and the
+  slash-menu / reasoning-trace helpers; the web app and both examples use it,
+  and each app owns only its Thread UI/skin.
+- **Adapters share one fold-and-fan-out kit** in `@science-studio/transport`:
+  the `Transcript` base (canonical state + `emit` = foldState → attached
+  `RunFlow`) and the `RunFlow` queue (enqueue-time snapshot clones). Per-
+  adapter code is only the event→delta mapping plus session policies (openclaw:
+  history convergence in `history-sync.ts`, tool-result merging in
+  `tool-result.ts`; dsh: the `Turn` module + mirror restore) — never a
+  re-implementation of the transcript. Deltas that carry payloads reference
+  live transcript objects, so the queue's snapshot-at-enqueue is what keeps
+  the wire mirror and the client safe.
 - **Don't hand-roll the gateway WS state machine.** Use
   `@openclaw/gateway-client` / `@openclaw/gateway-protocol` primitives, pinned
   EXACTLY (calendar release train, not semver; `2026.8.1`). Reference

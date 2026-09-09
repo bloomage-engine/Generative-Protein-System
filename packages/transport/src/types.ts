@@ -152,6 +152,19 @@ export interface RuntimeAdapter {
    */
   listCommands?(): Promise<CommandDescriptor[]>;
   /**
+   * The canonical session key a client `threadId` targets. Runtimes whose
+   * session namespace differs from raw client thread ids implement this and
+   * keep that knowledge out of the runtime-agnostic transport-service:
+   * assistant-ui mints a per-page local `__LOCALID_*` id that must NOT become
+   * the canonical session, and gateway-style runtimes namespace their sessions
+   * (openclaw: `agent:…`). `null` means the client claimed no session (the
+   * mount probe). Default when omitted: the threadId itself when non-empty,
+   * else `"default"`.
+   * Optional — plain runtimes that accept any client-chosen id verbatim
+   * omit it.
+   */
+  resolveSessionKey?(threadId: string | null): string;
+  /**
    * Standing watch: keep pushing the session's canonical `WatchSnapshot`
    * whenever its transcript settles (e.g. a reply that arrived from another
    * channel — the openclaw TUI/UI — with no client-driven run in flight from

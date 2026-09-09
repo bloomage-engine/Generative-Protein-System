@@ -1,56 +1,24 @@
 import {
   ComposerPrimitive,
-  unstable_useSlashCommandAdapter,
-  useAui,
-  useAuiState,
-  type Unstable_SlashCommand,
 } from "@assistant-ui/react";
-import type { CommandDescriptor } from "@science-studio/transport";
-import { useRuntimeCommands } from "@science-studio/transport-client";
-import { useMemo } from "react";
+import { useRuntimeSlashMenu } from "@science-studio/transport-client";
 
 /**
  * Composer with runtime slash commands (docs/adr/0003).
  *
  * Runtime commands are plain "/"-prefixed user messages end-to-end, so this is
  * pure UI on top of the normal send path: typing "/" opens a menu of the
- * runtime adapter's command catalog (`GET /api/transport/commands`, fetched by
- * `useRuntimeCommands`), and picking a command appends its invocation text
- * ("/status", …) as a user message via `aui.thread.append` — the composer
- * draft (if any) is left untouched.
- *
- * The "/" trigger only mounts while a non-empty catalog is loaded and the
- * thread is idle — an open popover over an empty list would swallow Enter, and
- * running research turns disable runtime commands.
+ * runtime adapter's command catalog. The catalog mapping, the slash adapter
+ * and the enable rule live in the shared `useRuntimeSlashMenu`; this file only
+ * skins the popover with the example's plain CSS.
  */
-function useSlashCommands(commands: readonly CommandDescriptor[] | null) {
-  const aui = useAui();
-  const items = useMemo<Unstable_SlashCommand[]>(
-    () =>
-      (commands ?? []).map((c) => ({
-        id: c.id,
-        // The row shows the exact text that will be sent.
-        label: c.invocationText,
-        description: c.description,
-        execute: () => {
-          aui.thread.append(c.invocationText);
-        },
-      })),
-    [commands, aui],
-  );
-  return unstable_useSlashCommandAdapter({ commands: items, removeOnExecute: true });
-}
-
 export function Composer() {
-  const commands = useRuntimeCommands();
-  const isRunning = useAuiState((s) => s.thread.isRunning);
-  const slash = useSlashCommands(commands);
-  const showSlashMenu = commands !== null && commands.length > 0 && !isRunning;
+  const slash = useRuntimeSlashMenu();
 
   return (
     <div className="composer-anchor">
       <ComposerPrimitive.Unstable_TriggerPopoverRoot>
-        {showSlashMenu && (
+        {slash.enabled && (
           <ComposerPrimitive.Unstable_TriggerPopover
             char="/"
             adapter={slash.adapter}

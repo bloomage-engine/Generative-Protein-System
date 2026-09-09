@@ -5,4 +5,4 @@ export type { DshTurnClient, DshClientLaunchOptions } from "./client.js";
 export { TranscriptMirror } from "./mirror.js";
 export type { MirrorFile } from "./mirror.js";
 export { DshTranscript } from "./transcript.js";
-export type { ApplyMeta, DeltaSink } from "./transcript.js";
+export type { ApplyMeta } from "./transcript.js";

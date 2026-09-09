@@ -63,3 +63,27 @@ export async function fetchSessionSnapshot(
     return null;
   }
 }
+
+/** The thread-state slice the import interlock reads. */
+export interface ThreadBusyState {
+  isRunning: boolean;
+  isLoading: boolean;
+  /** Number of messages currently in the thread. */
+  messageCount: number;
+}
+
+/**
+ * The guarded-import rule shared by the mount probe and the standing watch.
+ * `importExternalState` is a whole-replace and assistant-ui provides no
+ * versioning/interlock between it and an in-flight send-run's SSE stream, so
+ * imports are skipped while a local run is active (`isRunning`/`isLoading`) —
+ * the run channel is the sole writer then, the import paths the sole writer
+ * when idle. The probe additionally requires an EMPTY thread: its snapshot
+ * was fetched in flight and may be older than a watch push that already
+ * landed, and importing it would clobber the newer state.
+ */
+export function canImportThread(state: ThreadBusyState, requireEmpty: boolean): boolean {
+  if (state.isRunning || state.isLoading) return false;
+  if (requireEmpty && state.messageCount > 0) return false;
+  return true;
+}

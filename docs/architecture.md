@@ -96,6 +96,8 @@ interface RuntimeAdapter {
   approve(approvalId: string, decision: "approve" | "reject"): void;
   listCommands?(): Promise<CommandDescriptor[]>;    // slash-menu catalog (ADR 0003)
   onArtifact?(artifact: ArtifactInput): void;       // reserved seam; wired later
+  subscribe?(sessionId: string, sink: (snapshot: WatchSnapshot) => void): () => void; // standing watch
+  resolveSessionKey?(threadId: string | null): string; // canonical session a client threadId targets
 }
 ```
 
@@ -113,6 +115,26 @@ interface RuntimeAdapter {
   ported from `openclaw-adapter` and run server-side rather than in the browser.
 - Future adapters (e.g. codex) implement the same interface against their own
   protocol.
+- **Shared adapter kit.** `@science-studio/transport` ships the transcript
+  machinery every adapter subclasses rather than re-implementing: the
+  `Transcript` base (canonical state + `emit` = foldState onto state, then
+  push into the attached flow) and the `RunFlow` queue (drainable per `run()`;
+  enqueue-time snapshot clones keep the wire mirror safe from deltas that
+  reference the adapter's LIVE objects). Per-adapter code is only the
+  event→delta mapping and session policies. The transport-service is
+  runtime-agnostic end to end: which `threadId` means which session is answered
+  by the SELECTED adapter's `resolveSessionKey` (each runtime's namespace and
+  default session travel with it, never with the service).
+- **Standing watch.** The service's `/api/transport/watch` endpoint keeps open
+  browsers converged by pushing the canonical `WatchSnapshot`: on attach
+  (baseline) and on settles. openclaw coalesces remote settles; dsh baselines
+  warm sessions synchronously and COLD sessions (restart) from its own mirror,
+  then pushes once per settled run — a watcher never hangs on an open stream.
+  On the client, `useTransport` (transport-client) mounts the mount-time
+  history probe AND the watch consumer behind ONE guarded-import interlock
+  (`canImportThread`): `importExternalState` is a whole-replace, so imports
+  are skipped while a local run is active and the probe requires an empty
+  thread.
 
 ### Runtime commands (slash commands)
 
@@ -133,13 +155,14 @@ reconcile and watch paths treat command rows exactly like any other rows.
   (session controls + discovery), so availability is still gated by what the
   gateway reports. The transport-service exposes it at
   `GET /api/transport/commands` (JSON); the web route handler proxies it.
-- **Frontend.** `useRuntimeCommands` (transport-client) fetches the catalog on
-  mount (parallel to the history probe) through the `TransportApiProvider`
-  context. The composer (`elements/composer.aui.tsx`) wraps the registry
-  composer in `Unstable_TriggerPopoverRoot` and opens a "/" menu only while a
-  non-empty catalog is loaded and the thread is idle; picking a command appends
-  its invocation text as a normal user message (`aui.thread.append`), leaving
-  any partial draft untouched. Hand-typed `/commands` behave identically.
+- **Frontend.** `useRuntimeSlashMenu` (transport-client) fetches the catalog
+  (through the `TransportApiProvider` context) and builds the assistant-ui
+  slash adapter; the web composer (`elements/composer.aui.tsx`) and both
+  examples' plain-CSS composer only skin the popover. The "/" menu opens only
+  while a non-empty catalog is loaded and the thread is idle
+  (`slashMenuEnabled`); picking a command appends its invocation text as a
+  normal user message, leaving any partial draft untouched. Hand-typed
+  `/commands` behave identically.
 
 ## 5. Record layer
 

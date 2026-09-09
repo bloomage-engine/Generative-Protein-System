@@ -1,5 +1,6 @@
 import type { EventFrame } from "@openclaw/gateway-client/browser";
 import type { MessagePart } from "@science-studio/transport";
+import { formatResultText, mergeToolResult } from "./tool-result.js";
 
 /**
  * Pure mapping from gateway `chat` / `agent` frames into normalized
@@ -104,27 +105,6 @@ export function mapThinkingEvent(
   return { runId, text };
 }
 
-/** Flatten a gateway tool-result payload into a readable string. */
-export function formatResultText(result: unknown): string {
-  if (typeof result === "string") return result;
-  if (Array.isArray(result)) {
-    return result
-      .map((b) =>
-        typeof b === "string" ? b : b && typeof b === "object" ? ((b as { text?: unknown }).text ?? "") : "",
-      )
-      .filter((v): v is string => typeof v === "string")
-      .join("\n");
-  }
-  if (result && typeof result === "object") {
-    const content = (result as { content?: unknown }).content;
-    if (content !== undefined) {
-      const text = formatResultText(content);
-      if (text.trim()) return text;
-    }
-  }
-  return JSON.stringify(result);
-}
-
 type RawBlock = Record<string, unknown>;
 
 const TOOL_CALL_TYPES = new Set(["toolcall", "tool-call", "tool_call", "tooluse", "tool_use", "tool-use", "function_call"]);
@@ -208,13 +188,9 @@ export function parseParts(message: Record<string, unknown>): MessagePart[] {
       const id = firstString(b, ["toolCallId", "tool_call_id", "id", "callId", "call_id"]);
       if (!id) continue;
       const text = formatResultText(b.content ?? b.result);
-      const target = parts.find((p): p is Extract<MessagePart, { type: "tool-call" }> => p.type === "tool-call" && p.id === id);
-      if (target) {
-        target.result = text;
-        if (b.isError === true || b.error === true) target.isError = true;
-      } else if (text) {
-        parts.push({ type: "text", text });
-      }
+      const isError = b.isError === true || b.error === true;
+      if (mergeToolResult(parts, id, text, isError)) continue;
+      if (text) parts.push({ type: "text", text });
       continue;
     }
   }

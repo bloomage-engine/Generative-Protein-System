@@ -34,33 +34,16 @@ function resolveAdapter(adapters: RuntimeAdapter[], _session: Session): RuntimeA
 }
 
 /**
- * assistant-ui's in-memory thread list mints a per-page LOCAL thread id when
- * the app never declares a real remote session (every one of our current apps
- * is a one-session UI), and sends carry that id while the mount probe sends
- * none. Both must land on the SAME canonical session, so local-mint ids are
- * treated as "no session claimed" (like openclaw treats a non-`agent:` id).
+ * Resolve the canonical session key for a request. The service is
+ * runtime-agnostic: the SELECTED ADAPTER answers which threadId means which
+ * session (`RuntimeAdapter.resolveSessionKey`); runtimes without a custom
+ * namespace accept any non-empty threadId verbatim, and an absent or empty
+ * id (the mount probe sends none) means the default session.
  */
-const ASSISTANT_UI_LOCAL_THREAD_PREFIX = "__LOCALID_";
-
-/**
- * Resolve the session key a request targets. A non-empty `threadId` passes
- * through when it names a real session (openclaw: `agent:`-prefixed; dsh:
- * any stable client-chosen id — the SDK lazily creates the session). Ids the
- * client framework mints locally, or an absent id, fall back to the selected
- * runtime's default session env var.
- */
-function resolveSessionKey(threadId: unknown, runtime: string): string {
-  if (typeof threadId === "string" && threadId.length > 0) {
-    if (runtime === "openclaw" && !threadId.startsWith("agent:")) return fallbackSessionKey(runtime);
-    if (runtime === "dsh" && threadId.startsWith(ASSISTANT_UI_LOCAL_THREAD_PREFIX)) return fallbackSessionKey(runtime);
-    return threadId;
-  }
-  return fallbackSessionKey(runtime);
-}
-
-function fallbackSessionKey(runtime: string): string {
-  if (runtime === "dsh") return process.env.DSH_DEFAULT_SESSION ?? "default";
-  return process.env.OPENCLAW_DEFAULT_SESSION ?? "agent:main:main";
+function sessionKeyFor(adapter: RuntimeAdapter, threadId: string | null): string {
+  const claimed = typeof threadId === "string" && threadId.length > 0 ? threadId : null;
+  if (typeof adapter.resolveSessionKey === "function") return adapter.resolveSessionKey(claimed);
+  return claimed ?? "default";
 }
 
 async function handleTransport(
@@ -90,7 +73,7 @@ async function handleTransport(
   // client always converges to the canonical transcript.
   const wire = new WireOpsBuilder(parseClaimedState(body));
   const adapter = resolveAdapter(adapters, {} as Session);
-  const sessionKey = resolveSessionKey(body.threadId, adapter.runtime);
+  const sessionKey = sessionKeyFor(adapter, body.threadId ?? null);
   const session: SessionState = {
     sessionId: sessionKey,
     studyId: "study-1",
@@ -108,13 +91,12 @@ async function handleTransport(
   res.end();
 }
 
-/** Resolve the session key a watch connection should observe. */
-function watchSessionKey(req: IncomingMessage, runtime: string): string {
+/** The `threadId` a watch connection claims, or null (probe/mount sends none). */
+function watchThreadId(req: IncomingMessage): string | null {
   try {
-    const threadId = new URL(req.url ?? "/api/transport/watch", "http://localhost").searchParams.get("threadId");
-    return resolveSessionKey(threadId, runtime);
+    return new URL(req.url ?? "/api/transport/watch", "http://localhost").searchParams.get("threadId");
   } catch {
-    return fallbackSessionKey(runtime);
+    return null;
   }
 }
 
@@ -158,7 +140,7 @@ async function handleWatch(
   adapters: RuntimeAdapter[],
 ): Promise<void> {
   const adapter = resolveAdapter(adapters, {} as Session);
-  const sessionKey = watchSessionKey(req, adapter.runtime);
+  const sessionKey = sessionKeyFor(adapter, watchThreadId(req));
   if (typeof adapter.subscribe !== "function") {
     res.writeHead(400, { ...corsHeaders() }).end("adapter does not support watch");
     return;

@@ -1,6 +1,5 @@
 import type {
   CommandDescriptor,
-  Message,
   RecordStoreLike,
   RuntimeAdapter,
   RuntimeInitOptions,
@@ -10,7 +9,7 @@ import type {
   MessagePart,
   WatchSnapshot,
 } from "@science-studio/transport";
-import { foldState } from "@science-studio/transport";
+import { RunFlow, Transcript } from "@science-studio/transport";
 import type { EventFrame } from "@openclaw/gateway-client/browser";
 import type { Run, RunStatus } from "@science-studio/record";
 import {
@@ -20,12 +19,13 @@ import {
 } from "./commands.js";
 import { createBackendGateway, type BackendGateway, type BackendGatewayOptions } from "./connection.js";
 import {
-  formatResultText,
   mapChatEvent,
   mapThinkingEvent,
   mapToolEvent,
   parseParts,
 } from "./mapping.js";
+import { findToolCallIndex } from "./tool-result.js";
+import { decideHistorySync } from "./history-sync.js";
 
 const CLIENT_VERSION = "0.0.0";
 
@@ -56,186 +56,20 @@ function newId(): string {
 }
 
 /**
- * A resumable queue of streamed state deltas for one `run()` invocation.
- *
- * The queue is a SECOND consumer of every delta: the transcript folds each
- * delta onto its live state when it is produced (SessionTranscript.emit folds
- * FIRST, then pushes), and the wire mirror in the transport-service folds the
- * very same deltas. Deltas that carry payloads (add-message / add-part /
- * update-message) reference the transcript's LIVE objects, which later
- * transcript folds mutate in place — so a delta left queued un-snapshotted
- * would hand the wire mirror an object already mutated by folds the mirror
- * has not seen yet (e.g. an add-message whose parts array already contains the
- * reasoning part a later event added), doubling content and emitting ops the
- * client cannot apply. Each delta is therefore deep-copied at enqueue time:
- * every consumer folds from the same queue-time snapshot sequence.
- */
-class RunFlow {
-  private deltas: StateDelta[] = [];
-  private waiters: (() => void)[] = [];
-  private ended = false;
-  /** The gateway runId this flow tracks; events for other runs are ignored. */
-  targetRunId: string | null = null;
-
-  push(delta: StateDelta): void {
-    this.deltas.push(structuredClone(delta));
-    this.wake();
-  }
-
-  end(): void {
-    this.ended = true;
-    this.wake();
-  }
-
-  private wake(): void {
-    const ws = this.waiters;
-    this.waiters = [];
-    for (const w of ws) w();
-  }
-
-  async *iterate(): AsyncIterable<StateDelta> {
-    let i = 0;
-    for (;;) {
-      while (i < this.deltas.length) yield this.deltas[i++]!;
-      if (this.ended) break;
-      await new Promise<void>((resolve) => this.waiters.push(resolve));
-    }
-  }
-}
-
-/**
- * Normalize `chat.history` rows into transcript messages (system rows and
- * non-object rows excluded). Rows without a gateway id get positional
- * `hist-<n>` ids, counting up from `offset` over accepted messages only.
- * `toolResult` rows are not messages: their result is merged into the
- * matching `tool-call` part of the latest assistant message (gateway
- * transcripts persist tool output as its own row, unlike live events).
- */
-function parseHistoryRows(rows: unknown[], offset = 0): Message[] {
-  const messages: Message[] = [];
-  for (const row of rows) {
-    if (!row || typeof row !== "object") continue;
-    const m = row as Record<string, unknown>;
-    const role = typeof m.role === "string" ? m.role.toLowerCase() : "";
-    // Skip non-conversational rows (gateway system "reset" frames, approvals…).
-    if (role === "system") continue;
-    if (TOOL_RESULT_ROLES.has(role)) {
-      attachHistoryToolResult(messages, m);
-      continue;
-    }
-    if (role !== "" && role !== "user" && role !== "assistant") continue;
-    const id = typeof m.id === "string" ? m.id : `hist-${offset + messages.length}`;
-    messages.push({
-      id,
-      role: role === "assistant" ? "assistant" : "user",
-      parts: parseParts(m),
-    });
-  }
-  return messages;
-}
-
-const TOOL_RESULT_ROLES = new Set(["toolresult", "tool_result", "tool-result"]);
-
-function attachHistoryToolResult(messages: Message[], row: Record<string, unknown>): void {
-  const toolCallId =
-    typeof row.toolCallId === "string"
-      ? row.toolCallId
-      : typeof row.tool_call_id === "string"
-        ? row.tool_call_id
-        : undefined;
-  if (!toolCallId) return;
-  const text = formatResultText(row.content ?? row.result ?? row.text);
-  const isError = row.isError === true;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const parts = messages[i]!.parts;
-    for (let j = parts.length - 1; j >= 0; j--) {
-      const p = parts[j]!;
-      if (p.type !== "tool-call" || p.id !== toolCallId) continue;
-      parts[j] = { ...p, result: text, ...(isError ? { isError: true } : {}) };
-      return;
-    }
-  }
-}
-
-/**
- * A content fingerprint of a message, ignoring volatile ids: role plus the
- * text of every part (text / reasoning / tool args+result). Two messages with
- * equal signatures are the same conversational turn rendered from different
- * sources (live stream events vs the persisted history row), so the sync can
- * treat them as converged without churning transcript ids on every probe.
- */
-function messageSignature(m: Message): string {
-  return JSON.stringify(
-    m.parts.map((p) => {
-      switch (p.type) {
-        case "text":
-          return ["t", p.text];
-        case "reasoning":
-          return ["r", p.text];
-        case "tool-call":
-          return ["c", p.id, p.name, p.args, p.result ?? "", p.isError === true];
-        case "artifact":
-          return ["a", p.artifactId, p.name, p.kind];
-      }
-    }),
-  );
-}
-
-/**
  * Per-session transcript. Holds the normalized `SessionState` and translates
  * gateway `chat` / `agent` frames into `StateDelta`s.
  */
-class SessionTranscript {
-  readonly sessionKey: string;
-  state: SessionState;
-  private activeFlow: RunFlow | null = null;
+class SessionTranscript extends Transcript {
   private lastRunId: string | null = null;
-
-  constructor(sessionKey: string, initial: SessionState) {
-    this.sessionKey = sessionKey;
-    this.state = initial;
-  }
-
-  attachFlow(flow: RunFlow): void {
-    this.activeFlow = flow;
-  }
-
-  detachFlow(flow: RunFlow): void {
-    if (this.activeFlow === flow) this.activeFlow = null;
-  }
-
-  /** True while a local `run()`'s flow is attached (draining gateway events). */
-  hasActiveFlow(): boolean {
-    return this.activeFlow !== null;
-  }
-
-  /** Seed the transcript from a `chat.history` response (system rows excluded). */
-  seedFromHistory(messages: unknown[]): void {
-    this.state.messages.push(...parseHistoryRows(messages, this.state.messages.length));
-  }
 
   private ensureAssistant(runId: string) {
     let msg = this.state.messages.find((m) => m.id === runId);
     if (!msg) {
       msg = { id: runId, role: "assistant", parts: [] };
       this.state.messages.push(msg);
-      this.activeFlow?.push({ type: "add-message", message: msg });
+      this.flow?.push({ type: "add-message", message: msg });
     }
     return msg;
-  }
-
-  /**
-   * Fold a delta onto the local canonical transcript (`state`) AND push it to
-   * the active flow. One fold (`foldState` in @science-studio/transport) is
-   * the single source of delta semantics — the wire projection in the
-   * transport-service folds the very same deltas, so the canonical transcript
-   * and the wire mirror can never drift apart. The fold is unconditional (a
-   * delta arriving between requests, with no flow attached, must still be
-   * reflected here); the push to the client is conditional on a flow.
-   */
-  emit(delta: StateDelta): void {
-    foldState(this.state, delta);
-    this.activeFlow?.push(delta);
   }
 
   /**
@@ -261,45 +95,27 @@ class SessionTranscript {
    * `chat.send`) survives.
    */
   syncFromHistory(rows: unknown[]): boolean {
-    if (this.state.status === "running") return false;
-    const gateway = parseHistoryRows(rows);
-    if (gateway.length === 0) {
-      if (this.state.messages.length >= 2) {
+    const decision = decideHistorySync({
+      inFlight: this.state.status === "running",
+      messages: this.state.messages,
+      rows,
+    });
+    switch (decision.action) {
+      case "keep":
+        return false;
+      case "reset":
         this.state.messages = [];
         this.state.status = "idle";
         return true;
-      }
-      return false;
+      case "rebuild":
+        this.state.messages = decision.messages;
+        return true;
     }
-    if (this.state.messages.length === 0) {
-      this.state.messages = gateway;
-      return true;
-    }
-    // Gateway rows are a content-prefix of the transcript: already converged
-    // (equal), or the gateway simply lags our not-yet-persisted tail. Keep.
-    if (gateway.length <= this.state.messages.length) {
-      const local = this.state.messages;
-      if (gateway.every((m, i) => messageSignature(m) === messageSignature(local[i]!))) return false;
-    }
-    // Otherwise the gateway knows more (or something different) than we do:
-    // it wins. Rebuild so the next reconcile converges clients — including
-    // user turns that arrived remotely — onto the gateway conversation.
-    this.state.messages = gateway;
-    return true;
-  }
-
-  /** The canonical transcript snapshot used to reconcile a client's state. */
-  snapshot(): StateDelta {
-    return {
-      type: "reconcile",
-      status: this.state.status,
-      messages: this.state.messages.map((m) => structuredClone(m)),
-    };
   }
 
   /** Translate one gateway frame into deltas; returns true when the run ended. */
   apply(frame: EventFrame): boolean {
-    const target = this.activeFlow?.targetRunId ?? null;
+    const target = this.flow?.targetRunId ?? null;
     if (frame.event === "chat") {
       const ev = mapChatEvent((frame.payload ?? {}) as Record<string, unknown>);
       if (!ev) return false;
@@ -341,7 +157,7 @@ class SessionTranscript {
       } else {
         this.emit({ type: "session-status", status: "error" });
       }
-      this.activeFlow?.end();
+      this.flow?.end();
       return true;
     }
 
@@ -400,9 +216,7 @@ class SessionTranscript {
     tool: NonNullable<ReturnType<typeof mapToolEvent>>,
   ): void {
     const msg = this.ensureAssistant(runId);
-    const partOf = (p: MessagePart): p is Extract<MessagePart, { type: "tool-call" }> =>
-      p.type === "tool-call" && p.id === tool.toolCallId;
-    const idx = msg.parts.findIndex(partOf);
+    const idx = findToolCallIndex(msg.parts, tool.toolCallId);
     const args = typeof tool.args === "string" ? tool.args : JSON.stringify(tool.args ?? {});
     if (idx === -1) {
       const part: Extract<MessagePart, { type: "tool-call" }> = {
@@ -461,6 +275,7 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
   private readonly createGateway: (opts: BackendGatewayOptions) => BackendGateway;
   private gateway: BackendGateway | null = null;
   private recordStore: RecordStoreLike | null = null;
+  private initConfig: Record<string, string | undefined> = {};
   private transcripts = new Map<string, SessionTranscript>();
   private ready: Promise<void> | null = null;
   /** Standing watchers per session (the transport-service watch endpoint). */
@@ -482,6 +297,7 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
 
   async init(opts: RuntimeInitOptions): Promise<void> {
     this.recordStore = opts.recordStore;
+    this.initConfig = opts.config ?? {};
     this.gateway = this.createGateway({
       url: opts.gateway.url,
       token: opts.gateway.token,
@@ -616,6 +432,18 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
     } finally {
       transcript.detachFlow(flow);
     }
+  }
+
+  /**
+   * The canonical session key a client `threadId` targets. The gateway
+   * namespaces sessions `agent:…`; ids outside that namespace (assistant-ui's
+   * local-mint ids, or any other client id) fall back to the configured
+   * default session so probes and sends converge (see the seam doc on
+   * `RuntimeAdapter.resolveSessionKey`).
+   */
+  resolveSessionKey(threadId: string | null): string {
+    if (threadId !== null && threadId.startsWith("agent:")) return threadId;
+    return this.initConfig.OPENCLAW_DEFAULT_SESSION ?? process.env.OPENCLAW_DEFAULT_SESSION ?? "agent:main:main";
   }
 
   /**

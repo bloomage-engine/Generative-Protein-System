@@ -91,15 +91,6 @@ async function collect(iter: AsyncIterable<StateDelta>): Promise<StateDelta[]> {
   return out;
 }
 
-async function waitFor(cond: () => boolean | Promise<boolean>, timeoutMs = 2_000): Promise<void> {
-  const start = Date.now();
-  for (;;) {
-    if (await cond()) return;
-    if (Date.now() - start > timeoutMs) throw new Error("condition not met in time");
-    await new Promise((r) => setTimeout(r, 5));
-  }
-}
-
 test("run() streams user + assistant deltas, persists a Run, and writes the mirror", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-adapter-"));
   const store = new FakeRecordStore();
@@ -123,10 +114,11 @@ test("run() streams user + assistant deltas, persists a Run, and writes the mirr
     const idle = deltas.find((d) => d.type === "session-status" && d.status === "idle");
     assert.ok(running && idle, "the run must flip running then settle idle");
 
-    // Settle is fully done once the mirror file lands (addRun precedes it in
-    // settleRun), so waiting on the mirror also covers Run persistence.
+    // The run persists BEFORE its stream ends (settle is awaited post-drain),
+    // so the Run and the mirror are already final when collect() returns.
     const mirror = new TranscriptMirror(dir);
-    await waitFor(async () => (await mirror.load("sess-1")) !== null);
+    const loaded = await mirror.load("sess-1");
+    assert.ok(loaded, "the mirror must be written before the run stream settles");
     assert.equal(store.runs.length, 1);
     const run = store.runs[0]!;
     assert.equal(run.status, "completed");
@@ -134,7 +126,6 @@ test("run() streams user + assistant deltas, persists a Run, and writes the mirr
     assert.equal(run.output, "Hello from dsh.");
     assert.equal(run.id, "u1");
 
-    const loaded = await mirror.load("sess-1");
     assert.ok(loaded && loaded.messages.length >= 2, "the mirror must persist the transcript");
   } finally {
     await adapter.abort();
@@ -155,7 +146,7 @@ test("a fresh adapter instance cold-starts from the mirror and reconciles histor
       { type: "add-message", message: { id: "u1", role: "user", content: "hi" } },
     ]));
     const mirror = new TranscriptMirror(dir);
-    await waitFor(async () => (await mirror.load("sess-1")) !== null);
+    assert.ok(await mirror.load("sess-1"), "the first run persists the mirror before it returns");
     assert.equal(store.runs.length, 1);
 
     // Simulate a service restart: brand-new adapter, same transcript dir, no
@@ -205,7 +196,7 @@ test("a persisted-but-unresumable session falls back to a fresh harness id and l
     assert.ok(fresh.startsWith("sess-1-") && fresh !== "sess-1", "the retry uses a freshly minted child-scoped id");
 
     const mirror = new TranscriptMirror(dir);
-    await waitFor(async () => (await mirror.load("sess-1")) !== null);
+    assert.ok(await mirror.load("sess-1"), "the fallback run persists before its stream ends");
     assert.equal(store.runs.length, 1);
     assert.equal(store.runs[0]!.status, "completed", "the fallback turn is recorded as a completed Run");
     assert.equal(store.runs[0]!.output, "Hello from dsh.");
@@ -217,12 +208,12 @@ test("a persisted-but-unresumable session falls back to a fresh harness id and l
     ]));
     assert.equal(client.sessionIds.length, 3, "second run issues exactly one prompt");
     assert.equal(client.sessionIds[2], fresh, "later turns continue the SAME fresh harness session");
-    // Wait until the SECOND settle's mirror write lands (the first run's file
-    // already exists, so a plain load poll can't tell them apart) before cleanup.
-    await waitFor(async () => {
-      const loaded = await mirror.load("sess-1");
-      return loaded?.messages.some((m) => m.id === "u2") ?? false;
-    });
+    // The second settle's mirror write lands before that run's stream ends.
+    const second = await mirror.load("sess-1");
+    assert.ok(
+      second?.messages.some((m) => m.id === "u2"),
+      "the second run's mirror write is durable before its stream settles",
+    );
     assert.equal(store.runs.length, 2);
   } finally {
     await adapter.abort();
@@ -246,7 +237,7 @@ test("a turn/end reason of error settles the session to error and persists an er
     const error = deltas.find((d) => d.type === "session-status" && d.status === "error");
     assert.ok(error, "the session must settle to error");
     const mirror = new TranscriptMirror(dir);
-    await waitFor(async () => (await mirror.load("sess-1")) !== null);
+    assert.ok(await mirror.load("sess-1"), "an error turn persists before its stream ends");
     assert.equal(store.runs.length, 1);
     assert.equal(store.runs[0]!.status, "error", "failed turns are still recorded as Runs");
   } finally {

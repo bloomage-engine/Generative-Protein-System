@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { foldState } from "@science-studio/transport";
+import { foldState, RunFlow, Transcript } from "@science-studio/transport";
 import type { Message, SessionState, StateDelta } from "@science-studio/transport";
 import { WireOpsBuilder, type WireOp } from "../src/wire.js";
 
@@ -8,20 +8,22 @@ import { WireOpsBuilder, type WireOp } from "../src/wire.js";
  * Regression coverage for the wire fold's STATE PRIVACY requirement.
  *
  * The adapter folds every delta onto its canonical transcript BEFORE the wire
- * mirror folds it (SessionTranscript.emit), and payload-bearing deltas
- * (add-message / add-part / update-message) reference the adapter's LIVE
- * message objects. If the mirror adopted those references, its own fold would
- * re-apply mutations the adapter's fold already made to the shared objects —
- * doubling parts and taking different `stream-text` branches than the client
- * will (emitting `append-text` for a text part whose `parts-set` was never
+ * mirror folds it (the shared Transcript.emit folds FIRST, then pushes a
+ * snapshot into the attached RunFlow), and payload-bearing deltas (add-message
+ * / add-part / update-message) reference the adapter's LIVE message objects.
+ * If the mirror adopted those references, its own fold would re-apply
+ * mutations the adapter's fold already made to the shared objects — doubling
+ * parts and taking different `stream-text` branches than the client will
+ * (emitting `append-text` for a text part whose `parts-set` was never
  * streamed). The client accumulator then throws:
  *
  *   Error: Expected string at path [messages, <id>, parts, <N>, text]
  *
- * These tests replay that pipeline (fold-on-transcript + wire fold, adapter
- * running either ahead of or interleaved with the wire drain) against a strict
- * client accumulator with GorpStreamAccumulator's exact semantics, and assert
- * the stream is applicable and the client converges to the transcript.
+ * These tests replay the real pipeline (a shared Transcript + RunFlow feeding
+ * WireOpsBuilder, adapter running either ahead of or interleaved with the wire
+ * drain) against a strict client accumulator with GorpStreamAccumulator's
+ * exact semantics, and assert the stream is applicable and the client
+ * converges to the transcript.
  */
 
 const sessionKey = "agent:main:main";
@@ -79,73 +81,96 @@ function clientState(
 }
 
 /**
- * Emulate the transport pipeline for one run: a canonical transcript folded per
- * SessionTranscript.emit (fold FIRST, then queue) and a WireOpsBuilder mirror
- * draining the queued deltas. `drainPerEvent` mirrors the adapter running ahead
- * of the wire (false = all events folded before any drain).
+ * The real transport pipeline for one run: a shared `Transcript` (fold onto
+ * canonical state, then push a snapshot into the attached `RunFlow`) feeding a
+ * `WireOpsBuilder` that drains the flow. `drainPerEvent` mirrors the adapter
+ * running ahead of the wire (false = all events folded before any drain) or
+ * interleaved with it (true = each delta is wire-folded before the next lands,
+ * like the service's for-await over the adapter stream).
  */
 function makePipeline(drainPerEvent: boolean) {
-  const transcript: SessionState = {
+  const transcript = new Transcript(sessionKey, {
     sessionId: sessionKey,
     studyId: "study-1",
     agentId: "main",
     status: "idle",
     messages: [],
-  };
-  const queue: StateDelta[] = [];
-  const ops: WireOp[] = [];
+  });
+  const flow = new RunFlow();
+  transcript.attachFlow(flow);
   const wire = new WireOpsBuilder({ status: "idle", messages: [] });
-  const drain = () => {
-    while (queue.length) ops.push(...snapshot(wire.fold(queue.shift()!)));
-  };
-  const emit = (delta: StateDelta) => {
-    foldState(transcript, delta); // SessionTranscript.emit folds FIRST…
-    queue.push(structuredClone(delta)); // …then enqueues a snapshot for the wire
-    if (drainPerEvent) drain();
-  };
-  /** ensureAssistant: the SAME live message object enters both graphs. */
-  const ensureAssistant = (runId: string) => {
-    let msg = transcript.messages.find((m) => m.id === runId);
-    if (!msg) {
-      msg = { id: runId, role: "assistant", parts: [] };
-      queue.push(structuredClone({ type: "add-message", message: msg }));
-      transcript.messages.push(msg);
+  const ops: WireOp[] = [];
+  const iterator = flow.iterate();
+  let exhausted = false;
+
+  const drainOne = async (): Promise<void> => {
+    const { value, done } = await iterator.next();
+    if (done) {
+      exhausted = true;
+      return;
     }
-    return msg;
+    if (value) ops.push(...snapshot(wire.fold(value)));
   };
-  return { transcript, ops, drain, emit, ensureAssistant };
+
+  return {
+    state: transcript.state,
+    ops,
+    /** Fold one delta (and, when interleaving, wire-fold it right away). */
+    async emit(delta: StateDelta): Promise<void> {
+      transcript.emit(delta);
+      if (drainPerEvent) await drainOne();
+    },
+    /** End the run (the adapter ends the flow at the terminal event), then
+     *  wire-fold whatever is still queued. */
+    async finish(): Promise<void> {
+      flow.end();
+      while (!exhausted) await drainOne();
+    },
+    /** ensureAssistant: the SAME live message object enters both graphs. */
+    async ensureAssistant(runId: string): Promise<void> {
+      const msg: Message = { id: runId, role: "assistant", parts: [] };
+      await this.emit({ type: "add-message", message: msg });
+    },
+  };
 }
 
 type Pipeline = ReturnType<typeof makePipeline>;
 
-function reconcileOf(transcript: SessionState): Extract<StateDelta, { type: "reconcile" }> {
+function reconcileOf(state: SessionState): Extract<StateDelta, { type: "reconcile" }> {
   return {
     type: "reconcile",
-    status: transcript.status,
-    messages: transcript.messages.map((m) => structuredClone(m)),
+    status: state.status,
+    messages: state.messages.map((m) => structuredClone(m)),
   };
 }
 
 /** One assistant turn: collapsed thinking, a text burst, a tool call, then a
  *  second text burst whose tail is the tool part (not a text part). */
-function runAssistantTurn(p: Pipeline, runId: string): void {
-  p.emit({ type: "session-status", status: "running" });
-  p.emit({ type: "add-message", message: { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] } });
-  p.ensureAssistant(runId);
-  p.emit({ type: "add-part", messageId: runId, part: { type: "reasoning", text: "step 1" } });
-  p.emit({ type: "stream-text", messageId: runId, text: "First burst " });
-  p.emit({ type: "stream-text", messageId: runId, text: "more" });
-  p.emit({ type: "add-part", messageId: runId, part: { type: "tool-call", id: "t1", name: "ls", args: "{}" } });
+async function runAssistantTurn(p: Pipeline, runId: string): Promise<void> {
+  await p.emit({ type: "session-status", status: "running" });
+  await p.emit({
+    type: "add-message",
+    message: { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
+  });
+  await p.ensureAssistant(runId);
+  await p.emit({ type: "add-part", messageId: runId, part: { type: "reasoning", text: "step 1" } });
+  await p.emit({ type: "stream-text", messageId: runId, text: "First burst " });
+  await p.emit({ type: "stream-text", messageId: runId, text: "more" });
+  await p.emit({
+    type: "add-part",
+    messageId: runId,
+    part: { type: "tool-call", id: "t1", name: "ls", args: "{}" },
+  });
   // a NEW text burst after the tool call: the transcript fold must CREATE a
   // fresh text part (tail is a tool-call), never append onto a part the client
   // has not received.
-  p.emit({ type: "stream-text", messageId: runId, text: "Hel" });
-  p.emit({ type: "stream-text", messageId: runId, text: "lo" });
-  p.emit({ type: "stream-text", messageId: runId, text: " world" });
-  p.emit({ type: "session-status", status: "idle" });
+  await p.emit({ type: "stream-text", messageId: runId, text: "Hel" });
+  await p.emit({ type: "stream-text", messageId: runId, text: "lo" });
+  await p.emit({ type: "stream-text", messageId: runId, text: " world" });
+  await p.emit({ type: "session-status", status: "idle" });
 }
 
-function expectConverged(transcript: SessionState, ops: WireOp[]): void {
+function expectConverged(state: SessionState, ops: WireOp[]): void {
   // Applying the ops must not throw (the Expected-string regression), and the
   // client must converge to the canonical transcript — no dropped, duplicated,
   // or mis-indexed parts.
@@ -153,41 +178,41 @@ function expectConverged(transcript: SessionState, ops: WireOp[]): void {
   assert.equal(client.status, "idle");
   assert.deepEqual(
     Object.keys(client.messages).sort(),
-    transcript.messages.map((m) => m.id).sort(),
+    state.messages.map((m) => m.id).sort(),
     "client must hold exactly the canonical messages",
   );
-  for (const msg of transcript.messages) {
+  for (const msg of state.messages) {
     assert.deepEqual(client.messages[msg.id], msg, `client message ${msg.id} must equal the canonical transcript`);
   }
 }
 
-test("wire fold stream stays client-appliable when the transcript runs ahead of the wire drain", () => {
+test("wire fold stream stays client-appliable when the transcript runs ahead of the wire drain", async () => {
   const p = makePipeline(false); // all events folded before the wire drains
-  runAssistantTurn(p, "r1");
-  p.drain();
+  await runAssistantTurn(p, "r1");
+  await p.finish();
 
-  assert.deepEqual(p.transcript.messages[1]!.parts, [
+  assert.deepEqual(p.state.messages[1]!.parts, [
     { type: "reasoning", text: "step 1" },
     { type: "text", text: "First burst more" },
     { type: "tool-call", id: "t1", name: "ls", args: "{}" },
     { type: "text", text: "Hello world" },
   ], "the canonical transcript must not be doubled by mirror folds");
-  expectConverged(p.transcript, p.ops);
+  expectConverged(p.state, p.ops);
 });
 
-test("wire fold survives an interleaved text burst after a tool call (Expected-string regression)", () => {
+test("wire fold survives an interleaved text burst after a tool call (Expected-string regression)", async () => {
   const p = makePipeline(true); // drain per event, like the service's for-await
-  p.emit(reconcileOf(p.transcript));
-  runAssistantTurn(p, "run-9");
-  p.drain();
+  await p.emit(reconcileOf(p.state));
+  await runAssistantTurn(p, "run-9");
+  await p.finish();
 
-  assert.deepEqual(p.transcript.messages[1]!.parts, [
+  assert.deepEqual(p.state.messages[1]!.parts, [
     { type: "reasoning", text: "step 1" },
     { type: "text", text: "First burst more" },
     { type: "tool-call", id: "t1", name: "ls", args: "{}" },
     { type: "text", text: "Hello world" },
   ]);
-  expectConverged(p.transcript, p.ops);
+  expectConverged(p.state, p.ops);
 });
 
 test("mirror keeps add-message payloads private — later transcript folds never leak in", () => {

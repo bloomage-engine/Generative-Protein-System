@@ -5,28 +5,20 @@
  *
  * The Thread's registry-generated `Composer` is extracted here so it can be
  * wrapped in an `Unstable_TriggerPopoverRoot`: typing "/" at a word start
- * opens a menu of the runtime adapter's command catalog (`GET /commands`,
- * fetched by `useRuntimeCommands`). Picking a command appends its
- * invocation text ("/status", …) as a plain user message — the command is
- * ordinary "/"-prefixed text end-to-end, so no separate send path exists.
- *
- * The trigger is only mounted while a non-empty catalog is loaded and the
- * thread is idle: an open popover over an empty list would swallow Enter,
- * and running research turns disable runtime commands.
+ * opens a menu of the runtime adapter's command catalog. The catalog mapping,
+ * the slash adapter and the enable rule live in the shared
+ * `useRuntimeSlashMenu`; this file only skins the popover (icons + shadcn
+ * styling) and the composer itself.
  */
 
 import { ComposerAddAttachment, ComposerAttachments } from "@/components/assistant-ui/elements/attachment.aui";
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useRuntimeCommands } from "@science-studio/transport-client";
+import { useRuntimeSlashMenu } from "@science-studio/transport-client";
 import {
   AuiIf,
   ComposerPrimitive,
-  unstable_useSlashCommandAdapter,
-  useAui,
-  useAuiState,
-  type Unstable_SlashCommand,
 } from "@assistant-ui/react";
 import {
   ActivityIcon,
@@ -47,7 +39,7 @@ import {
   ZapIcon,
   type LucideIcon,
 } from "lucide-react";
-import { type FC, useMemo } from "react";
+import { type FC } from "react";
 
 /**
  * Icons for known runtime commands, keyed by command id; unknown commands
@@ -75,33 +67,12 @@ const COMMAND_ICONS: Record<string, LucideIcon> = {
  * the thread runtime (not the composer draft), so a partially typed draft is
  * preserved; `removeOnExecute` then strips the "/cmd" token the user typed.
  */
-function useComposerCommands(commands: readonly { id: string; description: string; invocationText: string }[] | null) {
-  const aui = useAui();
-  const items = useMemo<Unstable_SlashCommand[]>(
-    () =>
-      (commands ?? []).map((c) => ({
-        id: c.id,
-        // The row shows the exact text that will be sent.
-        label: c.invocationText,
-        description: c.description,
-        execute: () => {
-          aui.thread.append(c.invocationText);
-        },
-      })),
-    [commands, aui],
-  );
-  return unstable_useSlashCommandAdapter({ commands: items, removeOnExecute: true });
-}
-
 export const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
-  const commands = useRuntimeCommands();
-  const isRunning = useAuiState((s) => s.thread.isRunning);
-  const slash = useComposerCommands(commands);
-  const menuEnabled = commands !== null && commands.length > 0 && !isRunning;
+  const slash = useRuntimeSlashMenu();
 
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverRoot>
-      {menuEnabled && (
+      {slash.enabled && (
         <ComposerPrimitive.Unstable_TriggerPopover
           char="/"
           adapter={slash.adapter}

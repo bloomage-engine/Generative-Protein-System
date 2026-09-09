@@ -1,4 +1,4 @@
-import { foldState, type Message, type SessionState, type StateDelta } from "@science-studio/transport";
+import { Transcript, type Message, type SessionState } from "@science-studio/transport";
 import type { SessionEvent, TurnEndReason } from "@deepseek-ai/dsh-session";
 import type { TokenUsage } from "@deepseek-ai/dsh-llm";
 import { contentToParts, extractResultText, findToolCallPart, turnEndStatus } from "./mapping.js";
@@ -11,14 +11,11 @@ export interface ApplyMeta {
   usage?: TokenUsage;
 }
 
-export interface DeltaSink {
-  push(delta: StateDelta): void;
-}
-
 /**
- * The adapter-owned canonical transcript for one Harness session. Identical
- * in spirit to the openclaw adapter's transcript: `StateDelta`s are folded
- * here (ONE fold — `foldState` in @science-studio/transport) AND pushed to the
+ * The adapter-owned canonical transcript for one Harness session. Rides the
+ * shared transcript shell from @science-studio/transport (the same one the
+ * openclaw adapter's transcript subclasses): `StateDelta`s are folded here
+ * (ONE fold — `foldState` in @science-studio/transport) AND pushed to the
  * attached flow, so the canonical state, the wire mirror in the transport-
  * service, and the client can never drift apart.
  *
@@ -28,53 +25,15 @@ export interface DeltaSink {
  * history-replay request and reading dsh's volatile session-log format would
  * couple us to an unstable internal (docs/adr/0004).
  */
-export class DshTranscript {
-  readonly sessionKey: string;
-  /** Fold-compatible session state (the canonical transcript). */
-  state: SessionState;
-  private flow: DeltaSink | null = null;
-
+export class DshTranscript extends Transcript {
   constructor(sessionKey: string, initial: Pick<SessionState, "studyId" | "agentId">) {
-    this.sessionKey = sessionKey;
-    this.state = {
+    super(sessionKey, {
       sessionId: sessionKey,
       studyId: initial.studyId,
       agentId: initial.agentId,
       status: "idle",
       messages: [],
-    };
-  }
-
-  attachFlow(flow: DeltaSink): void {
-    this.flow = flow;
-  }
-
-  detachFlow(flow: DeltaSink): void {
-    if (this.flow === flow) this.flow = null;
-  }
-
-  hasActiveFlow(): boolean {
-    return this.flow !== null;
-  }
-
-  /**
-   * Fold a delta onto the canonical transcript AND push it to the active
-   * flow. The fold is unconditional (deltas that arrive between requests —
-   * e.g. the tail of an aborted run — must still land in the canonical
-   * transcript); the push is conditional on a flow being attached.
-   */
-  emit(delta: StateDelta): void {
-    foldState(this.state, delta);
-    this.flow?.push(delta);
-  }
-
-  /** The canonical snapshot used to reconcile a client's claimed state. */
-  snapshot(): StateDelta {
-    return {
-      type: "reconcile",
-      status: this.state.status,
-      messages: this.state.messages.map((m) => structuredClone(m)),
-    };
+    });
   }
 
   /** Adopt a persisted mirror (cold start) or the client-implied baseline. */

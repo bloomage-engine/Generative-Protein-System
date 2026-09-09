@@ -1,5 +1,5 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useAuiState } from "@assistant-ui/react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { useMessageReasoningTrace, type ReasoningStep } from "@science-studio/transport-client";
 
 /**
  * Static-variant reasoning element (assistant-ui "Reasoning" → step-panel
@@ -10,17 +10,12 @@ import { useAuiState } from "@assistant-ui/react";
  * contract: a trigger that swaps between the live "Thinking" label and a
  * resting summary, over an ordered list of titled steps.
  *
- * This example stays "static" on purpose: the wire never token-streams
- * reasoning — the openclaw adapter collapses thinking events into one
- * reasoning part whose full text is replaced in place — so the panel is
- * driven purely by the parts/status already in the message, and treats the
- * trace as finished text instead of a growing stream.
+ * The part → trace mapping (one titled step per reasoning part, plus the
+ * streaming flag) lives in the shared `useMessageReasoningTrace`; this file
+ * only skins the panel. It stays "static" on purpose: the trace is driven
+ * purely by the parts/status already in the message and treated as finished
+ * text instead of a growing stream.
  */
-
-export interface ReasoningStep {
-  title: string;
-  body: string;
-}
 
 export interface ReasoningPanelProps {
   /** Titled steps in order (the message's reasoning parts). */
@@ -134,22 +129,7 @@ export function ReasoningPanel({
  * reasoning is still streaming, and the reader's first manual toggle sticks.
  */
 export function AssistantReasoning() {
-  const parts = useAuiState((s) => s.message.parts);
-  const steps = useMemo<ReasoningStep[]>(
-    () =>
-      parts.flatMap((part) =>
-        part.type === "reasoning"
-          ? [{ title: part.unstable_summary ?? "Thinking", body: part.text }]
-          : [],
-      ),
-    [parts],
-  );
-  const streaming = useAuiState((s) => {
-    if (s.message.status?.type !== "running") return false;
-    return s.message.parts.some(
-      (part) => part.type === "reasoning" && part.status?.type === "running",
-    );
-  });
+  const { steps, streaming } = useMessageReasoningTrace();
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
 
   if (steps.length === 0) return null;

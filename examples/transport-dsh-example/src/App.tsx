@@ -5,7 +5,6 @@ import {
 } from "@assistant-ui/react";
 import {
   useTransport,
-  useTransportWatch,
 } from "@science-studio/transport-client";
 import { MarkdownText } from "./markdown";
 import { AssistantReasoning } from "./reasoning-panel";
@@ -36,18 +35,12 @@ const AssistantMessage = () => (
 );
 
 export default function App() {
-  // useTransport also loads the session's history on mount: the transport
-  // runtime only starts a request when the user sends a message, so the
-  // package fires a command-less probe and imports the returned snapshot.
-  // The backend reconciles every client against its canonical transcript, so
-  // a fresh page (and a page reload) converges to the full history — the dsh
-  // adapter restores its own persisted transcript mirror on service restarts.
+  // The single session hook: assistant-ui transport runtime over the
+  // transport-service, with the history loaded on mount (command-less probe —
+  // the backend reconciles against its canonical transcript, restored from the
+  // adapter's own mirror after a service restart) and the standing watch
+  // adopted (canonical-snapshot pushes from the transport-service).
   const runtime = useTransport();
-  // Standing watch: adopt canonical-snapshot pushes from the transport-service.
-  // dsh sessions have a single writer (this adapter), so the adapter only ever
-  // pushes a baseline snapshot on attach — keeping the watch consumer on the
-  // same code path as the openclaw example with no remote turns to adopt.
-  useTransportWatch(runtime);
 
   return (
     <div className="page">

@@ -5,7 +5,6 @@ import { Thread } from "@/components/assistant-ui/elements/thread.aui";
 import {
   TransportApiProvider,
   useTransport,
-  useTransportWatch,
 } from "@science-studio/transport-client";
 
 /**
@@ -13,21 +12,16 @@ import {
  *
  * The chat UI is the Thread component registered from the assistant-ui
  * registry (https://www.assistant-ui.com/docs/installation) —
- * `components/assistant-ui/elements/thread.aui`. The runtime wiring is
- * `useTransport` from `@science-studio/transport-client` (assistant-ui
- * transport runtime + mount-time history probe) over the transport-service.
+ * `components/assistant-ui/elements/thread.aui`. The runtime wiring is the
+ * single session hook `useTransport` from `@science-studio/transport-client`:
+ * assistant-ui transport runtime over the transport-service, with the
+ * session's history loaded on mount (command-less probe → importExternalState)
+ * and the standing watch adopted (remote turns and native command replies,
+ * which never stream over a run channel).
  */
 export default function Home() {
   const api = process.env.NEXT_PUBLIC_TRANSPORT_URL ?? "/api/transport";
-  // Also loads the session's history on mount (command-less probe →
-  // importExternalState), converging a fresh page or reload to the full
-  // gateway history via the backend's reconcile.
   const runtime = useTransport({ api });
-  // Standing watch: adopt replies pushed by the transport-service (remote
-  // openclaw TUI/UI turns and native command replies, which never stream over
-  // a run channel) without a page refresh. The one-shot probe in useTransport
-  // still seeds the initial snapshot.
-  useTransportWatch(runtime, api);
 
   return (
     <main className="flex h-svh flex-col">
