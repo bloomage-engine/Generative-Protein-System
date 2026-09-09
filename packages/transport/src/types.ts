@@ -168,6 +168,14 @@ export interface RuntimeAdapter {
 export interface RuntimeInitOptions {
   gateway: RuntimeConfig;
   recordStore: RecordStoreLike;
+  /**
+   * Optional runtime-agnostic configuration bag (a service-provided env
+   * slice). Network runtimes (openclaw) read `gateway`; process runtimes
+   * (dsh: a spawned local harness) read their own keys here (e.g. `DSH_*`)
+   * because their launch surface is not a url/token pair. Keep adapter-
+   * specific keys out of the shared seam's own shape.
+   */
+  config?: Record<string, string | undefined>;
 }
 
 /** Runtime-agnostic connection config (bound per adapter). */

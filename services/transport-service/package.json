@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@science-studio/transport": "*",
+    "@science-studio/transport-dsh": "*",
     "@science-studio/transport-openclaw": "*",
     "dotenv": "^16.4.0"
   },

@@ -13,6 +13,7 @@ import type { CommandDescriptor, RecordStoreLike, RuntimeAdapter, RuntimeInitOpt
 import { createInMemoryRecordStore, type Artifact, type ArtifactKind, type RecordStore } from "@science-studio/record";
 import type { Session } from "@science-studio/record";
 import { OpenClawRuntimeAdapter } from "@science-studio/transport-openclaw";
+import { DshRuntimeAdapter } from "@science-studio/transport-dsh";
 import { encodeOp, parseClaimedState, WireOpsBuilder, type WireOp } from "./wire.js";
 
 export interface TransportServiceOptions {
@@ -24,10 +25,31 @@ export interface TransportServiceOptions {
 }
 
 /**
- * Resolve the runtime adapter for a session. Skeleton default: openclaw.
+ * Resolve the runtime adapter for a session. The service is runtime-agnostic:
+ * the caller registers the adapter(s); when none are given, one is chosen by
+ * the `TRANSPORT_RUNTIME` env var (default: openclaw).
  */
 function resolveAdapter(adapters: RuntimeAdapter[], _session: Session): RuntimeAdapter {
-  return adapters[0] ?? new OpenClawRuntimeAdapter();
+  return adapters[0] ?? defaultAdapters()[0]!;
+}
+
+/**
+ * Resolve the session key a request targets. A non-empty `threadId` passes
+ * through for dsh (any client-chosen id works: the SDK lazily creates the
+ * session); openclaw keeps its `agent:`-prefixed contract. Without one, fall
+ * back to the selected runtime's default session env var.
+ */
+function resolveSessionKey(threadId: unknown, runtime: string): string {
+  if (typeof threadId === "string" && threadId.length > 0) {
+    if (runtime === "openclaw" && !threadId.startsWith("agent:")) return fallbackSessionKey(runtime);
+    return threadId;
+  }
+  return fallbackSessionKey(runtime);
+}
+
+function fallbackSessionKey(runtime: string): string {
+  if (runtime === "dsh") return process.env.DSH_DEFAULT_SESSION ?? "default";
+  return process.env.OPENCLAW_DEFAULT_SESSION ?? "agent:main:main";
 }
 
 async function handleTransport(
@@ -52,13 +74,12 @@ async function handleTransport(
     ...corsHeaders(),
   });
 
-  // Placeholder session; the real service hydrates it from the record store.
-  // `status` starts idle — a running status would lock the composer forever
-  // once it is mirrored into the canonical transcript.
-  const sessionKey =
-    typeof body.threadId === "string" && body.threadId.startsWith("agent:")
-      ? body.threadId
-      : (process.env.OPENCLAW_DEFAULT_SESSION ?? "agent:main:main");
+  // Fold each adapter delta into client-safe ops, reconciling against the
+  // client's claimed state (sent in `body.state`) so a fresh or reloaded
+  // client always converges to the canonical transcript.
+  const wire = new WireOpsBuilder(parseClaimedState(body));
+  const adapter = resolveAdapter(adapters, {} as Session);
+  const sessionKey = resolveSessionKey(body.threadId, adapter.runtime);
   const session: SessionState = {
     sessionId: sessionKey,
     studyId: "study-1",
@@ -67,11 +88,6 @@ async function handleTransport(
     messages: [],
   };
 
-  // Fold each adapter delta into client-safe ops, reconciling against the
-  // client's claimed state (sent in `body.state`) so a fresh or reloaded
-  // client always converges to the canonical transcript.
-  const wire = new WireOpsBuilder(parseClaimedState(body));
-  const adapter = resolveAdapter(adapters, {} as Session);
   for await (const delta of adapter.run(session, commands)) {
     for (const op of wire.fold(delta)) {
       res.write(encodeOp(op));
@@ -82,13 +98,12 @@ async function handleTransport(
 }
 
 /** Resolve the session key a watch connection should observe. */
-function watchSessionKey(req: IncomingMessage): string {
-  const fallback = process.env.OPENCLAW_DEFAULT_SESSION ?? "agent:main:main";
+function watchSessionKey(req: IncomingMessage, runtime: string): string {
   try {
     const threadId = new URL(req.url ?? "/api/transport/watch", "http://localhost").searchParams.get("threadId");
-    return typeof threadId === "string" && threadId.startsWith("agent:") ? threadId : fallback;
+    return resolveSessionKey(threadId, runtime);
   } catch {
-    return fallback;
+    return fallbackSessionKey(runtime);
   }
 }
 
@@ -131,8 +146,8 @@ async function handleWatch(
   res: ServerResponse,
   adapters: RuntimeAdapter[],
 ): Promise<void> {
-  const sessionKey = watchSessionKey(req);
   const adapter = resolveAdapter(adapters, {} as Session);
+  const sessionKey = watchSessionKey(req, adapter.runtime);
   if (typeof adapter.subscribe !== "function") {
     res.writeHead(400, { ...corsHeaders() }).end("adapter does not support watch");
     return;
@@ -191,8 +206,15 @@ function toRecordStoreLike(store: RecordStore): RecordStoreLike {
   };
 }
 
+/** Build the default adapter list when the caller registers none. */
+function defaultAdapters(): RuntimeAdapter[] {
+  return (process.env.TRANSPORT_RUNTIME ?? "openclaw") === "dsh"
+    ? [new DshRuntimeAdapter()]
+    : [new OpenClawRuntimeAdapter()];
+}
+
 export function createTransportService(opts: TransportServiceOptions = {}): ReturnType<typeof createServer> {
-  const adapters = opts.adapters ?? [new OpenClawRuntimeAdapter()];
+  const adapters = opts.adapters && opts.adapters.length > 0 ? opts.adapters : defaultAdapters();
   const adapt = async (a: RuntimeAdapter) => {
     try {
       await a.init({
@@ -201,6 +223,7 @@ export function createTransportService(opts: TransportServiceOptions = {}): Retu
           token: process.env.OPENCLAW_GATEWAY_TOKEN ?? "",
         },
         recordStore: toRecordStoreLike(opts.recordStore ?? createInMemoryRecordStore()),
+        config: { ...process.env },
       });
     } catch (e) {
       console.error("[transport-service] adapter init failed", e);

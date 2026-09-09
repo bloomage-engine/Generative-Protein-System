@@ -26,6 +26,35 @@ multi-step, tool-calling) or be a deterministic script/pipeline. The platform tr
 both uniformly.
 _Avoid_: Bot, Assistant, Automation
 
+## Agent Runtime (dsh)
+
+Vocabulary contributed by the dsh (DeepSeek Harness) runtime adapter. Science
+Studio terms above (Session, Run, …) are unchanged; these are runtime-domain
+concepts the adapter maps to and from the record layer.
+
+**Harness Session** (also **dsh Session**):
+dsh's own unit of conversation: an append-only log of typed session events,
+persisted under the dsh home and reusable by id. Distinct from Science Studio's
+**Session** (a Study-scoped conversation) — one Science Studio Session maps to
+one Harness Session. _Avoid_: Session (unqualified, collides with the product
+term), Thread, Log
+
+**Turn**:
+dsh's unit of agent work: zero or more Steps, opened when input is claimed and
+closed by `turn/end` with a reason (`completed`, `error`, `aborted`, …). One
+Researcher turn (one Run-driving user message) maps to one Harness turn.
+_Avoid_: Round, Cycle, Iteration
+
+**Step**:
+one model request plus the tools it calls, inside a Turn. Coarser than a
+message; a single assistant reply can span multiple Steps as tools run.
+_Avoid_: Call, Request, Segment
+
+**Workspace** (also **cwd**):
+the filesystem directory a dsh agent operates in (executes tools against,
+reads/writes files in). Supplied by the host at initialize time.
+_Avoid_: Sandbox, Project dir, Home
+
 ## Research Work
 
 **Project**:

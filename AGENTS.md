@@ -16,8 +16,10 @@ packages/record                   domain + record layer (Run is the atomic unit)
 packages/transport                runtime-agnostic seam (RuntimeAdapter, StateDelta)
 packages/transport-client         assistant-ui client boundary (`useTransport` hook, standing `useTransportWatch`, state converter, mount probe, command catalog)
 packages/transport-openclaw       openclaw runtime adapter (backend operator client; ports gateway WS)
-services/transport-service        backend assistant-transport service (SSE endpoint, port 3001)
+packages/transport-dsh            dsh runtime adapter (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC)
+services/transport-service        backend assistant-transport service (SSE endpoint, port 3001; TRANSPORT_RUNTIME=openclaw|dsh picks the default adapter)
 examples/transport-openclaw-example  minimal assistant-ui example app over the openclaw adapter (Vite + core primitives; dev-only, not in the root build)
+examples/transport-dsh-example     minimal assistant-ui example app over the dsh adapter (local harness; dev-only, not in the root build)
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/adr/                         ADRs (0001 backend transport, 0002 record ownership)
@@ -30,11 +32,12 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 - `npm run dev` — run service (3001) and web (3000) together via concurrently
 - `npm run dev:service` / `npm run dev:web` — individually
 - `npm run dev -w @science-studio/transport-openclaw-example` — the example app: Vite (5173, proxies `/api`) + the openclaw adapter behind `@science-studio/transport-service` (3200). Needs `examples/transport-openclaw-example/.env` (see its `.env.example`) and a live gateway, and `npm run build` first (imports deps from dist). Dev-only — intentionally NOT in the root build gate; its `npm run test` drives the same wiring against a scripted gateway (no live gateway needed).
-- `npm run build` — build record → transport → transport-client → transport-openclaw → transport-service; this is the real type gate
+- `npm run dev -w @science-studio/transport-dsh-example` — the same shape over the dsh adapter: Vite (5173) + `@science-studio/transport-service` (3300); the adapter spawns `dsh --profile sdk` locally (needs `examples/transport-dsh-example/.env` with `DEEPSEEK_API_KEY` only — the harness child runs with that folder as cwd, so the dsh CLI reads that same `.env` and hard-refuses launch-only `DSH_*` keys there; defaults: profile `sdk`, home `~/.dsh`, workspace = the example dir, transcript mirror under the service tmp dir — override `DSH_HOME`/`DSH_TRANSCRIPT_DIR`/`DSH_MODEL`… via exported env). Its `npm run test` drives the wiring against a scripted turn client (no dsh process needed).
+- `npm run build` — build record → transport → transport-client → transport-openclaw → transport-dsh → transport-service; this is the real type gate
 - `npm run typecheck` — **known-broken**: fails in transport-service with pre-existing TS6310 (composite refs + `--noEmit`). Other workspaces pass; use `npm run build` for the service.
 - `npm run smoke:adapter` — connect a real openclaw adapter to a live gateway and drive one `chat.send` (sends a real message to `OPENCLAW_DEFAULT_SESSION` unless `SMOKE_SESSION` overrides it). Needs `npm run build` first.
 - `npm run smoke:replay -- <file>` — fold recorded SSE frames through the client decoder/accumulator (verifies a stream terminates with `[DONE]` and only uses `set` ops).
-- No test suite exists anywhere yet (root `npm run test` is a no-op).
+- No test suite exists anywhere yet (root `npm run test` is a no-op). — **stale**: transport-openclaw, transport-client, transport-dsh and both example workspaces now have suites (root `npm run test` runs them).
 
 ## Transport wire contract (frontend ↔ service)
 
@@ -90,6 +93,17 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `agent`/tool events coalesced into ONE `tool-call` part per `toolCallId`
   (start + result merged) in event order; the `final` chat snapshot is only
   used as a fallback when nothing was assembled live.
+- **dsh differs from openclaw in three wire-relevant ways**: (1) the dsh
+  adapter spawns a LOCAL harness (`dsh --profile sdk` via
+  `@deepseek-ai/dsh-sdk-client@0.1.5-alpha.1`, pinned exactly) instead of
+  connecting to a gateway; (2) events arrive per COMMITTED log event, not per
+  token — each step's `assistant/message` becomes a whole-message `set`, so
+  replies render step-granular and the adapter never fabricates
+  `stream-text`/`append-text` token fragments; (3) the SDK wire has no
+  history-replay request, so the adapter persists its OWN transcript mirror
+  (`DSH_TRANSCRIPT_DIR`, default under the service tmp dir) and cold-restores
+  from it — an unverifiable empty transcript is never reconciled against a
+  claiming client (docs/adr/0004).
 - Service-adjacent verification without the browser:
   `curl -sN -X POST http://localhost:3001/api/transport -H 'content-type: application/json' -d '{"commands":[{"type":"add-message","message":{"role":"user","parts":[{"type":"text","text":"hi"}]}}]}'`
   — with a live gateway this streams real frames and must terminate with `[DONE]`.
