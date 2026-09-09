@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,green \"npm run dev:server\" \"npm run dev:web\"",
     "dev:server": "tsx watch server.ts",
-    "dev:web": "vite",
+    "dev:web": "node wait-for-server.mjs && vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts"
