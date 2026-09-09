@@ -17,6 +17,7 @@ function ev(type: string, data: unknown, seq = 1): SessionEvent {
 class FakeDshClient implements DshTurnClient {
   started = false;
   readonly prompts: string[] = [];
+  readonly sessionIds: string[] = [];
   constructor(private readonly script: (sessionId: string, text: string) => SessionEvent[]) {}
   async start(): Promise<void> {
     this.started = true;
@@ -28,7 +29,32 @@ class FakeDshClient implements DshTurnClient {
     onEvent: (event: SessionEvent) => void,
   ): Promise<void> {
     this.prompts.push(text);
+    this.sessionIds.push(sessionId);
     for (const event of this.script(sessionId, text)) onEvent(event);
+  }
+}
+
+/**
+ * Scripted client that mimics a session id a PREVIOUS harness process already
+ * persisted in the home: the SDK runtime rejects the id with `already exists`
+ * and can never create it, so the adapter must fall back to a fresh id.
+ */
+class StaleSessionClient implements DshTurnClient {
+  readonly sessionIds: string[] = [];
+  private rejected = false;
+  async start(): Promise<void> {}
+  async close(): Promise<void> {}
+  async runTurn(
+    sessionId: string,
+    _text: string,
+    onEvent: (event: SessionEvent) => void,
+  ): Promise<void> {
+    this.sessionIds.push(sessionId);
+    if (!this.rejected) {
+      this.rejected = true;
+      throw new Error(`session "${sessionId}" already exists`);
+    }
+    for (const event of completedReply(`am-${this.sessionIds.length}`, "Hello from dsh.")) onEvent(event);
   }
 }
 
@@ -151,6 +177,55 @@ test("a fresh adapter instance cold-starts from the mirror and reconciles histor
       "cold start must restore the full canonical transcript from the mirror",
     );
   } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a persisted-but-unresumable session falls back to a fresh harness id and later turns continue it", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-stale-session-"));
+  const store = new FakeRecordStore();
+  const client = new StaleSessionClient();
+  const adapter = new DshRuntimeAdapter({ createClient: () => client, transcriptDir: dir });
+  try {
+    await adapter.init({ gateway: { url: "", token: "" }, recordStore: store, config: {} });
+
+    // First run: the plain session id is rejected (persisted by an earlier
+    // runtime); the adapter must mint a fresh id and retry so the turn settles
+    // with a reply instead of dying as an error.
+    const deltas = await collect(adapter.run(session(), [
+      { type: "add-message", message: { id: "u1", role: "user", content: "hi" } },
+    ]));
+    const types = deltas.map((d) => d.type);
+    assert.ok(!types.includes("session-status") || deltas.every((d) => !(d.type === "session-status" && d.status === "error")), "a resumable-session failure must NOT settle the run to error");
+    const idle = deltas.find((d) => d.type === "session-status" && d.status === "idle");
+    assert.ok(idle, "the fallback run must settle idle with a reply");
+    assert.equal(client.sessionIds.length, 2, "first attempt on the stale id, retry on a fresh one");
+    assert.equal(client.sessionIds[0], "sess-1", "the first attempt uses the session key itself");
+    const fresh = client.sessionIds[1]!;
+    assert.ok(fresh.startsWith("sess-1-") && fresh !== "sess-1", "the retry uses a freshly minted child-scoped id");
+
+    const mirror = new TranscriptMirror(dir);
+    await waitFor(async () => (await mirror.load("sess-1")) !== null);
+    assert.equal(store.runs.length, 1);
+    assert.equal(store.runs[0]!.status, "completed", "the fallback turn is recorded as a completed Run");
+    assert.equal(store.runs[0]!.output, "Hello from dsh.");
+
+    // Second run on the same session: the minted id is reused for the life of
+    // this child (conversation continuity), never the stale plain id again.
+    await collect(adapter.run(session(), [
+      { type: "add-message", message: { id: "u2", role: "user", content: "hi again" } },
+    ]));
+    assert.equal(client.sessionIds.length, 3, "second run issues exactly one prompt");
+    assert.equal(client.sessionIds[2], fresh, "later turns continue the SAME fresh harness session");
+    // Wait until the SECOND settle's mirror write lands (the first run's file
+    // already exists, so a plain load poll can't tell them apart) before cleanup.
+    await waitFor(async () => {
+      const loaded = await mirror.load("sess-1");
+      return loaded?.messages.some((m) => m.id === "u2") ?? false;
+    });
+    assert.equal(store.runs.length, 2);
+  } finally {
+    await adapter.abort();
     await rm(dir, { recursive: true, force: true });
   }
 });

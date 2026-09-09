@@ -21,6 +21,23 @@ const DEFAULT_PROVIDER = "deepseek-official";
 const DEFAULT_MODEL = "deepseek-v4-flash";
 const DEFAULT_PROFILE = "sdk";
 
+/**
+ * The SDK runtime's create-only `session/prompt` rejects an id that a PREVIOUS
+ * harness process already persisted in the home with `session "<id>" already
+ * exists` (a plain internal error surfaced as a JSON-RPC error response — the
+ * SDK wire has no structured code for it). This is the ONE failure we can
+ * retry on: it happens BEFORE any agent work, so re-prompting a fresh session
+ * cannot double a reply.
+ */
+function isSessionAlreadyExists(err: unknown): boolean {
+  return err instanceof Error && /session .* already exists/i.test(err.message);
+}
+
+/** A fresh, child-scoped harness session id (never persisted before this child). */
+function mintHarnessSessionId(sessionKey: string): string {
+  return `${sessionKey}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export interface DshRuntimeAdapterOptions {
   /**
    * Test seam: inject the turn-client factory (defaults to the real SDK
@@ -73,6 +90,13 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private mirror: TranscriptMirror | null = null;
   private ready: Promise<void> | null = null;
   private activeFlows = new Map<string, RunFlow>();
+  /**
+   * Science Studio session key → the harness session id this child process
+   * actually created for it. Filled only when the requested id was NOT
+   * creatable (see run()); lets later turns continue the SAME fresh harness
+   * conversation for the life of this child.
+   */
+  private harnessSessions = new Map<string, string>();
   private provider = DEFAULT_PROVIDER;
   private model = DEFAULT_MODEL;
 
@@ -193,18 +217,40 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
           flow.end();
           void this.settleRun(sessionKey, transcript, driver);
         };
-        void this.client!
-          .runTurn(sessionKey, first.message.content, (event) => {
+        const runPrompt = (harnessSessionId: string): Promise<void> =>
+          this.client!.runTurn(harnessSessionId, first.message.content, (event) => {
             const meta = transcript.apply(event);
             if (meta.reason) driver.reason = meta.reason;
             if (meta.usage) driver.usage = meta.usage;
-          })
-          .then(() => settle())
-          .catch((err: unknown) => {
+          });
+        void (async () => {
+          try {
+            // Prefer the session key itself (a clean home creates it on first
+            // use). But the SDK's `session/prompt` is CREATE-ONLY: a session id
+            // a PREVIOUS harness process already persisted in the home can never
+            // be created again (docs/adr/0004), so on that specific failure fall
+            // back to a fresh child-scoped id and retry ONCE instead of letting
+            // the whole turn die.
+            let harnessSessionId = this.harnessSessions.get(sessionKey) ?? sessionKey;
+            try {
+              await runPrompt(harnessSessionId);
+            } catch (err) {
+              if (!isSessionAlreadyExists(err)) throw err;
+              harnessSessionId = mintHarnessSessionId(sessionKey);
+              this.harnessSessions.set(sessionKey, harnessSessionId);
+              console.warn(
+                `[dsh] harness session "${sessionKey}" already exists in a previous runtime and this SDK cannot resume it; continuing on a fresh harness session "${harnessSessionId}" (the agent does not carry the prior conversation across restarts — the Science Studio transcript mirror still does)`,
+              );
+              await runPrompt(harnessSessionId);
+            }
+            this.harnessSessions.set(sessionKey, harnessSessionId);
+            settle();
+          } catch (err) {
             console.error("[dsh] turn failed", err);
             transcript.emit({ type: "session-status", status: "error" });
             settle();
-          });
+          }
+        })();
       }
       yield* flow.iterate();
     } finally {

@@ -34,14 +34,25 @@ function resolveAdapter(adapters: RuntimeAdapter[], _session: Session): RuntimeA
 }
 
 /**
+ * assistant-ui's in-memory thread list mints a per-page LOCAL thread id when
+ * the app never declares a real remote session (every one of our current apps
+ * is a one-session UI), and sends carry that id while the mount probe sends
+ * none. Both must land on the SAME canonical session, so local-mint ids are
+ * treated as "no session claimed" (like openclaw treats a non-`agent:` id).
+ */
+const ASSISTANT_UI_LOCAL_THREAD_PREFIX = "__LOCALID_";
+
+/**
  * Resolve the session key a request targets. A non-empty `threadId` passes
- * through for dsh (any client-chosen id works: the SDK lazily creates the
- * session); openclaw keeps its `agent:`-prefixed contract. Without one, fall
- * back to the selected runtime's default session env var.
+ * through when it names a real session (openclaw: `agent:`-prefixed; dsh:
+ * any stable client-chosen id — the SDK lazily creates the session). Ids the
+ * client framework mints locally, or an absent id, fall back to the selected
+ * runtime's default session env var.
  */
 function resolveSessionKey(threadId: unknown, runtime: string): string {
   if (typeof threadId === "string" && threadId.length > 0) {
     if (runtime === "openclaw" && !threadId.startsWith("agent:")) return fallbackSessionKey(runtime);
+    if (runtime === "dsh" && threadId.startsWith(ASSISTANT_UI_LOCAL_THREAD_PREFIX)) return fallbackSessionKey(runtime);
     return threadId;
   }
   return fallbackSessionKey(runtime);

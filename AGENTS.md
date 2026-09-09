@@ -93,7 +93,7 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `agent`/tool events coalesced into ONE `tool-call` part per `toolCallId`
   (start + result merged) in event order; the `final` chat snapshot is only
   used as a fallback when nothing was assembled live.
-- **dsh differs from openclaw in three wire-relevant ways**: (1) the dsh
+- **dsh differs from openclaw in wire-relevant ways**: (1) the dsh
   adapter spawns a LOCAL harness (`dsh --profile sdk` via
   `@deepseek-ai/dsh-sdk-client@0.1.5-alpha.1`, pinned exactly) instead of
   connecting to a gateway; (2) events arrive per COMMITTED log event, not per
@@ -103,7 +103,15 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   history-replay request, so the adapter persists its OWN transcript mirror
   (`DSH_TRANSCRIPT_DIR`, default under the service tmp dir) and cold-restores
   from it — an unverifiable empty transcript is never reconciled against a
-  claiming client (docs/adr/0004).
+  claiming client (docs/adr/0004); (4) SDK `session/prompt` is CREATE-ONLY — a
+  NEW harness child cannot resume a session id an earlier process already
+  persisted in the harness home (`session "<id>" already exists`), so the
+  adapter retries that exact failure once on a fresh child-scoped session id
+  (`sessionKey-<ts>-<rand>`) instead of settling the turn to error; the UI
+  transcript mirror is unaffected, but the AGENT forgets pre-restart turns.
+  assistant-ui mints a per-page local `threadId` (`__LOCALID_*`) on send
+  while the mount probe sends none — the service funnels both to the runtime's
+  default session, so probe history and sends always converge.
 - Service-adjacent verification without the browser:
   `curl -sN -X POST http://localhost:3001/api/transport -H 'content-type: application/json' -d '{"commands":[{"type":"add-message","message":{"role":"user","parts":[{"type":"text","text":"hi"}]}}]}'`
   — with a live gateway this streams real frames and must terminate with `[DONE]`.

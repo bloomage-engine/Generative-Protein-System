@@ -34,9 +34,11 @@ concepts the adapter maps to and from the record layer.
 
 **Harness Session** (also **dsh Session**):
 dsh's own unit of conversation: an append-only log of typed session events,
-persisted under the dsh home and reusable by id. Distinct from Science Studio's
+persisted under the dsh home and reusable by id within a running harness
+process (the pinned SDK cannot resume an id a previous process persisted — a
+restart starts a fresh harness session; see docs/adr/0004). Distinct from Science Studio's
 **Session** (a Study-scoped conversation) — one Science Studio Session maps to
-one Harness Session. _Avoid_: Session (unqualified, collides with the product
+one Harness Session per harness-child generation. _Avoid_: Session (unqualified, collides with the product
 term), Thread, Log
 
 **Turn**:

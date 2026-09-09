@@ -57,6 +57,13 @@ code of its own:
 - **Cold starts**: the adapter keeps its own transcript mirror (see
   `DSH_TRANSCRIPT_DIR`) so history survives service restarts without reading
   dsh's internal session log.
+- **Restart memory caveat**: the pinned SDK's `session/prompt` is
+  CREATE-ONLY — a fresh harness child cannot resume a session id a previous
+  process already persisted in the dsh home (`session "<id>" already
+  exists`). The adapter detects that exact failure and continues on a fresh
+  harness session, so turns always get replies; the UI transcript still
+  survives restarts (our mirror), but the AGENT's memory of pre-restart turns
+  does not — after a service restart the agent only sees your current message.
 
 ## Prerequisites
 

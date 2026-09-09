@@ -38,4 +38,21 @@ client-claimed-state fallback is unnecessary: the wire folds every run against
 the claimed state, and an adapter that restored its mirror (or a truly fresh
 session) always has a verifiable canonical to reconcile with.
 
+## Amendment (2026-09-09): SDK sessions are create-only across processes
+
+The original assumption that the same harness session id survives a harness
+child restart is FALSE for this SDK: `dsh-sdk-jsonrpc-server`'s
+`session/prompt` is create-only (`getOrCreateSession` → `agents.create`; no
+resume/adopt path on the SDK wire), and a NEW child cannot create an id a
+PREVIOUS process already materialized under the harness home — it answers
+`session "<id>" already exists` (code `-32603`). A Science Studio session
+still maps to one dsh session per child generation, but after a service
+restart the adapter retries the turn ONCE on a fresh child-scoped id
+(`<sessionKey>-<ts>-<rand>`) instead of settling the run to error: the run
+always completes, the transcript mirror (the UI truth, keyed by the Science
+Studio session) is unaffected, and the agent loses only its pre-restart
+conversation memory. The service also funnels assistant-ui's per-page
+`__LOCALID_*` thread ids (and absent ids) to the runtime's default session so
+the mount probe and sends converge on one canonical transcript.
+
 - **Status**: accepted
