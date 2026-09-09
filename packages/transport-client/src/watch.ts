@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import type { AssistantRuntime } from "@assistant-ui/react";
 import type { RuntimeState } from "./session-sync.js";
 import { DEFAULT_API } from "./use-transport.js";
+import { watchReconnect } from "./watch-loop.js";
 
 /**
  * Standing watch consumer: keeps a long-lived NDJSON connection to
@@ -32,7 +33,6 @@ export function useTransportWatch(
 ): void {
   useEffect(() => {
     let closed = false;
-    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
     const isLocallyBusy = (): boolean => {
       try {
@@ -88,19 +88,18 @@ export function useTransportWatch(
       }
     }
 
-    async function start(): Promise<void> {
-      while (!closed) {
+    const handle = watchReconnect({
+      isClosed: () => closed,
+      // frameLoop never throws (failures are swallowed inside), so this always
+      // settles when the connection drops/errors and the loop paces the retry.
+      connect: async () => {
         await frameLoop();
-        if (closed) break;
-        reconnectTimer = setTimeout(() => void start(), 2000);
-      }
-    }
-
-    void start();
+      },
+    });
 
     return () => {
       closed = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
+      handle.cancel();
     };
   }, [api, runtime]);
 }
