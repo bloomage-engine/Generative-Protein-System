@@ -647,13 +647,14 @@ export async function createBackend(env = process.env): Promise<Backend> {
 
 ```
 开源（公开）
-packages/transport                    + principal.ts, environment.ts, runtime.ts（仅接缝）
-                                      + RuntimeBinding, RuntimeFactory, RuntimeCapabilities
-                                      + AttachmentRef, file part, RuntimeInitOptions.{binding,workspace}
+packages/transport                    契约面（全部接缝）+ 共享套件（Transcript/RunFlow/fold）
+                                      + 单用户纯默认实现；两个入口：`.` 与 `./seams`
+                                      （仅契约，无套件、无默认实现）
 packages/transport-openclaw           runtime 自有：GatewayBinding + 工厂
 packages/transport-dsh                runtime 自有：DshBinding + 工厂
 packages/workspace            （新增）  FsWorkspace + 限制强制（接缝类型在 transport）
 packages/contract-tests       （新增）  共享的接缝一致性套件，所有实现都运行
+                                      （从 `transport/seams` 导入契约）
 packages/sandbox              （新增）  Local + Dsh providers（接缝类型在 transport）
 packages/transport-client             + useWorkspaceMentions, workspace 客户端, 文件引用 resolver,
                                         useWorkspace（拉取条目）, file part 转换
@@ -669,10 +670,13 @@ apps/web                              + workspace 浏览器/查看器, @-mention
 ```
 
 依赖方向：`transport-service` → {`transport`, `workspace`, `sandbox`}。
-**所有接缝*接口*都住在 `transport`；实现包依赖它，而非反向**（无环）。runtime **不是**
-核心依赖：每个 runtime 导出一个 `runtimePlugins` 数组并由配置加载，因此
-`transport-service` 不携带任何 runtime 包的静态 import。`transport-client` 仍只拥有
-React 边界，且与 runtime 无关。开源中没有任何东西指向企业模块。
+**所有接缝*接口*都住在 `transport`；实现包依赖它，而非反向**（无环）。在
+`transport` 内部，包暴露两个入口：`./seams` 只携带契约（接口 + 其错误类 + 限制
+常量），让树外实现者可以只依赖接口、不引入套件与默认实现；`.` 在此之上再加共享
+套件与单用户纯默认实现。runtime **不是**核心依赖：每个 runtime 导出一个
+`runtimePlugins` 数组并由配置加载（默认列表是服务 `package.json` 中的数据），
+因此 `transport-service` 不携带任何 runtime 包的静态 import。`transport-client`
+仍只拥有 React 边界，且与 runtime 无关。开源中没有任何东西指向企业模块。
 
 ## 12. 分阶段迁移
 

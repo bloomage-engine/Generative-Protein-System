@@ -430,5 +430,3 @@ export function createDshRuntimeFactory(): RuntimeFactory {
     create: () => new DshRuntimeAdapter(),
   };
 }
-
-export * from "./binding.js";

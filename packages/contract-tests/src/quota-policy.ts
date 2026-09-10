@@ -8,7 +8,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Principal, QuotaPolicy } from "@science-studio/transport";
+import type { Principal, QuotaPolicy } from "@science-studio/transport/seams";
 
 export interface QuotaPolicyCase {
   /** The principal to check against. */

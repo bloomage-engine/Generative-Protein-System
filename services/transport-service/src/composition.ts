@@ -6,6 +6,8 @@
  * `SS_ENTERPRISE_MODULE` supplies the same `Backend` shape (bearer principal,
  * fleet sandboxes, tenant-scoped store). Nothing downstream branches on mode.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createInMemoryRecordStore, type Artifact, type ArtifactKind, type RecordStore } from "@science-studio/record";
 import { FsWorkspace } from "@science-studio/workspace";
 import {
@@ -58,20 +60,35 @@ export interface EnterpriseModule {
 const DEFAULT_RUNTIME = "openclaw";
 
 /**
- * Runtime packages the service may load. They are imported DYNAMICALLY by
- * specifier, so no core package statically depends on a runtime and adding one
- * touches no core package (docs/design/implementation-plan.md §5).
+ * The runtime modules the DEFAULT single-user install loads, read from this
+ * service's own `package.json` (`scienceStudio.runtimeModules`). They are
+ * imported DYNAMICALLY by specifier, so no core *code* names a runtime product
+ * and adding one is a data change (docs/design/implementation-plan.md §5).
+ * `SS_RUNTIME_MODULES` overrides the list entirely.
  */
-export const DEFAULT_RUNTIME_MODULES = [
-  "@science-studio/transport-openclaw",
-  "@science-studio/transport-dsh",
-];
+export function defaultRuntimeModules(): string[] {
+  try {
+    // `src/../package.json` in dev (tsx) and `dist/../package.json` when built:
+    // both resolve to the service root.
+    const pkg = JSON.parse(
+      readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
+    ) as { scienceStudio?: { runtimeModules?: unknown } };
+    const modules = pkg.scienceStudio?.runtimeModules;
+    if (Array.isArray(modules) && modules.every((m) => typeof m === "string" && m.length > 0)) {
+      return modules as string[];
+    }
+  } catch {
+    // An unreadable/renamed package.json surfaces as "no runtime plugin
+    // registered" from the caller, which names the actual remedy.
+  }
+  return [];
+}
 
 /** Resolve the configured runtime modules and load their plugins. */
 export async function resolveRuntimePlugins(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<RuntimePlugin[]> {
-  const modules = (env.SS_RUNTIME_MODULES ?? DEFAULT_RUNTIME_MODULES.join(","))
+  const modules = (env.SS_RUNTIME_MODULES ?? defaultRuntimeModules().join(","))
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);

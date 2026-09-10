@@ -705,13 +705,14 @@ their existing dev wiring.
 
 ```
 OSS (public)
-packages/transport                    + principal.ts, environment.ts, runtime.ts (seams only)
-                                      + RuntimeBinding, RuntimeFactory, RuntimeCapabilities
-                                      + AttachmentRef, file part, RuntimeInitOptions.{binding,workspace}
+packages/transport                    the contract surface (all seams) + the shared kit (Transcript/RunFlow/fold)
+                                      + pure single-user defaults; two entries: `.` and `./seams`
+                                      (contracts only, no kit, no defaults)
 packages/transport-openclaw           runtime-owned: GatewayBinding + factory
 packages/transport-dsh                runtime-owned: DshBinding + factory
 packages/workspace            (new)     FsWorkspace + limits enforcement (seam types live in transport)
 packages/contract-tests       (new)     the shared seam conformance suites every implementation runs
+                                      (imports the contract from `transport/seams`)
 packages/sandbox              (new)     Local + Dsh providers (seam types live in transport)
 packages/transport-client             + useWorkspaceMentions, workspace client, file-reference resolver,
                                         useWorkspace (fetch entries), file part conversion
@@ -728,11 +729,15 @@ Private (enterprise repo)
 
 Dependency direction: `transport-service` → {`transport`, `workspace`, `sandbox`}.
 **All seam *interfaces* live in `transport`; implementation packages depend on
-it, never the reverse** (no cycles). Runtimes are **not** core dependencies: each
-exports a `runtimePlugins` array and is loaded by configuration, so
-`transport-service` carries no static import of a runtime package. `transport-client`
-stays React-boundary-only and runtime-agnostic. Nothing in OSS points at the
-enterprise module.
+it, never the reverse** (no cycles). Within `transport`, the package exposes two
+entries: `./seams` carries the contract alone (interfaces + their error classes
++ limit constants) so an out-of-tree implementer can depend on the interface
+without the kit or the defaults; `.` adds the shared kit and the pure
+single-user defaults. Runtimes are **not** core dependencies: each exports a
+`runtimePlugins` array and is loaded by configuration (the default list is data
+in the service's `package.json`), so `transport-service` carries no static
+import of a runtime package. `transport-client` stays React-boundary-only and
+runtime-agnostic. Nothing in OSS points at the enterprise module.
 
 ## 12. Phased migration
 

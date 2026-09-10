@@ -20,7 +20,7 @@ The design placed seam interfaces across three packages, which would make
 
 | Package | Holds | Depends on |
 | --- | --- | --- |
-| `packages/transport` | `RuntimeAdapter`, `Workspace`, `Principal`/`PrincipalResolver`, `Environment`/`EnvironmentProvider`, `Sandbox`/`SandboxProvider`, `RuntimeBinding`/`RuntimeFactory`/`RuntimeCapabilities`, `QuotaPolicy`, `SecretStore`, the `Transcript`/`RunFlow` kit, and pure adapters (`LocalPrincipalResolver`, `CachingEnvironmentProvider`, `NullWorkspace`) | `record` only |
+| `packages/transport` | **Two entries.** `./seams` = the contract only: `RuntimeAdapter`, `Workspace`, `Principal`/`PrincipalResolver`, `Environment`/`EnvironmentProvider`, `Sandbox`/`SandboxProvider`, `RuntimeBinding`/`RuntimeFactory`/`RuntimeCapabilities`, `QuotaPolicy`, `SecretStore`, plus their error classes and limit constants. `.` = that contract **+ the shared kit** (`Transcript`/`RunFlow`/`foldState`/attachment helpers) **+ the pure single-user defaults** (`LocalPrincipalResolver`, `LocalEnvironmentProvider`, `NullWorkspace`, `NoopQuotaPolicy`). Exports are explicit (no `export *`). | `record` only |
 | `packages/workspace` | `FsWorkspace`, file-reference grammar, limits enforcement | `transport` |
 | `packages/sandbox` | `LocalSandboxProvider`, `DshSandboxProvider` | `transport` |
 | `packages/transport-openclaw` / `-dsh` | binding types + factories + adapters | `transport` |
@@ -178,11 +178,15 @@ workspace). It moves to Phase 2.
 1. No OSS package depends on any enterprise artifact or names
    `SS_ENTERPRISE_MODULE` outside `composition.ts`.
 2. No OSS core package statically imports a runtime package; runtimes are
-   registered from configuration.
-3. Adding a runtime package touches no core package (enforced by a dependency
+   registered from configuration, and the DEFAULT module list is data (the
+   service's `package.json` `scienceStudio.runtimeModules`), not code.
+3. Adding a runtime package touches no core *code* (enforced by a dependency
    check).
-4. The suite is green with `SS_ENTERPRISE_MODULE` unset.
-5. The private repo runs the OSS `contract-tests` suites
+4. `./seams` exposes the contract and nothing else: the shared kit and the
+   single-user defaults are absent from it (pinned by
+   `packages/transport/test/seams.test.ts`).
+5. The suite is green with `SS_ENTERPRISE_MODULE` unset.
+6. The private repo runs the OSS `contract-tests` suites
    (`@science-studio/contract-tests`) — implemented, and already adopted by the
    two OSS runtime packages.
 

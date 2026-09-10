@@ -1,6 +1,20 @@
 import type { Study, Id, Run, Artifact, Evidence, Conclusion, Session } from "./types.js";
 
-export * from "./types.js";
+// The domain vocabulary, listed explicitly so this file is the package surface.
+export type {
+  AgentBlueprint,
+  Artifact,
+  ArtifactKind,
+  Conclusion,
+  Evidence,
+  Id,
+  Project,
+  Run,
+  RunStatus,
+  Session,
+  Study,
+  Task,
+} from "./types.js";
 export { createInMemoryRecordStore } from "./memory.js";
 
 /**

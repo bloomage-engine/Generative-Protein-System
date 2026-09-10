@@ -13,7 +13,7 @@ import {
   WorkspaceNotFoundError,
   WorkspacePathError,
   type Workspace,
-} from "@science-studio/transport";
+} from "@science-studio/transport/seams";
 
 export interface WorkspaceFixture {
   /** A directory that exists, workspace-relative ("" for the root). */

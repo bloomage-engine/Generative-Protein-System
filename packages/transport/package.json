@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./seams": {
+      "types": "./dist/seams.d.ts",
+      "default": "./dist/seams.js"
     }
   },
   "scripts": {

@@ -15,13 +15,13 @@ apps/web                          Next.js frontend (assistant-ui Thread UI, port
   components/ui + hooks + lib       shadcn/ui base, registry helpers
   (Tailwind v4 + shadcn/ui styling stack: postcss.config.mjs, components.json)
 packages/record                   domain + record layer (Run is the atomic unit)
-packages/transport                SEAM PACKAGE: every seam interface (RuntimeAdapter/StateDelta, RuntimeBinding/RuntimeFactory/RuntimePlugin/RuntimeCapabilities, Principal/PrincipalResolver, Environment/EnvironmentProvider, Workspace + limits + QuotaPolicy) + the shared adapter kit (Transcript base / RunFlow queue) + pure single-user defaults (LocalPrincipalResolver, LocalEnvironmentProvider, NullWorkspace, NoopQuotaPolicy)
+packages/transport                SEAM PACKAGE, two entries. `./seams` = the contract only: every seam interface (RuntimeAdapter/StateDelta, RuntimeBinding/RuntimeFactory/RuntimePlugin/RuntimeCapabilities, Principal/PrincipalResolver, Environment/EnvironmentProvider, Workspace + limits + QuotaPolicy) plus their error classes and limit constants. `.` = that contract + the shared adapter kit (Transcript base / RunFlow queue / foldState / attachment helpers) + pure single-user defaults (LocalPrincipalResolver, LocalEnvironmentProvider, NullWorkspace, NoopQuotaPolicy). Exports are explicit (no `export *`); pinned by test/seams.test.ts
 packages/workspace                Workspace implementations (FsWorkspace + containment/symlink/size invariants); depends on transport
-packages/contract-tests          the SHARED seam conformance suites (testPrincipalResolver/testWorkspace/testRuntimeFactory/testQuotaPolicy) every implementation runs; the OSS reference impls self-test here, the private module and third-party runtimes run the same suites in their CI
+packages/contract-tests          the SHARED seam conformance suites (testPrincipalResolver/testWorkspace/testRuntimeFactory/testQuotaPolicy) every implementation runs; the OSS reference impls self-test here, the private module and third-party runtimes run the same suites in their CI. Imports the contract from `@science-studio/transport/seams` (never the kit)
 packages/transport-client         assistant-ui client boundary (single `useTransport` session hook = history probe + standing watch + guarded import; state converter; command catalog + slash-menu / reasoning-trace helpers)
 packages/transport-openclaw       openclaw runtime adapter — owns its OWN launch surface (`GatewayBinding`), factory, capabilities and `runtimePlugins`; ports gateway WS
 packages/transport-dsh            dsh runtime adapter — owns `DshBinding` + factory + `runtimePlugins` (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC)
-services/transport-service        backend assistant-transport service — Fastify, port 3001. Composition root: `src/composition.ts`. `TRANSPORT_RUNTIME` picks the runtime product; runtime modules are loaded DYNAMICALLY by specifier (`SS_RUNTIME_MODULES`), so the service statically imports NO runtime package. `SS_ENTERPRISE_MODULE` swaps in the private multi-user backend; unset = the complete single-user product.
+services/transport-service        backend assistant-transport service — Fastify, port 3001. Composition root: `src/composition.ts`. `TRANSPORT_RUNTIME` picks the runtime product; runtime modules are loaded DYNAMICALLY by specifier, so the service statically imports NO runtime package. The DEFAULT module list is DATA — `scienceStudio.runtimeModules` in this package's own `package.json` — and `SS_RUNTIME_MODULES` overrides it entirely, so adding a runtime edits no core code. `SS_ENTERPRISE_MODULE` swaps in the private multi-user backend; unset = the complete single-user product.
 examples/transport-openclaw-example  minimal assistant-ui example app over the openclaw adapter (Vite + core primitives; dev-only, not in the root build)
 examples/transport-dsh-example     minimal assistant-ui example app over the dsh adapter (local harness; dev-only, not in the root build)
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
@@ -168,9 +168,14 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   delegates to a registered adapter (docs/adr/0001).
 - **All seam *interfaces* live in `packages/transport`; implementations live in
   their own packages** (runtime packages own their bindings/factories, the
-  workspace package owns `FsWorkspace`). No cycles. The composition root loads
+  workspace package owns `FsWorkspace`). No cycles. `transport` has two entries:
+  `./seams` is the contract alone (interfaces + their error classes + limit
+  constants) and `.` adds the shared kit and the pure single-user defaults —
+  implementers that only need the interface import `./seams`.
+  The composition root loads
   runtimes DYNAMICALLY (`SS_RUNTIME_MODULES` → each module's `runtimePlugins`),
-  so adding a runtime touches no core package — and the private enterprise
+  and the DEFAULT list is data in the service's `package.json`, so adding a
+  runtime touches no core *code* — and the private enterprise
   module is loaded the same way (`SS_ENTERPRISE_MODULE`). See
   docs/design/implementation-plan.md §5 for the CI invariants. The
   `@science-studio/contract-tests` package publishes the executable form of

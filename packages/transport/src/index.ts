@@ -1,8 +1,80 @@
-export * from "./types.js";
-export * from "./fold.js";
-export * from "./transcript.js";
-export * from "./workspace.js";
-export * from "./principal.js";
-export * from "./runtime.js";
-export * from "./environment.js";
-export * from "./attachments.js";
+/**
+ * `@science-studio/transport` — the shared transport package, in three tiers:
+ *
+ * 1. the CONTRACT surface (re-exported from `./seams.js`): every seam interface
+ *    plus its error classes and limit constants. Import it alone via
+ *    `@science-studio/transport/seams`.
+ * 2. the KIT: behavior adapters share rather than re-implement (`Transcript`,
+ *    `RunFlow`, `foldState`, the attachment rendering/mention helpers).
+ * 3. the pure SINGLE-USER DEFAULTS: the constant principal, the local
+ *    environment, `NullWorkspace`, `NoopQuotaPolicy`.
+ *
+ * The exports are listed explicitly (no `export *`) so this file IS the public
+ * surface: adding a symbol to an internal module does not silently widen the
+ * package's interface.
+ *
+ * Keep the package React-free (the assistant-ui boundary lives in
+ * `@science-studio/transport-client`).
+ */
+
+// -- 1. Contract surface -----------------------------------------------------
+export type {
+  SessionState,
+  Message,
+  AttachmentRef,
+  MessagePart,
+  WatchSnapshot,
+  StateDelta,
+  TransportCommand,
+  CommandDescriptor,
+  ArtifactInput,
+  RuntimeAdapter,
+  RuntimeInitOptions,
+  RecordStoreLike,
+} from "./seams.js";
+export type { Principal, PrincipalResolver, RequestContext, Role } from "./seams.js";
+export type { Environment, EnvironmentProvider } from "./seams.js";
+export type {
+  DirListing,
+  Entry,
+  FileContent,
+  FileStat,
+  QuotaPolicy,
+  Workspace,
+  WorkspaceLimits,
+  WriteOptions,
+} from "./seams.js";
+export type {
+  RuntimeBinding,
+  RuntimeCapabilities,
+  RuntimeFactory,
+  RuntimePlugin,
+} from "./seams.js";
+export { DEFAULT_MAX_UPLOAD_BYTES, DEFAULT_QUOTA_BYTES } from "./seams.js";
+export {
+  FileTooLargeError,
+  WorkspaceEscapeError,
+  WorkspaceNotFoundError,
+  WorkspacePathError,
+  WorkspaceUnavailableError,
+} from "./seams.js";
+export { RuntimeBindingError } from "./seams.js";
+
+// -- 2. Kit ------------------------------------------------------------------
+export { foldState, sameMessages } from "./fold.js";
+export type { DeltaEffect, FoldState } from "./fold.js";
+export { RunFlow, Transcript } from "./transcript.js";
+export {
+  attachmentsFromMentions,
+  parseWorkspaceMentions,
+  promptWithAttachments,
+  renderAttachments,
+  userMessageParts,
+} from "./attachments.js";
+export type { AttachmentRenderingOptions, MentionRef } from "./attachments.js";
+export { bindingOptionalString, bindingString } from "./runtime.js";
+
+// -- 3. Pure single-user defaults --------------------------------------------
+export { LocalPrincipalResolver } from "./principal.js";
+export { LocalEnvironmentProvider } from "./environment.js";
+export { NoopQuotaPolicy, NullWorkspace } from "./workspace.js";

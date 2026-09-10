@@ -700,4 +700,6 @@ export const runtimePlugins: RuntimePlugin[] = [
   { runtime: "openclaw", factory: createOpenClawRuntimeFactory(), localBinding: openClawLocalBinding },
 ];
 
-export * from "./binding.js";
+// This runtime's own launch surface, exported explicitly (no `export *`).
+export { OPENCLAW_CAPABILITIES, openClawBinding, openClawLocalBinding, parseGatewayBinding } from "./binding.js";
+export type { GatewayBinding } from "./binding.js";
