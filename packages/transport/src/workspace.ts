@@ -48,11 +48,31 @@ export interface Workspace {
   list(relPath: string, opts?: { depth?: number }): Promise<DirListing>;
   stat(relPath: string): Promise<FileStat>;
   open(relPath: string, opts?: { maxBytes?: number }): Promise<FileContent>;
+  /**
+   * Write a file from bytes or a stream (uploads). Implementations write to a
+   * temporary sibling and rename, so a failed or over-cap upload never truncates
+   * an existing file. v1 uploads go through this.
+   */
+  write(
+    relPath: string,
+    data: Uint8Array | ReadableStream<Uint8Array>,
+    opts?: WriteOptions,
+  ): Promise<FileStat>;
 
   /** Browser/workspace path -> the path the AGENT sees (adapter-specific root). */
   toAgentPath(relPath: string): string;
   /** Agent-emitted path -> workspace-relative path, or null if outside. */
   toWorkspacePath(agentPath: string): string | null;
+}
+
+/** Options for `Workspace.write`. */
+export interface WriteOptions {
+  /** Max bytes accepted; a longer stream is refused (`FileTooLargeError`). */
+  maxBytes?: number;
+  /** Create missing parent directories. @default true */
+  createParents?: boolean;
+  /** Replace an existing file. @default true */
+  overwrite?: boolean;
 }
 
 /** Configurable workspace limits (§5). */
@@ -134,6 +154,10 @@ export class NullWorkspace implements Workspace {
   }
 
   async open(relPath: string): Promise<FileContent> {
+    throw new WorkspaceUnavailableError(relPath);
+  }
+
+  async write(relPath: string): Promise<FileStat> {
     throw new WorkspaceUnavailableError(relPath);
   }
 

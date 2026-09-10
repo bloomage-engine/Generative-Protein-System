@@ -12,10 +12,17 @@
  * Read-only in v1 (`write` arrives with the upload path).
  */
 import { createReadStream, type Stats } from "node:fs";
-import { lstat, readdir, realpath } from "node:fs/promises";
-import { join, posix, resolve, sep } from "node:path";
+import { lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promises";
+import { dirname, join, posix, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
-import type { DirListing, Entry, FileContent, FileStat, Workspace } from "@science-studio/transport";
+import type {
+  DirListing,
+  Entry,
+  FileContent,
+  FileStat,
+  Workspace,
+  WriteOptions,
+} from "@science-studio/transport";
 import { mimeFor } from "./mime.js";
 import {
   FileTooLargeError,
@@ -102,6 +109,88 @@ export class FsWorkspace implements Workspace {
     return rel === "" ? this.agentRoot : posix.join(this.agentRoot, rel);
   }
 
+  /**
+   * Write a file. The bytes land in a temporary sibling first and are renamed on
+   * success, so an over-cap or failed upload never truncates an existing file.
+   */
+  async write(
+    relPath: string,
+    data: Uint8Array | ReadableStream<Uint8Array>,
+    opts: WriteOptions = {},
+  ): Promise<FileStat> {
+    const rel = normalizeWorkspacePath(relPath);
+    if (rel === "") throw new WorkspacePathError("write requires a file path");
+
+    const rootReal = await this.rootReal();
+    const abs = resolve(rootReal, rel);
+    await this.prepareParent(abs, rel, opts.createParents ?? true);
+
+    const existing = await lstatOrNull(abs);
+    if (existing?.isSymbolicLink()) {
+      throw new WorkspaceEscapeError(`symlinks are not allowed (${rel})`);
+    }
+    if (existing && opts.overwrite === false) {
+      throw new WorkspacePathError(`already exists: ${rel}`);
+    }
+
+    const temporary = `${abs}.upload-${process.pid}-${Date.now().toString(36)}`;
+    try {
+      const handle = await open(temporary, "w");
+      try {
+        let written = 0;
+        for await (const chunk of chunksOf(data)) {
+          written += chunk.byteLength;
+          if (opts.maxBytes !== undefined && written > opts.maxBytes) {
+            throw new FileTooLargeError(rel, written, opts.maxBytes);
+          }
+          await handle.write(chunk);
+        }
+      } finally {
+        await handle.close();
+      }
+      await rename(temporary, abs);
+    } catch (err) {
+      await rm(temporary, { force: true }).catch(() => {});
+      throw err;
+    }
+    return this.stat(rel);
+  }
+
+  /** realpath the root (it may itself be a symlink, e.g. a macOS tmp dir). */
+  private async rootReal(): Promise<string> {
+    try {
+      return await realpath(this.root);
+    } catch {
+      throw new WorkspaceNotFoundError("");
+    }
+  }
+
+  /**
+   * Ensure the target's parent exists and stays inside the root. The parent is
+   * `realpath`'d AFTER creation, so a symlinked component that escapes is caught
+   * even though the file itself does not exist yet.
+   */
+  private async prepareParent(abs: string, rel: string, create: boolean): Promise<void> {
+    const parent = dirname(abs);
+    const rootReal = await this.rootReal();
+    if (create) {
+      try {
+        await mkdir(parent, { recursive: true });
+      } catch {
+        /* a racing creator is fine; the containment check below decides */
+      }
+    }
+    let parentReal: string;
+    try {
+      parentReal = await realpath(parent);
+    } catch {
+      throw new WorkspaceNotFoundError(rel);
+    }
+    if (parentReal !== rootReal && !parentReal.startsWith(rootReal + sep)) {
+      throw new WorkspaceEscapeError(rel);
+    }
+  }
+
   toWorkspacePath(agentPath: string): string | null {
     if (typeof agentPath !== "string" || agentPath.length === 0) return null;
     if (agentPath === this.agentRoot) return "";
@@ -151,4 +240,33 @@ function compareEntries(a: Entry, b: Entry): number {
   const bl = b.name.toLowerCase();
   if (al !== bl) return al < bl ? -1 : 1;
   return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+}
+
+/** `lstat` that reports a missing path as null instead of throwing. */
+async function lstatOrNull(abs: string): Promise<Stats | null> {
+  try {
+    return await lstat(abs);
+  } catch {
+    return null;
+  }
+}
+
+/** Normalize bytes or a web stream into an async chunk sequence. */
+async function* chunksOf(
+  data: Uint8Array | ReadableStream<Uint8Array>,
+): AsyncGenerator<Uint8Array> {
+  if (data instanceof Uint8Array) {
+    if (data.byteLength > 0) yield data;
+    return;
+  }
+  const reader = data.getReader();
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      if (value && value.byteLength > 0) yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }

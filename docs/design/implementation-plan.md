@@ -138,9 +138,12 @@ workspace). It moves to Phase 2.
     reference), with the directive stripped from the agent-facing text. The
     composer `@` picker is `useWorkspaceMentions` (transport-client), built on
     assistant-ui's `unstable_useMentionAdapter` + `TriggerPopover.Directive`.
-12. ⬜ `Workspace.write` + `POST /api/workspace/upload` (multipart), enforcing
-    `maxUploadBytes` (413) and consulting `QuotaPolicy`; an upload lands in the
-    workspace and then travels as an ordinary reference.
+12. 🟡 `Workspace.write` ✅ (bytes or a stream; temp-sibling + rename so a
+    failed/over-cap upload never truncates; containment checked on the created
+    parent; `maxBytes`/`createParents`/`overwrite` options) plus conformance
+    coverage. Remaining: `POST /api/workspace/upload` (raw body at
+    `application/octet-stream`, `?path=`), enforcing `maxUploadBytes` (413) and
+    consulting `QuotaPolicy`, returning the `AttachmentRef`.
 13. ✅ Per-session run lock (a second concurrent run is refused with 409, so
     `Transcript.attachFlow` can never overwrite a live flow) and
     `POST /api/transport/{abort,approve}` — `/approve` answers 501 when the

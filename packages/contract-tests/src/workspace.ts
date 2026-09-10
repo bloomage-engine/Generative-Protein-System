@@ -24,6 +24,8 @@ export interface WorkspaceFixture {
   missing: string;
   /** A symlink whose target lies outside the root, when the impl can make one. */
   escapingSymlink?: string;
+  /** A path the impl MAY write to, when it supports `write` at all. */
+  writable?: { path: string; content: string };
 }
 
 export interface WorkspaceUnderTest {
@@ -118,6 +120,19 @@ export function testWorkspace(
     await withWorkspace(async ({ workspace, fixture }) => {
       if (!fixture.escapingSymlink) return; // impl cannot create symlinks
       await assert.rejects(() => workspace.open(fixture.escapingSymlink!), WorkspacePathError);
+    });
+  });
+
+  test(`${name}: writes what it can read back`, async () => {
+    await withWorkspace(async ({ workspace, fixture }) => {
+      if (!fixture.writable) return; // read-only implementation
+      const { path, content } = fixture.writable;
+      const stat = await workspace.write(path, new TextEncoder().encode(content));
+      assert.equal(stat.kind, "file");
+      assert.equal(stat.size, Buffer.byteLength(content));
+      const written = await workspace.open(path);
+      assert.equal(await new Response(written.body).text(), content);
+      await assert.rejects(() => workspace.write(path, new Uint8Array(16), { maxBytes: 4 }));
     });
   });
 }

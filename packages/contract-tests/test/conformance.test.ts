@@ -58,6 +58,7 @@ testWorkspace("FsWorkspace", async () => {
       textFile: { path: "hello.txt", content: "hello contract\n", mime: "text/plain" },
       missing: "nope.txt",
       escapingSymlink: "escape.txt",
+      writable: { path: "written/hello.txt", content: "written contract\n" },
     },
     dispose: async () => {
       await rm(root, { recursive: true, force: true });

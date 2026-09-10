@@ -20,6 +20,9 @@ const stubWorkspace: Workspace = {
   open: async () => {
     throw new Error("not used");
   },
+  write: async () => {
+    throw new Error("not used");
+  },
   toAgentPath: (relPath: string) => (relPath ? `${AGENT_ROOT}/${relPath}` : AGENT_ROOT),
   toWorkspacePath: () => null,
 };

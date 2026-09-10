@@ -175,3 +175,80 @@ test("toAgentPath / toWorkspacePath round-trip and refuse paths outside the root
   assert.equal(ws.toWorkspacePath(`${AGENT_ROOT}-sibling/x`), null);
   assert.equal(ws.toWorkspacePath(""), null);
 });
+
+test("write stores bytes (creating parents) and returns the new stat", async () => {
+const { root, dispose } = await makeFixture();
+try {
+  const ws = workspaceFor(root);
+  const bytes = new TextEncoder().encode("hello upload\n");
+  const stat = await ws.write("uploads/2026/new.txt", bytes);
+  assert.equal(stat.kind, "file");
+  assert.equal(stat.size, bytes.byteLength);
+  const content = await ws.open("uploads/2026/new.txt");
+  assert.equal(await new Response(content.body).text(), "hello upload\n");
+} finally {
+  await dispose();
+}
+});
+
+test("write streams bytes", async () => {
+const { root, dispose } = await makeFixture();
+try {
+  const ws = workspaceFor(root);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode("chunk one "));
+      controller.enqueue(new TextEncoder().encode("chunk two"));
+      controller.close();
+    },
+  });
+  await ws.write("streamed.txt", stream);
+  assert.equal(await new Response((await ws.open("streamed.txt")).body).text(), "chunk one chunk two");
+} finally {
+  await dispose();
+}
+});
+
+test("an over-cap write is refused and never truncates the existing file", async () => {
+const { root, dispose } = await makeFixture();
+try {
+  const ws = workspaceFor(root);
+  await ws.write("data.csv", new TextEncoder().encode("keep me"));
+
+  const oversized = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(64));
+      controller.close();
+    },
+  });
+  await assert.rejects(() => ws.write("data.csv", oversized, { maxBytes: 8 }), FileTooLargeError);
+
+  assert.equal(await new Response((await ws.open("data.csv")).body).text(), "keep me");
+  const listing = await ws.list();
+  assert.ok(
+    !listing.entries.some((entry) => entry.name.includes(".upload-")),
+    "a failed upload must leave no temporary file behind",
+  );
+} finally {
+  await dispose();
+}
+});
+
+test("write refuses escaping paths, the root itself, and overwrite:false", async () => {
+const { root, dispose } = await makeFixture();
+try {
+  const ws = workspaceFor(root);
+  await assert.rejects(() => ws.write("../evil.txt", new Uint8Array([1])), WorkspacePathError);
+  await assert.rejects(() => ws.write("/abs.txt", new Uint8Array([1])), WorkspacePathError);
+  await assert.rejects(() => ws.write("", new Uint8Array([1])), WorkspacePathError);
+
+  await ws.write("once.txt", new TextEncoder().encode("first"));
+  await assert.rejects(
+    () => ws.write("once.txt", new TextEncoder().encode("second"), { overwrite: false }),
+    WorkspacePathError,
+  );
+  assert.equal(await new Response((await ws.open("once.txt")).body).text(), "first");
+} finally {
+  await dispose();
+}
+});
