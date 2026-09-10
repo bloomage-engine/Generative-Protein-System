@@ -41,6 +41,11 @@ export interface AttachmentRef {
   size?: number;
   /** Base64 payload for `kind: "upload"`. */
   data?: string;
+  /**
+   * For a workspace reference: whether the path names a directory. A directory
+   * mention stays a reference (`@analysis/`) — never expanded into its files.
+   */
+  entryKind?: "file" | "dir";
 }
 
 export type MessagePart =

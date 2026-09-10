@@ -26,9 +26,13 @@ export function renderAttachments(
   const lines = attachments.map((attachment) => {
     if (attachment.kind === "workspace" && attachment.path) {
       const agentPath = toAgentPath(attachment.path);
-      return attachment.name && attachment.name !== agentPath
-        ? `- ${agentPath} (${attachment.name})`
-        : `- ${agentPath}`;
+      const suffix =
+        attachment.entryKind === "dir"
+          ? " (directory)"
+          : attachment.name && attachment.name !== agentPath
+            ? ` (${attachment.name})`
+            : "";
+      return `- ${agentPath}${suffix}`;
     }
     // Not in the workspace yet — the file service has to write it first.
     return `- ${attachment.name} (not yet in the workspace)`;
@@ -58,6 +62,8 @@ export function userMessageParts(
   const parts: MessagePart[] = [{ type: "text", text: content }];
   for (const attachment of attachments ?? []) {
     if (attachment.kind !== "workspace" || !attachment.path) continue;
+    // A directory stays a reference: it gets no preview chip.
+    if (attachment.entryKind === "dir") continue;
     parts.push({
       type: "file",
       path: attachment.path,
@@ -68,4 +74,67 @@ export function userMessageParts(
     });
   }
   return parts;
+}
+
+// -- Mentions ---------------------------------------------------------------
+
+/** A mention directive lifted out of composer text. */
+export interface MentionRef {
+  type: string;
+  label: string;
+  id: string;
+}
+
+/**
+ * The directive types this module understands. Everything else (a runtime's
+ * own directive types) is left in the text untouched.
+ */
+const WORKSPACE_MENTION_TYPES = new Set(["file", "directory"]);
+
+/**
+ * Split `:type[label]{name=id}` mention directives out of composer text.
+ *
+ * The composer serializes an `@` pick via assistant-ui's directive formatter;
+ * these directives are the wire form of a mention, so parsing them here is what
+ * turns `@analysis/plot.png` into an `AttachmentRef`. Returns the remaining
+ * text (recognized directives removed, runs of spaces collapsed) plus the
+ * mentions, in order.
+ */
+export function parseWorkspaceMentions(text: string): {
+  text: string;
+  mentions: MentionRef[];
+} {
+  const mentions: MentionRef[] = [];
+  if (!text.includes(":")) return { text, mentions };
+
+  // Same grammar as assistant-ui's `unstable_defaultDirectiveFormatter`.
+  const directive = /:([\w-]{1,64})\[([^\]\n]{1,1024})\](?:\{name=([^}\n]{1,1024})\})?/gu;
+  let remaining = "";
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(directive)) {
+    const type = match[1]!;
+    if (!WORKSPACE_MENTION_TYPES.has(type)) continue;
+    const index = match.index!;
+    remaining += text.slice(lastIndex, index);
+    mentions.push({ type, label: match[2]!, id: match[3] ?? match[2]! });
+    lastIndex = index + match[0].length;
+  }
+  remaining += text.slice(lastIndex);
+
+  // No recognized directive: leave the text EXACTLY as it was (do not collapse
+  // or trim a message the user wrote).
+  if (mentions.length === 0) return { text, mentions };
+
+  return { text: remaining.replace(/[ \t]{2,}/g, " ").trim(), mentions };
+}
+
+/** Turn lifted mentions into workspace references. */
+export function attachmentsFromMentions(mentions: readonly MentionRef[]): AttachmentRef[] {
+  return mentions.map((mention) => ({
+    kind: "workspace",
+    path: mention.id,
+    name: mention.label,
+    entryKind: mention.type === "directory" ? "dir" : "file",
+  }));
 }

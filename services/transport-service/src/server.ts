@@ -22,6 +22,8 @@ import {
   WorkspaceNotFoundError,
   WorkspacePathError,
   WorkspaceUnavailableError,
+  attachmentsFromMentions,
+  parseWorkspaceMentions,
 } from "@science-studio/transport";
 import type { Backend, CorsConfig } from "./composition.js";
 import { encodeOp, parseClaimedState, WireOpsBuilder } from "./wire.js";
@@ -281,13 +283,18 @@ function normalizeCommands(cmds: unknown[]): TransportCommand[] {
     if (cmd.type === "add-message") {
       const msg = (cmd.message ?? {}) as Record<string, unknown>;
       const parts = Array.isArray(msg.parts) ? (msg.parts as unknown[]) : undefined;
-      const attachments = parts ? attachmentsFromParts(parts) : [];
+      // `@` mentions reach us as directive text; file parts arrive as parts.
+      const mention = parseWorkspaceMentions(extractText(msg.content ?? parts));
+      const attachments = [
+        ...(parts ? attachmentsFromParts(parts) : []),
+        ...attachmentsFromMentions(mention.mentions),
+      ];
       return {
         type: "add-message",
         message: {
           id: typeof msg.id === "string" ? msg.id : `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           role: msg.role === "assistant" ? "assistant" : "user",
-          content: extractText(msg.content ?? parts),
+          content: mention.text,
           ...(attachments.length > 0 ? { attachments } : {}),
         },
       } satisfies TransportCommand;

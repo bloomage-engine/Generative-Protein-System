@@ -135,3 +135,55 @@ test("a text-only message carries no attachments key", async () => {
   assert.equal(command.message.content, "hi");
   assert.equal(command.message.attachments, undefined);
 });
+
+test("an @-mention directive becomes a workspace attachment and leaves the text clean", async () => {
+  const seen = { commands: [] as TransportCommand[] };
+  await postWithAdapter(recordingAdapter(seen), {
+    commands: [
+      {
+        type: "add-message",
+        message: {
+          id: "u4",
+          role: "user",
+          parts: [
+            {
+              type: "text",
+              text: "compare :file[data.csv]{name=data.csv} with :file[ctrl.csv]{name=ctrl.csv}",
+            },
+          ],
+        },
+      },
+    ],
+    state: claimedState,
+  });
+
+  const command = seen.commands[0] as Extract<TransportCommand, { type: "add-message" }>;
+  assert.equal(command.message.content, "compare with", "directives must not reach the agent");
+  assert.deepEqual(command.message.attachments, [
+    { kind: "workspace", path: "data.csv", name: "data.csv", entryKind: "file" },
+    { kind: "workspace", path: "ctrl.csv", name: "ctrl.csv", entryKind: "file" },
+  ]);
+});
+
+test("a directory mention stays a reference, never expanded", async () => {
+  const seen = { commands: [] as TransportCommand[] };
+  await postWithAdapter(recordingAdapter(seen), {
+    commands: [
+      {
+        type: "add-message",
+        message: {
+          id: "u5",
+          role: "user",
+          parts: [{ type: "text", text: "look in :directory[analysis]{name=analysis}" }],
+        },
+      },
+    ],
+    state: claimedState,
+  });
+
+  const command = seen.commands[0] as Extract<TransportCommand, { type: "add-message" }>;
+  assert.equal(command.message.content, "look in");
+  assert.deepEqual(command.message.attachments, [
+    { kind: "workspace", path: "analysis", name: "analysis", entryKind: "dir" },
+  ]);
+});
