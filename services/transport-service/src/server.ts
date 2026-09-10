@@ -53,6 +53,11 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     request.principal = principal;
   });
 
+  // One in-flight run per session. `Transcript.attachFlow` overwrites the
+  // current flow, so two concurrent runs on the same session would interleave
+  // and corrupt both streams — refuse the second instead.
+  const activeRuns = new Set<string>();
+
   // -- Conversation path -----------------------------------------------------
   app.post("/api/transport", async (request, reply) => {
     const principal = request.principal!;
@@ -63,6 +68,14 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     };
     const commands = normalizeCommands(body.commands ?? []);
     const environment = await backend.environments.acquire(principal, body.threadId ?? null);
+
+    const runKey = `${principal.tenant}:${environment.sessionKey}`;
+    if (activeRuns.has(runKey)) {
+      return reply
+        .code(409)
+        .send({ error: "a run is already in flight for this session" });
+    }
+    activeRuns.add(runKey);
 
     reply.hijack();
     reply.raw.writeHead(200, { ...sseHeaders(), ...corsHeaders(backend.cors) });
@@ -85,7 +98,40 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       // The client's import only settles on [DONE]; always terminate.
       reply.raw.write("data: [DONE]\n\n");
       reply.raw.end();
+      activeRuns.delete(runKey);
     }
+  });
+
+  // -- Run control -----------------------------------------------------------
+  app.post("/api/transport/abort", async (request, reply) => {
+    const body = (request.body ?? {}) as { threadId?: string | null; reason?: string };
+    const environment = await backend.environments.acquire(request.principal!, body.threadId ?? null);
+    environment.adapter.abort(body.reason);
+    return { ok: true };
+  });
+
+  app.post("/api/transport/approve", async (request, reply) => {
+    const body = (request.body ?? {}) as {
+      threadId?: string | null;
+      approvalId?: string;
+      decision?: "approve" | "reject";
+    };
+    if (!body.approvalId || (body.decision !== "approve" && body.decision !== "reject")) {
+      return reply
+        .code(400)
+        .send({ error: "approvalId and decision (approve|reject) are required" });
+    }
+    const environment = await backend.environments.acquire(request.principal!, body.threadId ?? null);
+    const adapter = environment.adapter;
+    // The adapter's method IS the capability; the conformance suite pins that it
+    // agrees with the declared `capabilities.approvals`.
+    if (typeof adapter.approve !== "function") {
+      return reply
+        .code(501)
+        .send({ error: `runtime "${adapter.runtime}" has no approval surface` });
+    }
+    adapter.approve(body.approvalId, body.decision);
+    return { ok: true };
   });
 
   // -- Runtime command catalog (slash menu, docs/adr/0003) -------------------

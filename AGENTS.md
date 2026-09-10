@@ -144,6 +144,12 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 - Service-adjacent verification without the browser:
   `curl -sN -X POST http://localhost:3001/api/transport -H 'content-type: application/json' -d '{"commands":[{"type":"add-message","message":{"role":"user","parts":[{"type":"text","text":"hi"}]}}]}'`
   — with a live gateway this streams real frames and must terminate with `[DONE]`.
+- **One in-flight run per session.** A second `POST /api/transport` for the same
+  session while one is running is refused with **409**: `Transcript.attachFlow`
+  overwrites the current flow, so concurrent runs would corrupt both streams.
+  Run control reaches the adapter through `POST /api/transport/abort` and
+  `POST /api/transport/approve`; `/approve` answers **501** when the runtime has
+  no approval surface (`RuntimeAdapter.approve` is optional).
 
 ## Architecture rules
 

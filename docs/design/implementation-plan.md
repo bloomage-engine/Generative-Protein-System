@@ -133,8 +133,10 @@ workspace). It moves to Phase 2.
 12. ⬜ `Workspace.write` + `POST /api/workspace/upload` (multipart), enforcing
     `maxUploadBytes` (413) and consulting `QuotaPolicy`; an upload lands in the
     workspace and then travels as an ordinary reference.
-13. ⬜ Per-session run lock; `POST /api/transport/abort` + `/approve`, the latter
-    gated on `capabilities.approvals`.
+13. ✅ Per-session run lock (a second concurrent run is refused with 409, so
+    `Transcript.attachFlow` can never overwrite a live flow) and
+    `POST /api/transport/{abort,approve}` — `/approve` answers 501 when the
+    adapter has no approval surface.
 
 ### Phase 3 — enterprise module (private repo, later)
 
