@@ -97,7 +97,7 @@ test("run() streams user + assistant deltas, persists a Run, and writes the mirr
   const client = new FakeDshClient((_sid, _text) => completedReply("am1", "Hello from dsh."));
   const adapter = new DshRuntimeAdapter({ createClient: () => client, transcriptDir: dir });
   try {
-    await adapter.init({ gateway: { url: "", token: "" }, recordStore: store, config: {} });
+    await adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
     const deltas = await collect(adapter.run(session(), [
       { type: "add-message", message: { id: "u1", role: "user", content: "hi" } },
     ]));
@@ -141,7 +141,7 @@ test("a fresh adapter instance cold-starts from the mirror and reconciles histor
     transcriptDir: dir,
   });
   try {
-    await adapter1.init({ gateway: { url: "", token: "" }, recordStore: store, config: {} });
+    await adapter1.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
     await collect(adapter1.run(session(), [
       { type: "add-message", message: { id: "u1", role: "user", content: "hi" } },
     ]));
@@ -156,7 +156,7 @@ test("a fresh adapter instance cold-starts from the mirror and reconciles histor
       createClient: () => new FakeDshClient(() => []),
       transcriptDir: dir,
     });
-    await adapter2.init({ gateway: { url: "", token: "" }, recordStore: store2, config: {} });
+    await adapter2.init({ binding: { runtime: "dsh", config: {} }, recordStore: store2 });
     const deltas = await collect(adapter2.run(session(), []));
     const reconcile = deltas.find((d) => d.type === "reconcile") as
       | { messages: { id: string; role: string }[] }
@@ -178,7 +178,7 @@ test("a persisted-but-unresumable session falls back to a fresh harness id and l
   const client = new StaleSessionClient();
   const adapter = new DshRuntimeAdapter({ createClient: () => client, transcriptDir: dir });
   try {
-    await adapter.init({ gateway: { url: "", token: "" }, recordStore: store, config: {} });
+    await adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
 
     // First run: the plain session id is rejected (persisted by an earlier
     // runtime); the adapter must mint a fresh id and retry so the turn settles
@@ -230,7 +230,7 @@ test("a turn/end reason of error settles the session to error and persists an er
   ]);
   const adapter = new DshRuntimeAdapter({ createClient: () => client, transcriptDir: dir });
   try {
-    await adapter.init({ gateway: { url: "", token: "" }, recordStore: store, config: {} });
+    await adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
     const deltas = await collect(adapter.run(session(), [
       { type: "add-message", message: { id: "u1", role: "user", content: "hi" } },
     ]));

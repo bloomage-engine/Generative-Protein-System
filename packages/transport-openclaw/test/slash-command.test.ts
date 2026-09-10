@@ -117,7 +117,7 @@ async function makeAdapter(opts: {
     },
   });
   await adapter.init({
-    gateway: { url: "ws://fake", token: "token" },
+    binding: { runtime: "openclaw", config: { url: "ws://fake", token: "token" } },
     recordStore: record.store,
   });
   return { adapter, gw: captured!, runs: record.runs };
@@ -319,6 +319,6 @@ test("listCommands degrades to an empty catalog when the gateway request fails",
       return gw;
     },
   });
-  await adapter.init({ gateway: { url: "ws://fake", token: "token" }, recordStore: record.store });
+  await adapter.init({ binding: { runtime: "openclaw", config: { url: "ws://fake", token: "token" } }, recordStore: record.store });
   assert.deepEqual(await adapter.listCommands(), []);
 });

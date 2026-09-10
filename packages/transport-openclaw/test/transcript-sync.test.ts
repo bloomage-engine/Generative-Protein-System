@@ -79,7 +79,7 @@ test("run() re-syncs the canonical transcript with gateway history after a remot
     createGateway: scriptedGateway(() => gatewayHistory),
   });
   await adapter.init({
-    gateway: { url: "ws://fake", token: "token" },
+    binding: { runtime: "openclaw", config: { url: "ws://fake", token: "token" } },
     recordStore: noopRecordStore,
   });
 
@@ -108,7 +108,7 @@ test("run() does not wipe a lone never-persisted message when the gateway histor
     createGateway: scriptedGateway(() => gatewayHistory, true), // chat.send always fails
   });
   await adapter.init({
-    gateway: { url: "ws://fake", token: "token" },
+    binding: { runtime: "openclaw", config: { url: "ws://fake", token: "token" } },
     recordStore: noopRecordStore,
   });
 

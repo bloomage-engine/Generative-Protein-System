@@ -4,309 +4,100 @@ import "dotenv/config";
  * Backend assistant-transport service.
  *
  * Speaks assistant-ui's `useAssistantTransportRuntime` wire protocol to the
- * frontend (command-in / state-snapshot-out) and delegates the actual agent
- * execution to a registered `RuntimeAdapter`. The frontend never changes when
- * the runtime swaps (see docs/adr/0001).
+ * frontend (command-in / state-snapshot-out) and delegates execution to a
+ * registered `RuntimeAdapter`. The frontend never changes when the runtime
+ * swaps (docs/adr/0001); the runtime is selected by configuration through the
+ * factory registry, so no core package statically imports a runtime.
+ *
+ * Deployment mode is answered ONLY in `createBackend()` (composition.ts):
+ * single-user by default, or a private enterprise module when configured.
  */
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { CommandDescriptor, RecordStoreLike, RuntimeAdapter, RuntimeInitOptions, SessionState, TransportCommand } from "@science-studio/transport";
-import { createInMemoryRecordStore, type Artifact, type ArtifactKind, type RecordStore } from "@science-studio/record";
-import type { Session } from "@science-studio/record";
-import { OpenClawRuntimeAdapter } from "@science-studio/transport-openclaw";
-import { DshRuntimeAdapter } from "@science-studio/transport-dsh";
-import { encodeOp, parseClaimedState, WireOpsBuilder, type WireOp } from "./wire.js";
+import type { FastifyInstance } from "fastify";
+import { createInMemoryRecordStore, type RecordStore } from "@science-studio/record";
+import {
+  LocalEnvironmentProvider,
+  LocalPrincipalResolver,
+  type RuntimeAdapter,
+} from "@science-studio/transport";
+import {
+  createBackend,
+  localWorkspace,
+  resolveRuntimePlugins,
+  toRecordStoreLike,
+  type Backend,
+  type CorsConfig,
+} from "./composition.js";
+import { createServer } from "./server.js";
+
+export { createBackend, loadRuntimePlugins, localWorkspace, resolveRuntimePlugins, toRecordStoreLike } from "./composition.js";
+export type { Backend, CorsConfig, EnterpriseModule } from "./composition.js";
+export { createServer } from "./server.js";
 
 export interface TransportServiceOptions {
-  port?: number;
-  /** Registered runtime adapters, keyed by id. */
+  /** A ready backend (production path). */
+  backend?: Backend;
+  /**
+   * Example/test seam: launch with these already-constructed adapters, which
+   * the service initializes using each runtime's local binding. Prefer
+   * `backend` or `createBackend()` in new code.
+   */
   adapters?: RuntimeAdapter[];
-  /** Record store wired to persist Runs/Artifacts. */
   recordStore?: RecordStore;
+  cors?: CorsConfig;
 }
 
 /**
- * Resolve the runtime adapter for a session. The service is runtime-agnostic:
- * the caller registers the adapter(s); when none are given, one is chosen by
- * the `TRANSPORT_RUNTIME` env var (default: openclaw).
+ * Build the Fastify app. Kept as the single entry point so the examples and the
+ * service tests share exactly the wiring production uses.
  */
-function resolveAdapter(adapters: RuntimeAdapter[], _session: Session): RuntimeAdapter {
-  return adapters[0] ?? defaultAdapters()[0]!;
+export async function createTransportService(
+  options: TransportServiceOptions = {},
+): Promise<FastifyInstance> {
+  const backend = options.backend ?? (await backendFromAdapters(options));
+  return createServer(backend);
 }
 
-/**
- * Resolve the canonical session key for a request. The service is
- * runtime-agnostic: the SELECTED ADAPTER answers which threadId means which
- * session (`RuntimeAdapter.resolveSessionKey`); runtimes without a custom
- * namespace accept any non-empty threadId verbatim, and an absent or empty
- * id (the mount probe sends none) means the default session.
- */
-function sessionKeyFor(adapter: RuntimeAdapter, threadId: string | null): string {
-  const claimed = typeof threadId === "string" && threadId.length > 0 ? threadId : null;
-  if (typeof adapter.resolveSessionKey === "function") return adapter.resolveSessionKey(claimed);
-  return claimed ?? "default";
-}
-
-async function handleTransport(
-  req: IncomingMessage,
-  res: ServerResponse,
-  adapters: RuntimeAdapter[],
-): Promise<void> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
-  const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}") as {
-    commands?: unknown[];
-    /** The state the client claims to hold; the fold reconciles against it. */
-    state?: unknown;
-    threadId?: string | null;
-  };
-  const commands = normalizeCommands(body.commands ?? []);
-
-  res.writeHead(200, {
-    "content-type": "text/event-stream",
-    "cache-control": "no-cache",
-    connection: "keep-alive",
-    ...corsHeaders(),
-  });
-
-  // Fold each adapter delta into client-safe ops, reconciling against the
-  // client's claimed state (sent in `body.state`) so a fresh or reloaded
-  // client always converges to the canonical transcript.
-  const wire = new WireOpsBuilder(parseClaimedState(body));
-  const adapter = resolveAdapter(adapters, {} as Session);
-  const sessionKey = sessionKeyFor(adapter, body.threadId ?? null);
-  const session: SessionState = {
-    sessionId: sessionKey,
-    studyId: "study-1",
-    agentId: "main",
-    status: "idle",
-    messages: [],
-  };
-
-  for await (const delta of adapter.run(session, commands)) {
-    for (const op of wire.fold(delta)) {
-      res.write(encodeOp(op));
-    }
+/** Compatibility path: wrap caller-supplied adapters in a local backend. */
+async function backendFromAdapters(options: TransportServiceOptions): Promise<Backend> {
+  const adapters = options.adapters ?? [];
+  const first = adapters[0];
+  if (!first) {
+    throw new Error("createTransportService: pass a `backend`, or at least one adapter");
   }
-  res.write("data: [DONE]\n\n");
-  res.end();
-}
 
-/** The `threadId` a watch connection claims, or null (probe/mount sends none). */
-function watchThreadId(req: IncomingMessage): string | null {
-  try {
-    return new URL(req.url ?? "/api/transport/watch", "http://localhost").searchParams.get("threadId");
-  } catch {
-    return null;
-  }
-}
+  const env = process.env;
+  const plugins = await resolveRuntimePlugins(env);
+  const recordStore = toRecordStoreLike(options.recordStore ?? createInMemoryRecordStore());
+  const workspace = localWorkspace(env);
+  const capabilities = plugins.find((p) => p.runtime === first.runtime)?.factory.capabilities;
 
-/**
- * Command catalog endpoint (JSON). Delegates to the runtime adapter's
- * `listCommands()` (docs/adr/0003) so the frontend slash menu is driven by
- * the runtime's own catalog; adapters without a command surface report an
- * empty catalog and the client simply shows no menu.
- */
-async function handleCommands(
-  res: ServerResponse,
-  adapters: RuntimeAdapter[],
-): Promise<void> {
-  const adapter = resolveAdapter(adapters, {} as Session);
-  let commands: CommandDescriptor[] = [];
-  if (typeof adapter.listCommands === "function") {
+  for (const adapter of adapters) {
+    const plugin = plugins.find((p) => p.runtime === adapter.runtime);
+    // No plugin for this runtime: an empty binding is still valid for test
+    // doubles, whose init() ignores it.
+    const binding = plugin ? plugin.localBinding(env) : { runtime: adapter.runtime, config: {} };
     try {
-      commands = await adapter.listCommands();
+      await adapter.init({ binding, recordStore, workspace, env: { ...env } });
     } catch (err) {
-      console.error("[transport-service] commands.list failed", err);
+      console.error("[transport-service] adapter init failed", err);
     }
   }
-  res.writeHead(200, {
-    "content-type": "application/json",
-    "cache-control": "no-cache",
-    ...corsHeaders(),
-  });
-  res.end(JSON.stringify({ commands }));
-}
 
-/**
- * Standing watch endpoint (NDJSON, long-lived, NOT `[DONE]`-terminated). Pushes
- * the session's canonical `WatchSnapshot` on attach (baseline) and on each
- * coalesced settle, so an open browser can adopt remote assistant replies via
- * `importExternalState` without a request/response round-trip. The request-
- * response run channel (`POST /api/transport`) is untouched.
- */
-async function handleWatch(
-  req: IncomingMessage,
-  res: ServerResponse,
-  adapters: RuntimeAdapter[],
-): Promise<void> {
-  const adapter = resolveAdapter(adapters, {} as Session);
-  const sessionKey = sessionKeyFor(adapter, watchThreadId(req));
-  if (typeof adapter.subscribe !== "function") {
-    res.writeHead(400, { ...corsHeaders() }).end("adapter does not support watch");
-    return;
-  }
-
-  res.writeHead(200, {
-    "content-type": "application/x-ndjson",
-    "cache-control": "no-cache",
-    connection: "keep-alive",
-    ...corsHeaders(),
-  });
-  // Flush the baseline frame immediately (subscribe pushes it synchronously) so
-  // a fresh client converges before the first remote settle.
-  res.flushHeaders?.();
-
-  const unsub = adapter.subscribe(sessionKey, (snapshot) => {
-    if (res.destroyed || res.writableEnded) return;
-    try {
-      res.write(JSON.stringify(snapshot) + "\n");
-    } catch {
-      /* client hung up — the `close` handler below detaches the sink */
-    }
-  });
-  req.on("close", () => {
-    try {
-      unsub();
-    } catch {
-      /* never throw out of a server callback */
-    }
-  });
-}
-
-/** Narrow the authoritative record store to the runtime-agnostic adapter seam. */
-function toRecordStoreLike(store: RecordStore): RecordStoreLike {
   return {
-    addRun: async (run) => {
-      await store.addRun(run);
-    },
-    addArtifact: async (input) => {
-      const kind: ArtifactKind = (
-        ["dataset", "figure", "report", "code", "model", "other"] as const
-      ).includes(input.kind as ArtifactKind)
-        ? (input.kind as ArtifactKind)
-        : "other";
-      const artifact: Artifact = {
-        id: `art-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        runId: input.runId,
-        name: input.name,
-        kind,
-        location: input.location,
-        metadata: input.metadata,
-        createdAt: new Date().toISOString(),
-      };
-      await store.addArtifact(artifact);
-    },
+    principal: new LocalPrincipalResolver(),
+    environments: new LocalEnvironmentProvider({ adapter: first, workspace }),
+    cors: options.cors ?? { origin: true },
+    capabilities,
   };
-}
-
-/** Build the default adapter list when the caller registers none. */
-function defaultAdapters(): RuntimeAdapter[] {
-  return (process.env.TRANSPORT_RUNTIME ?? "openclaw") === "dsh"
-    ? [new DshRuntimeAdapter()]
-    : [new OpenClawRuntimeAdapter()];
-}
-
-export function createTransportService(opts: TransportServiceOptions = {}): ReturnType<typeof createServer> {
-  const adapters = opts.adapters && opts.adapters.length > 0 ? opts.adapters : defaultAdapters();
-  const adapt = async (a: RuntimeAdapter) => {
-    try {
-      await a.init({
-        gateway: {
-          url: process.env.OPENCLAW_GATEWAY_URL ?? "ws://127.0.0.1:18789",
-          token: process.env.OPENCLAW_GATEWAY_TOKEN ?? "",
-        },
-        recordStore: toRecordStoreLike(opts.recordStore ?? createInMemoryRecordStore()),
-        config: { ...process.env },
-      });
-    } catch (e) {
-      console.error("[transport-service] adapter init failed", e);
-    }
-  };
-  void Promise.all(adapters.map(adapt));
-
-  return createServer((req, res) => {
-    if (req.method === "OPTIONS") {
-      res.writeHead(204, { ...corsHeaders() }).end();
-      return;
-    }
-    if (req.method === "GET" && req.url === "/api/transport/commands") {
-      void handleCommands(res, adapters).catch((e) => {
-        console.error("[transport-service] commands error", e);
-        if (!res.headersSent) {
-          res.writeHead(500, { ...corsHeaders() });
-          res.end("commands error");
-        }
-      });
-      return;
-    }
-    if (req.method === "GET" && (req.url === "/api/transport/watch" || req.url?.startsWith("/api/transport/watch?"))) {
-      void handleWatch(req, res, adapters).catch((e) => {
-        console.error("[transport-service] watch error", e);
-        if (!res.headersSent) {
-          res.writeHead(500, { ...corsHeaders() });
-          res.end("watch error");
-        }
-      });
-      return;
-    }
-    if (req.method === "POST" && req.url === "/api/transport") {
-      void handleTransport(req, res, adapters).catch((e) => {
-        console.error("[transport-service] request error", e);
-        try {
-          res.writeHead(500, { ...corsHeaders() });
-          res.end("transport error");
-        } catch {
-          /* already closed */
-        }
-      });
-      return;
-    }
-    res.writeHead(404, { ...corsHeaders() }).end();
-  });
-}
-
-function corsHeaders(): Record<string, string> {
-  return {
-    "access-control-allow-origin": "*",
-    "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type",
-  };
-}
-
-/** Normalize assistant-ui transport commands into Science Studio commands. */
-function normalizeCommands(cmds: unknown[]): TransportCommand[] {
-  return cmds.map((c) => {
-    const cmd = (c ?? {}) as Record<string, unknown>;
-    if (cmd.type === "add-message") {
-      const msg = (cmd.message ?? {}) as Record<string, unknown>;
-      return {
-        type: "add-message",
-        message: {
-          id: typeof msg.id === "string" ? msg.id : `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          role: msg.role === "assistant" ? "assistant" : "user",
-          content: extractText(msg.content ?? msg.parts),
-        },
-      } satisfies TransportCommand;
-    }
-    return c as TransportCommand;
-  });
-}
-
-function extractText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((p) => (p && typeof p === "object" && typeof (p as { text?: unknown }).text === "string" ? (p as { text: string }).text : ""))
-      .join("");
-  }
-  return String(content ?? "");
 }
 
 // Start when run directly (npm run dev / start).
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
-  const server = createTransportService({ port: Number(process.env.PORT ?? 3001) });
-  server.listen(Number(process.env.PORT ?? 3001), () => {
-    console.log(`[transport-service] listening on http://localhost:${process.env.PORT ?? 3001}/api/transport`);
-  });
+  const port = Number(process.env.PORT ?? 3001);
+  const host = process.env.HOST ?? "127.0.0.1";
+  const backend = await createBackend();
+  const app = await createServer(backend);
+  await app.listen({ port, host });
+  console.log(`[transport-service] listening on http://localhost:${port}/api/transport`);
 }

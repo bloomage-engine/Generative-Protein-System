@@ -4,14 +4,17 @@ import {
   RunFlow,
   type RecordStoreLike,
   type RuntimeAdapter,
+  type RuntimeFactory,
   type RuntimeInitOptions,
   type SessionState,
   type StateDelta,
   type TransportCommand,
   type WatchSnapshot,
+  type Workspace,
 } from "@science-studio/transport";
 import type { Run } from "@science-studio/record";
 import { createDshTurnClient, type DshClientLaunchOptions, type DshTurnClient } from "./client.js";
+import { DSH_CAPABILITIES, parseDshBinding, type DshBinding } from "./binding.js";
 import { TranscriptMirror } from "./mirror.js";
 import { DshTranscript } from "./transcript.js";
 import { runOutput, runStatus, Turn } from "./turn.js";
@@ -80,7 +83,10 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private readonly transcriptDir: string;
   private client: DshTurnClient | null = null;
   private recordStore: RecordStoreLike | null = null;
-  private initConfig: Record<string, string | undefined> = {};
+  /** The session's workspace (seam, §5); used for attachment refs in Phase 2. */
+  private workspace: Workspace | null = null;
+  /** This adapter's parsed launch surface (private to the dsh binding). */
+  private binding: DshBinding = {};
   private transcripts = new Map<string, DshTranscript>();
   private mirror: TranscriptMirror | null = null;
   private ready: Promise<void> | null = null;
@@ -104,17 +110,24 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
 
   async init(opts: RuntimeInitOptions): Promise<void> {
     this.recordStore = opts.recordStore;
-    this.initConfig = opts.config ?? {};
-    const env = (key: string): string | undefined => opts.config?.[key] ?? process.env[key];
-    const profile = env("DSH_PROFILE") ?? DEFAULT_PROFILE;
-    const dshHome = env("DSH_HOME");
-    const cwd = env("DSH_WORKSPACE") ?? process.cwd();
-    const provider = env("DSH_PROVIDER") ?? DEFAULT_PROVIDER;
-    const model = env("DSH_MODEL") ?? DEFAULT_MODEL;
-    const maxTokensRaw = env("DSH_MAX_TOKENS");
-    const maxTokens = maxTokensRaw && /^\d+$/.test(maxTokensRaw) ? Number(maxTokensRaw) : undefined;
+    this.workspace = opts.workspace ?? null;
+    const binding = parseDshBinding(opts.binding);
+    this.binding = binding;
+
+    // The binding is the launch surface; process.env is a single-user fallback
+    // for keys the binding leaves unset.
+    const env = (key: string): string | undefined => process.env[key];
+    const profile = binding.profile ?? env("DSH_PROFILE") ?? DEFAULT_PROFILE;
+    const dshHome = binding.home ?? env("DSH_HOME");
+    const cwd = binding.workspace ?? env("DSH_WORKSPACE") ?? process.cwd();
+    const provider = binding.provider ?? env("DSH_PROVIDER") ?? DEFAULT_PROVIDER;
+    const model = binding.model ?? env("DSH_MODEL") ?? DEFAULT_MODEL;
+    const maxTokens = binding.maxTokens;
     const dir =
-      this.transcriptDir || env("DSH_TRANSCRIPT_DIR") || join(tmpdir(), "science-studio", "transcripts");
+      this.transcriptDir ||
+      binding.transcriptDir ||
+      env("DSH_TRANSCRIPT_DIR") ||
+      join(tmpdir(), "science-studio", "transcripts");
 
     this.client = this.createClient({ profile, dshHome, cwd, provider, model, maxTokens });
     this.mirror = new TranscriptMirror(dir);
@@ -318,11 +331,8 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     for (const flow of this.activeFlows.values()) flow.end();
   }
 
-  /** The SDK runtime has no approval surface — nothing to approve. */
-  approve(_approvalId: string, _decision: "approve" | "reject"): void {
-    // Intentionally empty: dsh's approval machinery is not part of the SDK
-    // profile (docs/adr/0004), so no approval-required delta can originate here.
-  }
+  // No `approve()`: the SDK runtime has no approval surface (docs/adr/0004), so
+  // the optional method is simply absent and `capabilities.approvals` is false.
 
   /**
    * The canonical session key a client `threadId` targets. Any stable id the
@@ -333,7 +343,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
    */
   resolveSessionKey(threadId: string | null): string {
     if (threadId !== null && !threadId.startsWith(ASSISTANT_UI_LOCAL_THREAD_PREFIX)) return threadId;
-    return this.initConfig.DSH_DEFAULT_SESSION ?? process.env.DSH_DEFAULT_SESSION ?? "default";
+    return this.binding.defaultSession ?? process.env.DSH_DEFAULT_SESSION ?? "default";
   }
 
   /**
@@ -397,3 +407,18 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     for (const sink of watchers) sink(snapshot);
   }
 }
+
+/**
+ * The dsh runtime factory — the ONLY registration surface the service needs.
+ * Adding or replacing a runtime never edits a core package (see
+ * docs/design/implementation-plan.md §5).
+ */
+export function createDshRuntimeFactory(): RuntimeFactory {
+  return {
+    runtime: "dsh",
+    capabilities: DSH_CAPABILITIES,
+    create: () => new DshRuntimeAdapter(),
+  };
+}
+
+export * from "./binding.js";

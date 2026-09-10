@@ -27,14 +27,15 @@ function makeAdapter(
 }
 
 async function withServer<T>(adapter: RuntimeAdapter, fn: (base: string) => Promise<T>): Promise<T> {
-  const server = createTransportService({ adapters: [adapter] });
-  await new Promise<void>((resolve) => server.listen(0, () => resolve()));
-  const addr = server.address() as AddressInfo;
+  const app = await createTransportService({ adapters: [adapter] });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const addr = app.server.address() as AddressInfo;
   const base = `http://127.0.0.1:${addr.port}`;
   try {
     return await fn(base);
   } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    app.server.closeAllConnections?.();
+    await app.close();
   }
 }
 

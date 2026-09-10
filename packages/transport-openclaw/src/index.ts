@@ -2,12 +2,15 @@ import type {
   CommandDescriptor,
   RecordStoreLike,
   RuntimeAdapter,
+  RuntimeFactory,
   RuntimeInitOptions,
+  RuntimePlugin,
   SessionState,
   StateDelta,
   TransportCommand,
   MessagePart,
   WatchSnapshot,
+  Workspace,
 } from "@science-studio/transport";
 import { RunFlow, Transcript } from "@science-studio/transport";
 import type { EventFrame } from "@openclaw/gateway-client/browser";
@@ -18,6 +21,7 @@ import {
   type GatewayCommandEntry,
 } from "./commands.js";
 import { createBackendGateway, type BackendGateway, type BackendGatewayOptions } from "./connection.js";
+import { OPENCLAW_CAPABILITIES, openClawLocalBinding, parseGatewayBinding, type GatewayBinding } from "./binding.js";
 import {
   mapChatEvent,
   mapThinkingEvent,
@@ -275,7 +279,10 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
   private readonly createGateway: (opts: BackendGatewayOptions) => BackendGateway;
   private gateway: BackendGateway | null = null;
   private recordStore: RecordStoreLike | null = null;
-  private initConfig: Record<string, string | undefined> = {};
+  /** The session's workspace (seam, §5); used for attachment refs in Phase 2. */
+  private workspace: Workspace | null = null;
+  /** Canonical session for thread ids the gateway does not namespace. */
+  private defaultSession: string | undefined;
   private transcripts = new Map<string, SessionTranscript>();
   private ready: Promise<void> | null = null;
   /** Standing watchers per session (the transport-service watch endpoint). */
@@ -297,10 +304,12 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
 
   async init(opts: RuntimeInitOptions): Promise<void> {
     this.recordStore = opts.recordStore;
-    this.initConfig = opts.config ?? {};
+    this.workspace = opts.workspace ?? null;
+    const gateway = parseGatewayBinding(opts.binding);
+    this.defaultSession = gateway.defaultSession;
     this.gateway = this.createGateway({
-      url: opts.gateway.url,
-      token: opts.gateway.token,
+      url: gateway.url,
+      token: gateway.token,
       version: CLIENT_VERSION,
     });
 
@@ -443,7 +452,7 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
    */
   resolveSessionKey(threadId: string | null): string {
     if (threadId !== null && threadId.startsWith("agent:")) return threadId;
-    return this.initConfig.OPENCLAW_DEFAULT_SESSION ?? process.env.OPENCLAW_DEFAULT_SESSION ?? "agent:main:main";
+    return this.defaultSession ?? process.env.OPENCLAW_DEFAULT_SESSION ?? "agent:main:main";
   }
 
   /**
@@ -660,3 +669,27 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
     }
   }
 }
+
+/**
+ * The openclaw runtime factory — the ONLY registration surface the service
+ * needs. Adding or replacing a runtime never edits a core package: the service
+ * registers factories from configuration (docs/design/implementation-plan.md §5).
+ */
+export function createOpenClawRuntimeFactory(): RuntimeFactory {
+  return {
+    runtime: "openclaw",
+    capabilities: OPENCLAW_CAPABILITIES,
+    create: () => new OpenClawRuntimeAdapter(),
+  };
+}
+
+/**
+ * The package's plugin export. The service dynamically imports runtime modules
+ * (by specifier) and collects `runtimePlugins` — no static dependency on this
+ * package, so adding/replacing a runtime never edits a core package.
+ */
+export const runtimePlugins: RuntimePlugin[] = [
+  { runtime: "openclaw", factory: createOpenClawRuntimeFactory(), localBinding: openClawLocalBinding },
+];
+
+export * from "./binding.js";

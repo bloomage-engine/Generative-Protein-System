@@ -7,7 +7,7 @@ import {
   useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown";
 import type { TextMessagePartProps } from "@assistant-ui/react";
-import { type FC } from "react";
+import { type ComponentProps, type FC } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
@@ -15,6 +15,8 @@ import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 import {
   MarkdownText as BaseMarkdownText,
+  resolveFileReference,
+  useWorkspaceOpen,
   type MarkdownComponents,
 } from "@science-studio/transport-client";
 
@@ -48,6 +50,43 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
         )}
       </TooltipIconButton>
     </div>
+  );
+};
+
+/**
+ * A markdown link that is workspace-aware: when the app provides an open-file
+ * handler and the href resolves to a workspace path, clicking opens it in the
+ * in-app viewer instead of navigating. Everything else stays a normal link.
+ */
+const WorkspaceAwareLink: FC<ComponentProps<"a">> = ({
+  className,
+  href,
+  children,
+  ...props
+}) => {
+  const onOpen = useWorkspaceOpen();
+  const ref = href ? resolveFileReference(href, {}) : null;
+  const classes = cn(
+    "aui-md-a text-primary hover:text-primary/80 underline underline-offset-2",
+    className,
+  );
+
+  if (ref && onOpen) {
+    return (
+      <button
+        type="button"
+        title={ref.workspacePath}
+        className={cn(classes, "cursor-pointer")}
+        onClick={() => onOpen(ref)}
+      >
+        {children}
+      </button>
+    );
+  }
+  return (
+    <a className={classes} href={href} {...props}>
+      {children}
+    </a>
   );
 };
 
@@ -115,15 +154,7 @@ const defaultComponents: MarkdownComponents = {
       {...props}
     />
   ),
-  a: ({ className, ...props }) => (
-    <a
-      className={cn(
-        "aui-md-a text-primary hover:text-primary/80 underline underline-offset-2",
-        className,
-      )}
-      {...props}
-    />
-  ),
+  a: WorkspaceAwareLink,
   blockquote: ({ className, ...props }) => (
     <blockquote
       className={cn(

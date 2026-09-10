@@ -38,7 +38,16 @@ export function partToContent(part: MessagePart): any {
       return base;
     }
     case "artifact":
-      return { type: "text", text: `[artifact: ${part.name}]` };
+      // Rendered by the app's `File` component (the thread maps the `file` part
+      // type onto it). `data` is the artifact id, so this is a chip with no
+      // download link — a workspace-backed `file` part (Phase 2) carries a path.
+      return {
+        type: "file",
+        filename: part.name,
+        mimeType: "application/octet-stream",
+        data: part.artifactId,
+        sourceType: "id",
+      };
   }
 }
 

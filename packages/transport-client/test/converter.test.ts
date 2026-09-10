@@ -58,12 +58,18 @@ test("tool-call with a result carries it; an error flag carries isError", () => 
   assert.equal(partToContent(withError).result, undefined);
 });
 
-test("artifact part degrades to a text placeholder", () => {
+test("artifact part becomes a file chip (rendered by the app's File component)", () => {
   const part: MessagePart = {
     type: "artifact",
     artifactId: "a1",
     name: "plot.png",
     kind: "image",
   };
-  assert.deepEqual(partToContent(part), { type: "text", text: "[artifact: plot.png]" });
+  assert.deepEqual(partToContent(part), {
+    type: "file",
+    filename: "plot.png",
+    mimeType: "application/octet-stream",
+    data: "a1",
+    sourceType: "id",
+  });
 });

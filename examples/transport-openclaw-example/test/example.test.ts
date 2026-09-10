@@ -10,7 +10,6 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Server } from "node:http";
 import {
   OpenClawRuntimeAdapter,
   type OpenClawRuntimeAdapterOptions,
@@ -115,17 +114,17 @@ async function bootExample(
   const adapter = new OpenClawRuntimeAdapter({
     createGateway: scriptedFactory(history, commandEntries),
   });
-  const server: Server = createTransportService({ adapters: [adapter] });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
+  const app = await createTransportService({ adapters: [adapter] });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const address = app.server.address();
   assert.ok(address && typeof address === "object", "server must be listening on a TCP port");
   return {
     base: `http://127.0.0.1:${address.port}`,
-    close: () => {
-      // The SSE endpoint sets `connection: keep-alive` — drop lingering
-      // sockets or server.close() waits for them and the test hangs.
-      server.closeAllConnections?.();
-      return new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
+    close: async () => {
+      // The SSE endpoint sets `connection: keep-alive`; drop lingering sockets
+      // or close() waits for them and the test hangs.
+      app.server.closeAllConnections?.();
+      await app.close();
     },
   };
 }

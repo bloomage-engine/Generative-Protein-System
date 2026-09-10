@@ -59,7 +59,7 @@ test("a warm attach pushes a baseline, then one push per settled run", async () 
   const client = new FakeDshClient(() => reply("am1", replyText));
   const adapter = new DshRuntimeAdapter({ createClient: () => client, transcriptDir: dir });
   try {
-    await adapter.init({ gateway: { url: "", token: "" }, recordStore: noRecordStore, config: {} });
+    await adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: noRecordStore });
     await collect(adapter.run(session(), [{ type: "add-message", message: { id: "u1", role: "user", content: "hi" } }]));
 
     // Warm attach: the baseline is pushed synchronously on subscribe.
@@ -91,7 +91,7 @@ test("a cold attach (restart, mirror on disk) baselines asynchronously from the 
       createClient: () => new FakeDshClient(() => reply("am1", "Hello from dsh.")),
       transcriptDir: dir,
     });
-    await adapter1.init({ gateway: { url: "", token: "" }, recordStore: noRecordStore, config: {} });
+    await adapter1.init({ binding: { runtime: "dsh", config: {} }, recordStore: noRecordStore });
     await collect(adapter1.run(session(), [{ type: "add-message", message: { id: "u1", role: "user", content: "hi" } }]));
 
     // Generation 2: brand-new adapter, no in-memory transcript — the watcher
@@ -100,7 +100,7 @@ test("a cold attach (restart, mirror on disk) baselines asynchronously from the 
       createClient: () => new FakeDshClient(() => []),
       transcriptDir: dir,
     });
-    await adapter2.init({ gateway: { url: "", token: "" }, recordStore: noRecordStore, config: {} });
+    await adapter2.init({ binding: { runtime: "dsh", config: {} }, recordStore: noRecordStore });
     const frames: WatchSnapshot[] = [];
     adapter2.subscribe("sess-1", (s) => frames.push(s));
     await tick(); // the mirror baseline is async
@@ -119,7 +119,7 @@ test("a watcher attached before any content receives the first settled run (no s
     transcriptDir: dir,
   });
   try {
-    await adapter.init({ gateway: { url: "", token: "" }, recordStore: noRecordStore, config: {} });
+    await adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: noRecordStore });
     const frames: WatchSnapshot[] = [];
     adapter.subscribe("sess-1", (s) => frames.push(s));
     await tick();

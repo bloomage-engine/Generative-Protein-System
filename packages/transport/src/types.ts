@@ -1,4 +1,6 @@
 import type { Id, Run } from "@science-studio/record";
+import type { RuntimeBinding } from "./runtime.js";
+import type { Workspace } from "./workspace.js";
 
 /**
  * The normalized session state that a runtime adapter owns and that the
@@ -138,8 +140,12 @@ export interface RuntimeAdapter {
   run(session: SessionState, commands: TransportCommand[]): AsyncIterable<StateDelta>;
   /** Abort the in-flight run, if any. */
   abort(reason?: string): void;
-  /** Resolve a pending approval. */
-  approve(approvalId: string, decision: "approve" | "reject"): void;
+  /**
+   * Resolve a pending approval. OPTIONAL: gate on `capabilities.approvals`
+   * (see `RuntimeCapabilities`) rather than forcing every non-approving runtime
+   * to write a no-op.
+   */
+  approve?(approvalId: string, decision: "approve" | "reject"): void;
   /** Reserved: Artifact capture, wired later. */
   onArtifact?(artifact: ArtifactInput): void;
   /**
@@ -179,22 +185,20 @@ export interface RuntimeAdapter {
 }
 
 export interface RuntimeInitOptions {
-  gateway: RuntimeConfig;
+  /**
+   * Opaque connection material for THIS adapter, produced by a sandbox provider
+   * (see `RuntimeBinding`). The shared seam never names a launch surface; the
+   * adapter validates `binding.config` against its own type.
+   */
+  binding: RuntimeBinding;
   recordStore: RecordStoreLike;
   /**
-   * Optional runtime-agnostic configuration bag (a service-provided env
-   * slice). Network runtimes (openclaw) read `gateway`; process runtimes
-   * (dsh: a spawned local harness) read their own keys here (e.g. `DSH_*`)
-   * because their launch surface is not a url/token pair. Keep adapter-
-   * specific keys out of the shared seam's own shape.
+   * Optional deployment env slice, generic to every runtime. A FALLBACK only —
+   * a runtime's launch surface belongs in its binding, not here.
    */
-  config?: Record<string, string | undefined>;
-}
-
-/** Runtime-agnostic connection config (bound per adapter). */
-export interface RuntimeConfig {
-  url: string;
-  token: string;
+  env?: Record<string, string | undefined>;
+  /** The session's workspace, for attachment refs and file-part mapping. */
+  workspace?: Workspace;
 }
 
 /** Narrow view of the record store an adapter uses to persist Runs/Artifacts. */

@@ -73,7 +73,7 @@ async function makeAdapter(
       return captured;
     },
   });
-  await adapter.init({ gateway: { url: "ws://fake", token: "token" }, recordStore: noopRecordStore });
+  await adapter.init({ binding: { runtime: "openclaw", config: { url: "ws://fake", token: "token" } }, recordStore: noopRecordStore });
   return { adapter, gw: captured! };
 }
 

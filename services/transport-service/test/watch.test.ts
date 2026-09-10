@@ -36,14 +36,17 @@ function makeFakeAdapter(): { adapter: RuntimeAdapter & { push(s: WatchSnapshot)
 
 async function withServer<T>(fn: (base: string, adapter: ReturnType<typeof makeFakeAdapter>["adapter"]) => Promise<T>): Promise<T> {
   const { adapter } = makeFakeAdapter();
-  const server = createTransportService({ adapters: [adapter] });
-  await new Promise<void>((resolve) => server.listen(0, () => resolve()));
-  const addr = server.address() as AddressInfo;
+  const app = await createTransportService({ adapters: [adapter] });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const addr = app.server.address() as AddressInfo;
   const base = `http://127.0.0.1:${addr.port}`;
   try {
     return await fn(base, adapter);
   } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    // The NDJSON watch response is keep-alive; drop lingering sockets so
+    // close() does not wait on them.
+    app.server.closeAllConnections?.();
+    await app.close();
   }
 }
 

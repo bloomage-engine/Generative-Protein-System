@@ -9,7 +9,6 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Server } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -122,15 +121,15 @@ async function bootExample(dir: string): Promise<{ base: string; close: () => Pr
     createClient: () => new ScriptedDshClient(),
     transcriptDir: dir,
   });
-  const server: Server = createTransportService({ adapters: [adapter] });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
+  const app = await createTransportService({ adapters: [adapter] });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const address = app.server.address();
   assert.ok(address && typeof address === "object", "server must be listening on a TCP port");
   return {
     base: `http://127.0.0.1:${address.port}`,
-    close: () => {
-      server.closeAllConnections?.();
-      return new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
+    close: async () => {
+      app.server.closeAllConnections?.();
+      await app.close();
     },
   };
 }

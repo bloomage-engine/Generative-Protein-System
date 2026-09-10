@@ -18,14 +18,13 @@ import { OpenClawRuntimeAdapter } from "@science-studio/transport-openclaw";
 import { createTransportService } from "@science-studio/transport-service";
 
 const adapter = new OpenClawRuntimeAdapter();
-const server = createTransportService({ adapters: [adapter] });
+const app = await createTransportService({ adapters: [adapter] });
 
 const port = Number(process.env.PORT ?? 3200);
-server.listen(port, () => {
-  console.log(
-    `[transport-openclaw-example] assistant-transport at http://localhost:${port}/api/transport`,
-  );
-  console.log(
-    `[transport-openclaw-example] gateway session: ${process.env.OPENCLAW_DEFAULT_SESSION ?? "agent:main:main"}`,
-  );
-});
+await app.listen({ port, host: "127.0.0.1" });
+console.log(
+  `[transport-openclaw-example] assistant-transport at http://localhost:${port}/api/transport`,
+);
+console.log(
+  `[transport-openclaw-example] gateway session: ${process.env.OPENCLAW_DEFAULT_SESSION ?? "agent:main:main"}`,
+);
