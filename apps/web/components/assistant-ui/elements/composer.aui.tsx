@@ -15,7 +15,7 @@ import { ComposerAddAttachment, ComposerAttachments } from "@/components/assista
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useRuntimeSlashMenu } from "@science-studio/transport-client";
+import { useRuntimeSlashMenu, useWorkspaceMentions } from "@science-studio/transport-client";
 import {
   AuiIf,
   ComposerPrimitive,
@@ -26,7 +26,9 @@ import {
   BrainIcon,
   CircleHelpIcon,
   CpuIcon,
+  FileIcon,
   FingerprintIcon,
+  FolderIcon,
   ListTreeIcon,
   MessageSquareTextIcon,
   MicIcon,
@@ -69,6 +71,7 @@ const COMMAND_ICONS: Record<string, LucideIcon> = {
  */
 export const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
   const slash = useRuntimeSlashMenu();
+  const mentions = useWorkspaceMentions();
 
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverRoot>
@@ -106,6 +109,50 @@ export const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
                           {item.description}
                         </span>
                       )}
+                    </ComposerPrimitive.Unstable_TriggerPopoverItem>
+                  );
+                })}
+              </div>
+            )}
+          </ComposerPrimitive.Unstable_TriggerPopoverItems>
+        </ComposerPrimitive.Unstable_TriggerPopover>
+      )}
+
+      {/* `@` workspace mentions: picking one inserts a directive chip, which the
+          service lifts back into a workspace AttachmentRef. */}
+      {mentions.enabled && (
+        <ComposerPrimitive.Unstable_TriggerPopover
+          char="@"
+          adapter={mentions.adapter}
+          aria-label="Workspace files"
+        >
+          <ComposerPrimitive.Unstable_TriggerPopover.Directive
+            formatter={mentions.directive.formatter}
+            onInserted={mentions.directive.onInserted}
+          />
+          <ComposerPrimitive.Unstable_TriggerPopoverItems>
+            {(items) => (
+              <div
+                className="bg-popover text-popover-foreground border-border/60 absolute bottom-full z-10 mb-2 max-h-80 w-80 overflow-y-auto rounded-2xl border p-1.5 shadow-xl"
+                data-slot="aui-composer-mention-menu"
+              >
+                {items.map((item, index) => {
+                  const isDir = item.type === "directory";
+                  const Icon = isDir ? FolderIcon : FileIcon;
+                  return (
+                    <ComposerPrimitive.Unstable_TriggerPopoverItem
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      className="data-highlighted:bg-accent flex w-full cursor-pointer items-center gap-2 rounded-xl px-2.5 py-2 text-start outline-none"
+                    >
+                      <Icon className="text-muted-foreground size-4 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">
+                        {item.label}
+                      </span>
+                      <span className="text-muted-foreground/60 shrink-0 font-mono text-[11px]">
+                        {isDir ? "dir" : "file"}
+                      </span>
                     </ComposerPrimitive.Unstable_TriggerPopoverItem>
                   );
                 })}

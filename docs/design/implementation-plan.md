@@ -128,16 +128,16 @@ workspace). It moves to Phase 2.
     (`path`/`name`) and assistant-ui's `FileMessagePart`
     (`filename`/`data`/`mimeType`). The converter also renders a `file` part as a
     chip carrying its workspace path.
-11. 🟡 Adapters render references: shared `renderAttachments` /
+11. ✅ Adapters render references: shared `renderAttachments` /
     `promptWithAttachments` / `userMessageParts` (transport) make a workspace
     attachment a `file` part on the echoed user message AND a path block in
     `chat.send` / the dsh prompt, mapped through `workspace.toAgentPath()`.
     Mentions: `parseWorkspaceMentions` reads assistant-ui's directive syntax
     (`:file[label]{name=id}`) out of composer text and `attachmentsFromMentions`
     turns them into workspace references (a `directory` mention stays a
-    reference), with the directive stripped from the agent-facing text.
-    Remaining: the composer `@` picker UI itself (assistant-ui's
-    `unstable_useMentionAdapter` + `TriggerPopover.Directive`).
+    reference), with the directive stripped from the agent-facing text. The
+    composer `@` picker is `useWorkspaceMentions` (transport-client), built on
+    assistant-ui's `unstable_useMentionAdapter` + `TriggerPopover.Directive`.
 12. ⬜ `Workspace.write` + `POST /api/workspace/upload` (multipart), enforcing
     `maxUploadBytes` (413) and consulting `QuotaPolicy`; an upload lands in the
     workspace and then travels as an ordinary reference.
