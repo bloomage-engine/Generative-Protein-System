@@ -1,7 +1,7 @@
 # Research Agent Framework — Implementation Plan
 
-Status: active — **Phase 0 implemented** (`npm run build` green; 113 tests
-across 7 suites green). Companion to [`research-agent-framework.md`](./research-agent-framework.md)
+Status: active — **Phases 0–2 implemented** (`npm run build` green; 191 tests
+across 9 suites green). Companion to [`research-agent-framework.md`](./research-agent-framework.md)
 (design rev 4) and [`research-agent-framework.zh.md`](./research-agent-framework.zh.md).
 
 Strategy: **single-user first, end to end.** Multi-user is never built now; it
@@ -151,14 +151,27 @@ workspace). It moves to Phase 2.
     `POST /api/transport/{abort,approve}` — `/approve` answers 501 when the
     adapter has no approval surface.
 
+### Phase 2.5 — record-backed identity — ✅ done
+
+14. ✅ `RecordStore` gains `addSession`/`getSession` (in-memory impl included).
+    `createSessionResolver` (`services/transport-service/src/sessions.ts`) treats
+    a runtime session key AS the `Session` id (1:1): first use mints the
+    `Session` — plus the default Study it hangs off, from
+    `PROJECT_ID`/`STUDY_ID`/`AGENT_BLUEPRINT_ID` — with concurrent first uses
+    de-duplicated. `POST /api/transport` resolves identity BEFORE taking the run
+    lock and builds `SessionState` from the record, so `persistRun` attributes
+    `Run.sessionId`/`agentId`/`taskId` correctly. `Backend.records` is the
+    authoritative store; `localBackend` and the `{ adapters }` compat path both
+    share the one instance with the adapter's `toRecordStoreLike` view.
+
 ### Phase 3 — enterprise module (private repo, later)
 
-14. `@acme/ss-enterprise`: `BearerPrincipalResolver` + `PrincipalDirectory`,
+15. `@acme/ss-enterprise`: `BearerPrincipalResolver` + `PrincipalDirectory`,
     `SecretStore`, `FleetSandboxProvider` + `SandboxRegistry`,
     `SchemaRecordStore`, `QuotaPolicy`, enterprise Fastify plugin; wired via
     `SS_ENTERPRISE_MODULE`.
-15. Control schema + migration runner; two-tier quotas.
-16. Origin-locked CORS; login gate + quota meters in the web UI slot.
+16. Control schema + migration runner; two-tier quotas.
+17. Origin-locked CORS; login gate + quota meters in the web UI slot.
 
 ## 5. Guardrails (CI)
 

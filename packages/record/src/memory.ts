@@ -1,4 +1,4 @@
-import type { Study, Id, Run, Artifact, Evidence, Conclusion } from "./types.js";
+import type { Study, Id, Run, Artifact, Evidence, Conclusion, Session } from "./types.js";
 import type { RecordStore } from "./index.js";
 
 /**
@@ -8,6 +8,7 @@ import type { RecordStore } from "./index.js";
  */
 export function createInMemoryRecordStore(): RecordStore {
   const studies = new Map<Id, Study>();
+  const sessions = new Map<Id, Session>();
   const runs = new Map<Id, Run>();
   const artifacts = new Map<Id, Artifact>();
   const evidence = new Map<Id, Evidence>();
@@ -22,6 +23,14 @@ export function createInMemoryRecordStore(): RecordStore {
     },
     async getStudy(id: Id): Promise<Study | null> {
       const s = studies.get(id);
+      return s ? clone(s) : null;
+    },
+    async addSession(session: Session): Promise<Session> {
+      sessions.set(session.id, clone(session));
+      return clone(session);
+    },
+    async getSession(id: Id): Promise<Session | null> {
+      const s = sessions.get(id);
       return s ? clone(s) : null;
     },
     async addRun(run: Run): Promise<Run> {

@@ -1,4 +1,4 @@
-import type { Study, Id, Run, Artifact, Evidence, Conclusion } from "./types.js";
+import type { Study, Id, Run, Artifact, Evidence, Conclusion, Session } from "./types.js";
 
 export * from "./types.js";
 export { createInMemoryRecordStore } from "./memory.js";
@@ -13,6 +13,12 @@ export { createInMemoryRecordStore } from "./memory.js";
 export interface RecordStore {
   createStudy(study: Study): Promise<Study>;
   getStudy(id: Id): Promise<Study | null>;
+  /**
+   * Record a conversation. A Session's id IS its canonical runtime session key,
+   * so a runtime session and a Science Studio Session are 1:1.
+   */
+  addSession(session: Session): Promise<Session>;
+  getSession(id: Id): Promise<Session | null>;
   addRun(run: Run): Promise<Run>;
   updateRun(id: Id, patch: Partial<Run>): Promise<Run>;
   addArtifact(artifact: Artifact): Promise<Artifact>;

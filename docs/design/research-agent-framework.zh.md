@@ -861,17 +861,16 @@ merge 负担为由否决 fork。退路：若插槽增长到超出少量组件，
    的成色取决于私有模块是否符合契约。为 `PrincipalResolver`、`SandboxProvider`、
    `Workspace`、`QuotaPolicy`、`RuntimeFactory` 发布可复用的测试套件；企业仓库与
    第三方 runtime 仓库在 CI 中运行它们。这是对分层最有杠杆的单点补强。
-2. **从 record 层构建真实的 `SessionState`。** `handleTransport` 目前伪造
-   `{ sessionId, studyId: "study-1", agentId: "main" }`。应从 `sessionKey` 解析出
-   `Session` 记录并据此构建 `SessionState`，这样 `persistRun` 才能正确归属
-   `Run.sessionId`/`agentId`/`taskId`。缺了这步，record 层只是装饰。
-3. **按 session 的运行并发控制。** `Transcript.attachFlow` 会覆盖当前 flow，因此同一
-   session 的两次并发运行会交错并损坏流。加入按 session 的运行锁：当 `hasActiveFlow()`
-   时拒绝或排队第二次运行。
-4. **运行控制接口面。** 适配器已经暴露 `abort(reason?)` 与 `approve(id, decision)`；
-   新增 `POST /api/transport/abort` 与 `POST /api/transport/approve`，经同一个
-   environment 解析，并用 `capabilities.approvals`（§4.4）门控 `/approve`。今天它们
-   在 HTTP 上不可达。
+2. **从 record 层构建真实的 `SessionState`。** *已解决（Phase 2.5）。* 服务通过
+   `createSessionResolver`（`services/transport-service/src/sessions.ts`）解析出
+   `Session` —— 其 id 就是规范的 runtime session key —— 并在首次使用时铸造它及其
+   默认 Study，因此 `SessionState.studyId`/`agentId` 来自 record，且 `persistRun`
+   能正确归属 `Run.sessionId`/`agentId`/`taskId`。
+3. **按 session 的运行并发控制。** *已解决（Phase 2）。* 同一 session 的第二次并发
+   运行以 **409** 拒绝，因此 `Transcript.attachFlow` 绝不会覆盖正在运行的 flow。
+4. **运行控制接口面。** *已解决（Phase 2）。* `POST /api/transport/abort` 与
+   `POST /api/transport/approve` 已存在，经同一个 environment 解析，并在
+   `capabilities.approvals` 为假时让 `/approve` 返回 **501**（§4.4）。
 5. **`SecretStore` 接口**（开源接口，实现树外）。provider 的 binding 携带的是
    `tokenRef` 而非 token；定义 `get(ref): Promise<string>`，让 provider 不必硬编码某种
    密钥格式。本地实现：`0600` 文件或 keychain。

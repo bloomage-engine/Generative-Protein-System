@@ -10,6 +10,7 @@ import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import cors from "@fastify/cors";
 import { posix } from "node:path";
 import { Readable } from "node:stream";
+import { createInMemoryRecordStore } from "@science-studio/record";
 import type {
   AttachmentRef,
   CommandDescriptor,
@@ -28,6 +29,7 @@ import {
   parseWorkspaceMentions,
 } from "@science-studio/transport";
 import type { Backend, CorsConfig } from "./composition.js";
+import { createSessionResolver } from "./sessions.js";
 import { encodeOp, parseClaimedState, WireOpsBuilder } from "./wire.js";
 
 declare module "fastify" {
@@ -69,6 +71,13 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
   // and corrupt both streams — refuse the second instead.
   const activeRuns = new Set<string>();
 
+  // Session identity is record-owned (docs/adr/0002): a runtime session key is
+  // the Science Studio Session id, minted on first use.
+  const sessions = createSessionResolver({
+    store: backend.records ?? createInMemoryRecordStore(),
+    ...(backend.sessionDefaults ? { defaults: backend.sessionDefaults } : {}),
+  });
+
   // -- Conversation path -----------------------------------------------------
   app.post("/api/transport", async (request, reply) => {
     const principal = request.principal!;
@@ -81,6 +90,8 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     const environment = await backend.environments.acquire(principal, body.threadId ?? null);
 
     const runKey = `${principal.tenant}:${environment.sessionKey}`;
+    // Resolve identity BEFORE taking the lock, so a failure here cannot leak it.
+    const sessionRecord = await sessions.resolve(environment.sessionKey);
     if (activeRuns.has(runKey)) {
       return reply
         .code(409)
@@ -93,9 +104,9 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
 
     const wire = new WireOpsBuilder(parseClaimedState(body));
     const session: SessionState = {
-      sessionId: environment.sessionKey,
-      studyId: "study-1",
-      agentId: "main",
+      sessionId: sessionRecord.id,
+      studyId: sessionRecord.studyId,
+      agentId: sessionRecord.agentBlueprintId,
       status: "idle",
       messages: [],
     };

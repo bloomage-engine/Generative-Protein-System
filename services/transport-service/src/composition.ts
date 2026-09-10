@@ -23,6 +23,7 @@ import {
   type Workspace,
   type WorkspaceLimits,
 } from "@science-studio/transport";
+import { DEFAULT_SESSION_DEFAULTS, type SessionDefaults } from "./sessions.js";
 
 export interface CorsConfig {
   /** `true` reflects any origin (loopback single-user); a string locks to it. */
@@ -37,6 +38,14 @@ export interface Backend {
   quota?: QuotaPolicy;
   /** Upload/quota caps for the workspace file service. */
   workspaceLimits?: WorkspaceLimits;
+  /**
+   * The authoritative record store. Session identity and Run attribution come
+   * from here (the enterprise module supplies a tenant-scoped one). Defaults to
+   * a fresh in-memory store, which is only useful in tests.
+   */
+  records?: RecordStore;
+  /** Where a first-use Session/Study is filed when the record has none yet. */
+  sessionDefaults?: SessionDefaults;
   /** Declared traits of the selected runtime (drives `/approve`, UI hints). */
   capabilities?: RuntimeCapabilities;
 }
@@ -152,13 +161,16 @@ async function localBackend(env: NodeJS.ProcessEnv): Promise<Backend> {
   const binding = plugin.localBinding(env);
   const adapter = plugin.factory.create(binding);
   const workspace = localWorkspace(env);
+  // One authoritative store: the adapter persists Runs through the narrowed
+  // view of it, and the service resolves Session identity from it.
+  const records = createInMemoryRecordStore();
   // Init runs in the BACKGROUND, exactly like the pre-seam service: a slow or
   // unreachable runtime must not delay startup. The adapter's own `run()` awaits
   // its readiness, so requests arriving during init wait rather than fail.
   void adapter
     .init({
       binding,
-      recordStore: toRecordStoreLike(createInMemoryRecordStore()),
+      recordStore: toRecordStoreLike(records),
       workspace,
       env: { ...env },
     })
@@ -168,6 +180,12 @@ async function localBackend(env: NodeJS.ProcessEnv): Promise<Backend> {
     principal: new LocalPrincipalResolver(),
     environments: new LocalEnvironmentProvider({ adapter, workspace }),
     cors: { origin: true },
+    records,
+    sessionDefaults: {
+      projectId: env.PROJECT_ID ?? DEFAULT_SESSION_DEFAULTS.projectId,
+      studyId: env.STUDY_ID ?? DEFAULT_SESSION_DEFAULTS.studyId,
+      agentBlueprintId: env.AGENT_BLUEPRINT_ID ?? DEFAULT_SESSION_DEFAULTS.agentBlueprintId,
+    },
     workspaceLimits: {
       maxUploadBytes: positiveInt(env.WORKSPACE_MAX_UPLOAD_BYTES) ?? DEFAULT_MAX_UPLOAD_BYTES,
       quotaBytes: positiveInt(env.WORKSPACE_QUOTA_BYTES) ?? DEFAULT_QUOTA_BYTES,

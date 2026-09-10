@@ -181,6 +181,15 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `{url, token}`; only `transport-openclaw`/`transport-dsh` know their own shape.
   `RuntimeAdapter.approve` is OPTIONAL — gate it on `capabilities.approvals`.
 - **`Run` is the atomic traceable unit**; each Research turn produces one.
+- **Session identity is record-owned.** A runtime session key IS the Science
+  Studio `Session` id (1:1). `createSessionResolver`
+  (`services/transport-service/src/sessions.ts`) mints the `Session` — and the
+  default Study it hangs off, from `PROJECT_ID`/`STUDY_ID`/`AGENT_BLUEPRINT_ID` —
+  on first use, and `POST /api/transport` builds `SessionState` from that record,
+  never from fabricated constants. The adapter persists `Run`s through a narrowed
+  view of the SAME `RecordStore` the service reads identity from (`records` on
+  `Backend`; both `localBackend` and the `{ adapters }` compat path share one
+  instance).
 - **Keep the transport package React-free.** The shared client package
   (`@science-studio/transport-client`) owns the assistant-ui boundary as ONE
   session module: `useTransport` mounts the mount-time history probe and the
@@ -253,4 +262,6 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   wires it via `toRecordStoreLike` because the authoritative `RecordStore` does
   NOT structurally satisfy the adapter seam `RecordStoreLike`
   (`addArtifact` param mismatch: `Artifact` vs `ArtifactInput`) — don't smuggle
-  it in with `as any` or the adapter's `persistRun` fails at runtime.
+  it in with `as any` or the adapter's `persistRun` fails at runtime. That one
+  `RecordStore` instance is deliberately shared by `toRecordStoreLike` (adapter)
+  and `records`/`sessionDefaults` (service), so Runs and Sessions land together.

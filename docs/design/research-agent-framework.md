@@ -954,20 +954,18 @@ Migration is a resumable operational job, not an app-startup step.
    Publish reusable suites for `PrincipalResolver`, `SandboxProvider`,
    `Workspace`, `QuotaPolicy`, and `RuntimeFactory`; the enterprise and third-party
    runtime repos run them in CI. Highest-leverage single addition for the split.
-2. **Real `SessionState` from the record layer.** `handleTransport` currently
-   fabricates `{ sessionId, studyId: "study-1", agentId: "main" }`. Resolve the
-   `Session` record from `sessionKey` and build `SessionState` from it, so
-   `persistRun` attributes `Run.sessionId`/`agentId`/`taskId` correctly. Without
-   this the record layer is decorative.
-3. **Per-session run concurrency.** `Transcript.attachFlow` overwrites the current
-   flow, so two concurrent runs in one session would interleave and corrupt the
-   stream. Add a per-session run lock: reject or queue a second run while
-   `hasActiveFlow()`.
-4. **Run control surface.** The adapter already exposes `abort(reason?)` and
-   `approve(id, decision)`; add `POST /api/transport/abort` and
-   `POST /api/transport/approve` resolved through the same environment, and gate
-   `/approve` on `capabilities.approvals` (§4.4). Today they are unreachable over
-   HTTP.
+2. **Real `SessionState` from the record layer.** *Resolved (Phase 2.5).* The
+   service resolves the `Session` — whose id IS the canonical runtime session key
+   — through `createSessionResolver` (`services/transport-service/src/sessions.ts`),
+   minting it and its default Study on first use, so `SessionState.studyId`/
+   `agentId` come from the record and `persistRun` attributes
+   `Run.sessionId`/`agentId`/`taskId` correctly.
+3. **Per-session run concurrency.** *Resolved (Phase 2).* A second concurrent run
+   for the same session is refused with **409**, so `Transcript.attachFlow` can
+   never overwrite a live flow.
+4. **Run control surface.** *Resolved (Phase 2).* `POST /api/transport/abort` and
+   `POST /api/transport/approve` exist, resolved through the same environment,
+   with `/approve` answering **501** when `capabilities.approvals` is false (§4.4).
 5. **`SecretStore` interface** (OSS interface, impls out of tree). A provider's
    binding carries a `tokenRef`, not a token; define `get(ref): Promise<string>`
    so providers do not hardcode a secret format. Local impl: a mode-`0600` file or

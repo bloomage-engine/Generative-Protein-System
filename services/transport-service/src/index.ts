@@ -67,7 +67,10 @@ async function backendFromAdapters(options: TransportServiceOptions): Promise<Ba
 
   const env = process.env;
   const plugins = await resolveRuntimePlugins(env);
-  const recordStore = toRecordStoreLike(options.recordStore ?? createInMemoryRecordStore());
+  // One authoritative store: the adapter persists Runs through its narrowed view
+  // of it, and the service resolves Session identity from the same instance.
+  const records = options.recordStore ?? createInMemoryRecordStore();
+  const recordStore = toRecordStoreLike(records);
   const workspace = localWorkspace(env);
   const capabilities = plugins.find((p) => p.runtime === first.runtime)?.factory.capabilities;
 
@@ -87,6 +90,7 @@ async function backendFromAdapters(options: TransportServiceOptions): Promise<Ba
     principal: new LocalPrincipalResolver(),
     environments: new LocalEnvironmentProvider({ adapter: first, workspace }),
     cors: options.cors ?? { origin: true },
+    records,
     capabilities,
   };
 }
