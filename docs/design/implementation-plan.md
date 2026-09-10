@@ -1,6 +1,6 @@
 # Research Agent Framework — Implementation Plan
 
-Status: active — **Phases 0–2 implemented** (`npm run build` green; 191 tests
+Status: active — **Phases 0–2.5 implemented** (`npm run build` green; 191 tests
 across 9 suites green). Companion to [`research-agent-framework.md`](./research-agent-framework.md)
 (design rev 4) and [`research-agent-framework.zh.md`](./research-agent-framework.zh.md).
 
