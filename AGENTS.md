@@ -265,3 +265,8 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   it in with `as any` or the adapter's `persistRun` fails at runtime. That one
   `RecordStore` instance is deliberately shared by `toRecordStoreLike` (adapter)
   and `records`/`sessionDefaults` (service), so Runs and Sessions land together.
+- All four `apps/web` streaming proxies (`app/api/transport/route.ts`,
+  `transport/commands`, `transport/watch`, `workspace/[...path]`) forward the
+  caller's `Authorization` header upstream. Single-user installs send none (no
+  login); in hosted mode the enterprise `PrincipalResolver` authenticates the
+  bearer, so a proxy that swallows the header breaks auth silently.

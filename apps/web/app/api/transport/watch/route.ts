@@ -15,13 +15,23 @@ const TRANSPORT_SERVICE_URL =
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * Forward the caller's `Authorization: Bearer <token>` upstream. A single-user
+ * install sends none (there is no login); the hosted enterprise principal
+ * resolver authenticates the bearer, so the proxy must not swallow it.
+ */
+function forwardedAuth(request: Request): Record<string, string> {
+  const auth = request.headers.get("authorization");
+  return auth ? { authorization: auth } : {};
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   const params = new URL(request.url).searchParams;
   const threadId = params.get("threadId");
   const qs = threadId ? `?threadId=${encodeURIComponent(threadId)}` : "";
 
   const upstream = await fetch(`${TRANSPORT_SERVICE_URL}/api/transport/watch${qs}`, {
-    headers: { accept: "application/x-ndjson" },
+    headers: { accept: "application/x-ndjson", ...forwardedAuth(request) },
   });
 
   if (!upstream.ok || !upstream.body) {

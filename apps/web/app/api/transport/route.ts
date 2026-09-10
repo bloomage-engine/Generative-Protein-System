@@ -15,6 +15,16 @@ const TRANSPORT_SERVICE_URL =
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * Forward the caller's `Authorization: Bearer <token>` upstream. A single-user
+ * install sends none (there is no login); the hosted enterprise principal
+ * resolver authenticates the bearer, so the proxy must not swallow it.
+ */
+function forwardedAuth(request: Request): Record<string, string> {
+  const auth = request.headers.get("authorization");
+  return auth ? { authorization: auth } : {};
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
   const body = await request.text();
 
@@ -25,6 +35,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       headers: {
         "content-type": "application/json",
         accept: "text/event-stream",
+        ...forwardedAuth(request),
       },
       body,
     },

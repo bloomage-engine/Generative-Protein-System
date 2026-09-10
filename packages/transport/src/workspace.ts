@@ -182,6 +182,3 @@ export class NoopQuotaPolicy implements QuotaPolicy {
     /* single-user: no accounting */
   }
 }
-
-/** An unknown-size id used by listings before a file is opened. */
-export type WorkspaceId = Id;

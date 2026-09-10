@@ -22,6 +22,16 @@ const FORWARDED_HEADERS = [
   "cache-control",
 ] as const;
 
+/**
+ * Forward the caller's `Authorization: Bearer <token>` upstream. A single-user
+ * install sends none (there is no login); the hosted enterprise principal
+ * resolver authenticates the bearer, so the proxy must not swallow it.
+ */
+function forwardedAuth(request: Request): Record<string, string> {
+  const auth = request.headers.get("authorization");
+  return auth ? { authorization: auth } : {};
+}
+
 export async function GET(
   request: Request,
   ctx: { params: Promise<{ path: string[] }> },
@@ -30,7 +40,12 @@ export async function GET(
   const search = new URL(request.url).search;
   const upstream = await fetch(
     `${TRANSPORT_SERVICE_URL}/api/workspace/${path.map(encodeURIComponent).join("/")}${search}`,
-    { headers: { accept: request.headers.get("accept") ?? "*/*" } },
+    {
+      headers: {
+        accept: request.headers.get("accept") ?? "*/*",
+        ...forwardedAuth(request),
+      },
+    },
   );
 
   const headers = new Headers();
