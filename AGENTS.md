@@ -44,7 +44,11 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   principal/environment preamble: `GET /api/workspace/{entries,stat,file}`.
   `file` streams inline up to the cap (413 over it) and `?download=1` streams any
   size; a missing path is 404, a traversal/absolute path 400, no workspace 503.
-  Uploads (`POST /upload`) are Phase 2 and need `Workspace.write`.
+  Uploads are `POST /api/workspace/upload?path=` with a **raw** body
+  (`application/octet-stream`, one file per request — no multipart parser);
+  `maxUploadBytes` (`WORKSPACE_MAX_UPLOAD_BYTES`, default 100 MB) answers 413 and
+  `QuotaPolicy` answers 507 on the declared size. Upload caps: also
+  `WORKSPACE_QUOTA_BYTES` (default 2 GB).
   The web app reaches these through `app/api/workspace/[...path]` (a streaming
   proxy, same buffering rule as the transport route). Client-side, workspace
   access is `@science-studio/transport-client`'s `useWorkspaceBrowser` /

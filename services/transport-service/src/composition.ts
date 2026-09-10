@@ -9,6 +9,8 @@
 import { createInMemoryRecordStore, type Artifact, type ArtifactKind, type RecordStore } from "@science-studio/record";
 import { FsWorkspace } from "@science-studio/workspace";
 import {
+  DEFAULT_MAX_UPLOAD_BYTES,
+  DEFAULT_QUOTA_BYTES,
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
   NullWorkspace,
@@ -19,6 +21,7 @@ import {
   type RuntimeCapabilities,
   type RuntimePlugin,
   type Workspace,
+  type WorkspaceLimits,
 } from "@science-studio/transport";
 
 export interface CorsConfig {
@@ -32,6 +35,8 @@ export interface Backend {
   environments: EnvironmentProvider;
   cors: CorsConfig;
   quota?: QuotaPolicy;
+  /** Upload/quota caps for the workspace file service. */
+  workspaceLimits?: WorkspaceLimits;
   /** Declared traits of the selected runtime (drives `/approve`, UI hints). */
   capabilities?: RuntimeCapabilities;
 }
@@ -163,6 +168,17 @@ async function localBackend(env: NodeJS.ProcessEnv): Promise<Backend> {
     principal: new LocalPrincipalResolver(),
     environments: new LocalEnvironmentProvider({ adapter, workspace }),
     cors: { origin: true },
+    workspaceLimits: {
+      maxUploadBytes: positiveInt(env.WORKSPACE_MAX_UPLOAD_BYTES) ?? DEFAULT_MAX_UPLOAD_BYTES,
+      quotaBytes: positiveInt(env.WORKSPACE_QUOTA_BYTES) ?? DEFAULT_QUOTA_BYTES,
+    },
     capabilities: plugin.factory.capabilities,
   };
+}
+
+/** A positive integer from an env var, or undefined when unset/malformed. */
+function positiveInt(raw: string | undefined): number | undefined {
+  if (!raw || !/^\d+$/.test(raw)) return undefined;
+  const value = Number(raw);
+  return value > 0 ? value : undefined;
 }

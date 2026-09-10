@@ -120,7 +120,7 @@ quota accounting, and it only earns its keep once `@`-attachments exist (a
 workspace file is a *reference*; an upload is for a file not yet in the
 workspace). It moves to Phase 2.
 
-### Phase 2 — attachments, upload, and run control — 🟡 in progress
+### Phase 2 — attachments, upload, and run control — ✅ done
 
 10. ✅ `packages/transport`: `AttachmentRef`, the `file` `MessagePart` variant, and
     `TransportCommand.add-message.attachments`; `normalizeCommands` now lifts
@@ -138,12 +138,14 @@ workspace). It moves to Phase 2.
     reference), with the directive stripped from the agent-facing text. The
     composer `@` picker is `useWorkspaceMentions` (transport-client), built on
     assistant-ui's `unstable_useMentionAdapter` + `TriggerPopover.Directive`.
-12. 🟡 `Workspace.write` ✅ (bytes or a stream; temp-sibling + rename so a
+12. ✅ `Workspace.write` (bytes or a stream; temp-sibling + rename so a
     failed/over-cap upload never truncates; containment checked on the created
-    parent; `maxBytes`/`createParents`/`overwrite` options) plus conformance
-    coverage. Remaining: `POST /api/workspace/upload` (raw body at
-    `application/octet-stream`, `?path=`), enforcing `maxUploadBytes` (413) and
-    consulting `QuotaPolicy`, returning the `AttachmentRef`.
+    parent; `maxBytes`/`createParents`/`overwrite` options) with conformance
+    coverage, and `POST /api/workspace/upload?path=`. Uploads are a **raw body**
+    (`application/octet-stream`), not multipart: one file per request, no parser
+    dependency, and the body streams straight into `write`. Enforces
+    `maxUploadBytes` (413) and consults `QuotaPolicy` (507) on the declared size;
+    returns the resulting `AttachmentRef`.
 13. ✅ Per-session run lock (a second concurrent run is refused with 409, so
     `Transcript.attachFlow` can never overwrite a live flow) and
     `POST /api/transport/{abort,approve}` — `/approve` answers 501 when the

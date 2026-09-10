@@ -13,11 +13,13 @@ import { Readable } from "node:stream";
 import type {
   AttachmentRef,
   CommandDescriptor,
+  FileStat,
   Principal,
   SessionState,
   TransportCommand,
 } from "@science-studio/transport";
 import {
+  DEFAULT_MAX_UPLOAD_BYTES,
   FileTooLargeError,
   WorkspaceNotFoundError,
   WorkspacePathError,
@@ -40,6 +42,13 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
   await app.register(cors, {
     origin: backend.cors.origin,
     credentials: backend.cors.credentials ?? false,
+  });
+
+  // Uploads are a raw body (one file per request), NOT multipart: no parser
+  // dependency, and the body streams straight into `Workspace.write`. JSON
+  // routes keep their own parser.
+  app.addContentTypeParser("application/octet-stream", (_request, payload, done) => {
+    done(null, payload);
   });
 
   app.decorateRequest("principal", null);
@@ -236,7 +245,68 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     }
   });
 
+  app.post("/api/workspace/upload", async (request, reply) => {
+    const { path, session = null } = request.query as {
+      path?: string;
+      session?: string | null;
+    };
+    if (!path) return reply.code(400).send({ error: "path is required" });
+
+    let environment;
+    try {
+      environment = await backend.environments.acquire(request.principal!, session);
+    } catch (err) {
+      return sendWorkspaceError(reply, err);
+    }
+
+    const maxBytes = backend.workspaceLimits?.maxUploadBytes ?? DEFAULT_MAX_UPLOAD_BYTES;
+    const declared = Number(request.headers["content-length"]);
+    if (Number.isFinite(declared)) {
+      if (declared > maxBytes) {
+        return reply
+          .code(413)
+          .send({ error: `upload is ${declared} bytes, over the ${maxBytes}-byte cap` });
+      }
+      // Quota is checked up front when the client declared a size; a streamed
+      // upload without Content-Length is bounded by `maxBytes` instead.
+      if (backend.quota) {
+        try {
+          await backend.quota.check(request.principal!, declared);
+        } catch (err) {
+          return reply
+            .code(507)
+            .send({ error: err instanceof Error ? err.message : "quota exceeded" });
+        }
+      }
+    }
+
+    try {
+      const body = request.body as Readable;
+      const stat = await environment.workspace.write(
+        path,
+        Readable.toWeb(body) as unknown as ReadableStream<Uint8Array>,
+        { maxBytes },
+      );
+      return { attachment: attachmentFor(stat) };
+    } catch (err) {
+      return sendWorkspaceError(reply, err);
+    }
+  });
+
   return app;
+}
+
+/** The `AttachmentRef` an upload yields (a workspace reference). */
+function attachmentFor(stat: FileStat): AttachmentRef {
+  const name = stat.path.slice(stat.path.lastIndexOf("/") + 1);
+  return {
+    kind: "workspace",
+    path: stat.path,
+    name,
+    ...(stat.mime ? { mime: stat.mime } : {}),
+    size: stat.size,
+    entryKind: stat.kind === "dir" ? "dir" : "file",
+  };
 }
 
 /** Map a workspace error onto an HTTP status; rethrow anything unrecognized. */
