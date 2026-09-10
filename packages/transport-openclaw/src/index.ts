@@ -12,7 +12,7 @@ import type {
   WatchSnapshot,
   Workspace,
 } from "@science-studio/transport";
-import { RunFlow, Transcript } from "@science-studio/transport";
+import { RunFlow, Transcript, promptWithAttachments, userMessageParts } from "@science-studio/transport";
 import type { EventFrame } from "@openclaw/gateway-client/browser";
 import type { Run, RunStatus } from "@science-studio/record";
 import {
@@ -398,7 +398,9 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
         const userMsg = {
           id: command.message.id,
           role: "user" as const,
-          parts: [{ type: "text" as const, text: command.message.content }],
+          // Workspace attachments become `file` parts so the UI shows a chip
+          // immediately; the agent gets the paths in the sent text below.
+          parts: userMessageParts(command.message.content, command.message.attachments),
         };
         transcript.emit({ type: "add-message", message: userMsg });
         transcript.emit({ type: "session-status", status: "running" });
@@ -410,13 +412,19 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
       // gateway reports it. Command messages (text starting with "/") are
       // sent verbatim — the gateway interprets them — and their runIds are
       // tracked so the settle never persists a research `Run`.
+      const workspace = this.workspace;
       for (const command of sends) {
         const isCommand = isCommandText(command.message.content);
+        const message = promptWithAttachments(
+          command.message.content,
+          command.message.attachments,
+          workspace ? { toAgentPath: (relPath) => workspace.toAgentPath(relPath) } : {},
+        );
         void (async () => {
           try {
             const res = (await this.gateway!.request("chat.send", {
               sessionKey,
-              message: command.message.content,
+              message,
               idempotencyKey: newId(),
               queueMode: "followup",
             })) as { runId?: string };

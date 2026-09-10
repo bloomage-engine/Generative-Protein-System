@@ -5,3 +5,4 @@ export * from "./workspace.js";
 export * from "./principal.js";
 export * from "./runtime.js";
 export * from "./environment.js";
+export * from "./attachments.js";

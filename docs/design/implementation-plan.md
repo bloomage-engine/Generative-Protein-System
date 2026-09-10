@@ -128,8 +128,11 @@ workspace). It moves to Phase 2.
     (`path`/`name`) and assistant-ui's `FileMessagePart`
     (`filename`/`data`/`mimeType`). The converter also renders a `file` part as a
     chip carrying its workspace path.
-11. ⬜ Adapters render references via `workspace.toAgentPath()`; composer `@` picker
-    (files and directories as references).
+11. 🟡 Adapters render references: shared `renderAttachments` /
+    `promptWithAttachments` / `userMessageParts` (transport) now make a workspace
+    attachment a `file` part on the echoed user message AND a path block in
+    `chat.send` / the dsh prompt, mapped through `workspace.toAgentPath()`. The
+    composer `@` picker (files and directories as references) is next.
 12. ⬜ `Workspace.write` + `POST /api/workspace/upload` (multipart), enforcing
     `maxUploadBytes` (413) and consulting `QuotaPolicy`; an upload lands in the
     workspace and then travels as an ordinary reference.

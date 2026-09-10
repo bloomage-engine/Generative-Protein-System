@@ -2,6 +2,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   RunFlow,
+  promptWithAttachments,
+  userMessageParts,
   type RecordStoreLike,
   type RuntimeAdapter,
   type RuntimeFactory,
@@ -205,7 +207,9 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     const userMsg = {
       id: first.message.id,
       role: "user" as const,
-      parts: [{ type: "text" as const, text: first.message.content }],
+      // Workspace attachments become `file` parts so the UI shows a chip
+      // immediately; the agent gets the paths in the prompt below.
+      parts: userMessageParts(first.message.content, first.message.attachments),
     };
     transcript.emit({ type: "add-message", message: userMsg });
     transcript.emit({ type: "session-status", status: "running" });
@@ -218,7 +222,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
         message: {
           id: extra.message.id,
           role: "user",
-          parts: [{ type: "text", text: extra.message.content }],
+          parts: userMessageParts(extra.message.content, extra.message.attachments),
         },
       });
     }
@@ -236,8 +240,14 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       turn.end();
       persist = this.settleRun(sessionKey, transcript, turn);
     };
+    const workspace = this.workspace;
+    const prompt = promptWithAttachments(
+      first.message.content,
+      first.message.attachments,
+      workspace ? { toAgentPath: (relPath) => workspace.toAgentPath(relPath) } : {},
+    );
     const runPrompt = (harnessSessionId: string): Promise<void> =>
-      this.client!.runTurn(harnessSessionId, first.message.content, (event) => {
+      this.client!.runTurn(harnessSessionId, prompt, (event) => {
         turn.note(transcript.apply(event));
       });
     void (async () => {
