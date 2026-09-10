@@ -40,7 +40,7 @@ export const WorkspacePanel: FC<WorkspacePanelProps> = ({
   onSelect,
   onClose,
 }) => {
-  const { path: dir, listing, isLoading, error, navigate, refresh } =
+  const { path: dir, listing, isLoading, error, unavailable, navigate, refresh } =
     useWorkspaceBrowser({ threadId });
 
   // An externally selected file (an agent link) reveals its directory.
@@ -98,7 +98,16 @@ export const WorkspacePanel: FC<WorkspacePanelProps> = ({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        {error && <p className="text-destructive px-2 py-1 text-xs">{error}</p>}
+        {error && (
+          <p
+            className={cn(
+              "px-2 py-1 text-xs",
+              unavailable ? "text-muted-foreground" : "text-destructive",
+            )}
+          >
+            {error}
+          </p>
+        )}
         {!error && listing?.entries.length === 0 && (
           <p className="text-muted-foreground px-2 py-1 text-xs">Empty directory.</p>
         )}

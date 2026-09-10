@@ -54,7 +54,10 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   access is `@science-studio/transport-client`'s `useWorkspaceBrowser` /
   `useWorkspaceFile` / `resolveFileReference` / `WorkspaceOpenProvider` — the
   provider is the seam that lets an agent file link in markdown open the viewer
-  instead of navigating. The composer `@` picker is `useWorkspaceMentions`; a pick
+  instead of navigating. A 503 (no `WORKSPACE_ROOT`) is classified by
+  `isWorkspaceUnavailable`, and `useWorkspaceAvailability` probes once so the UI
+  disables its file affordance with friendly copy rather than opening into the
+  raw 503. The composer `@` picker is `useWorkspaceMentions`; a pick
   inserts assistant-ui directive text (`:file[label]{name=id}` /
   `:directory[...]`) which the service lifts into a workspace `AttachmentRef`
   (`parseWorkspaceMentions`) — a directory stays a reference, never expanded.

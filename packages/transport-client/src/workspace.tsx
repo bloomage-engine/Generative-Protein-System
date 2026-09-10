@@ -50,6 +50,31 @@ function sessionParam(threadId: string | null | undefined): string {
   return threadId ? `&session=${encodeURIComponent(threadId)}` : "";
 }
 
+/**
+ * A workspace request that failed with an HTTP status. The status is kept
+ * because it is meaningful: `503` means this deployment exposes NO workspace
+ * (the service's `NullWorkspace`), which is a configuration state, not an error
+ * the user can act on by retrying.
+ */
+export class WorkspaceRequestError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "WorkspaceRequestError";
+  }
+}
+
+/** True when the failure means "no workspace is configured on this server". */
+export function isWorkspaceUnavailable(err: unknown): boolean {
+  return err instanceof WorkspaceRequestError && err.status === 503;
+}
+
+/** Friendly copy shown wherever browsing is disabled (never the raw 503 body). */
+export const WORKSPACE_UNAVAILABLE_REASON =
+  "File browsing is not enabled on this server.";
+
 /** Fetch a directory listing. Throws on transport/HTTP failure. */
 export async function fetchWorkspaceEntries(
   api: string,
@@ -60,7 +85,7 @@ export async function fetchWorkspaceEntries(
     `${base(api)}/entries?path=${encodeURIComponent(path)}${sessionParam(threadId)}`,
     { headers: { accept: "application/json" } },
   );
-  if (!res.ok) throw new Error(await errorText(res));
+  if (!res.ok) throw await requestError(res);
   return (await res.json()) as DirListing;
 }
 
@@ -74,7 +99,7 @@ export async function fetchWorkspaceStat(
     `${base(api)}/stat?path=${encodeURIComponent(path)}${sessionParam(threadId)}`,
     { headers: { accept: "application/json" } },
   );
-  if (!res.ok) throw new Error(await errorText(res));
+  if (!res.ok) throw await requestError(res);
   return (await res.json()) as FileStat;
 }
 
@@ -97,6 +122,11 @@ async function errorText(res: Response): Promise<string> {
   }
 }
 
+/** A status-bearing error for a non-2xx response, ready to `throw`. */
+async function requestError(res: Response): Promise<WorkspaceRequestError> {
+  return new WorkspaceRequestError(res.status, await errorText(res));
+}
+
 // -- Browsing ----------------------------------------------------------------
 
 export interface WorkspaceBrowser {
@@ -105,6 +135,8 @@ export interface WorkspaceBrowser {
   listing: DirListing | null;
   isLoading: boolean;
   error: string | null;
+  /** True when the server exposes no workspace at all (HTTP 503). */
+  unavailable: boolean;
   /** Descend into (or up to) a directory. */
   navigate: (path: string) => void;
   /** Re-fetch the current directory. */
@@ -122,18 +154,26 @@ export function useWorkspaceBrowser(opts: {
   const [listing, setListing] = useState<DirListing | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
     setError(null);
+    setUnavailable(false);
     fetchWorkspaceEntries(api, path, threadId)
       .then((next) => {
         if (!cancelled) setListing(next);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (cancelled) return;
+        // A 503 is a deployment state, not a failure to retry: show friendly copy.
+        const off = isWorkspaceUnavailable(err);
+        setUnavailable(off);
+        setError(
+          off ? WORKSPACE_UNAVAILABLE_REASON : err instanceof Error ? err.message : String(err),
+        );
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -144,7 +184,60 @@ export function useWorkspaceBrowser(opts: {
   }, [api, path, threadId, nonce]);
 
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
-  return { path, listing, isLoading, error, navigate: setPath, refresh };
+  return { path, listing, isLoading, error, unavailable, navigate: setPath, refresh };
+}
+
+// -- Availability ------------------------------------------------------------
+
+export interface WorkspaceAvailability {
+  /**
+   * `true` once the probe lists the root; `false` when the server answers 503
+   * (no workspace configured); `null` while probing or on any other failure (the
+   * surface exists but is unreachable right now).
+   */
+  available: boolean | null;
+  isLoading: boolean;
+  /** Friendly explanation when `available === false`; else null. */
+  reason: string | null;
+}
+
+/**
+ * Probe whether this deployment exposes a workspace, so the UI can hide or
+ * disable file affordances instead of letting the user open a panel that only
+ * ever shows a 503. The probe is the cheapest workspace call (a root listing).
+ */
+export function useWorkspaceAvailability(opts: {
+  threadId?: string | null;
+} = {}): WorkspaceAvailability {
+  const api = useWorkspaceApi();
+  const threadId = opts.threadId ?? null;
+  const [state, setState] = useState<WorkspaceAvailability>({
+    available: null,
+    isLoading: true,
+    reason: null,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ available: null, isLoading: true, reason: null });
+    fetchWorkspaceEntries(api, "", threadId)
+      .then(() => {
+        if (!cancelled) setState({ available: true, isLoading: false, reason: null });
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setState(
+          isWorkspaceUnavailable(err)
+            ? { available: false, isLoading: false, reason: WORKSPACE_UNAVAILABLE_REASON }
+            : { available: null, isLoading: false, reason: null },
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, threadId]);
+
+  return state;
 }
 
 // -- Preview -----------------------------------------------------------------
@@ -188,7 +281,7 @@ export function useWorkspaceFile(
         const res = await fetch(workspaceFileUrl(api, path, { threadId }), {
           headers: { accept: "*/*" },
         });
-        if (!res.ok) throw new Error(await errorText(res));
+        if (!res.ok) throw await requestError(res);
         const mime = (res.headers.get("content-type") ?? "").split(";")[0]!.trim();
         if (!looksTextual(mime)) {
           if (!cancelled) setState({ text: null, mime, isBinary: true, isLoading: false, error: null });
@@ -203,7 +296,11 @@ export function useWorkspaceFile(
             mime: null,
             isBinary: false,
             isLoading: false,
-            error: err instanceof Error ? err.message : String(err),
+            error: isWorkspaceUnavailable(err)
+              ? WORKSPACE_UNAVAILABLE_REASON
+              : err instanceof Error
+                ? err.message
+                : String(err),
           });
         }
       }
