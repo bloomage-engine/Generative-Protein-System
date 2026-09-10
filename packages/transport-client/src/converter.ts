@@ -48,6 +48,16 @@ export function partToContent(part: MessagePart): any {
         data: part.artifactId,
         sourceType: "id",
       };
+    case "file":
+      // A workspace file the agent produced or referenced: `data` is its
+      // workspace path, which the app resolves through the workspace API.
+      return {
+        type: "file",
+        filename: part.name,
+        mimeType: part.mime ?? "application/octet-stream",
+        data: part.path,
+        sourceType: "id",
+      };
   }
 }
 

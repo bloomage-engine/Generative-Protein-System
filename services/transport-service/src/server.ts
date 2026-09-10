@@ -11,6 +11,7 @@ import cors from "@fastify/cors";
 import { posix } from "node:path";
 import { Readable } from "node:stream";
 import type {
+  AttachmentRef,
   CommandDescriptor,
   Principal,
   SessionState,
@@ -233,17 +234,57 @@ function normalizeCommands(cmds: unknown[]): TransportCommand[] {
     const cmd = (c ?? {}) as Record<string, unknown>;
     if (cmd.type === "add-message") {
       const msg = (cmd.message ?? {}) as Record<string, unknown>;
+      const parts = Array.isArray(msg.parts) ? (msg.parts as unknown[]) : undefined;
+      const attachments = parts ? attachmentsFromParts(parts) : [];
       return {
         type: "add-message",
         message: {
           id: typeof msg.id === "string" ? msg.id : `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           role: msg.role === "assistant" ? "assistant" : "user",
-          content: extractText(msg.content ?? msg.parts),
+          content: extractText(msg.content ?? parts),
+          ...(attachments.length > 0 ? { attachments } : {}),
         },
       } satisfies TransportCommand;
     }
     return c as TransportCommand;
   });
+}
+
+/**
+ * Lift file-bearing parts into `AttachmentRef`s. Both shapes are accepted:
+ * - the domain part: `{type:"file", path, name, mime?, size?, source?}`;
+ * - assistant-ui's `FileMessagePart`: `{type:"file", filename, data,
+ *   mimeType?, sourceType?}`, which is what a composer attachment actually is.
+ *
+ * A part with a workspace path is a REFERENCE; one with only a payload is an
+ * upload the file service must write first.
+ */
+function attachmentsFromParts(parts: unknown[]): AttachmentRef[] {
+  const refs: AttachmentRef[] = [];
+  for (const raw of parts) {
+    if (!raw || typeof raw !== "object") continue;
+    const part = raw as Record<string, unknown>;
+    if (part.type !== "file") continue;
+    const name = nonEmpty(part.name) ?? nonEmpty(part.filename);
+    if (!name) continue;
+    const path = nonEmpty(part.path);
+    const mime = nonEmpty(part.mime) ?? nonEmpty(part.mimeType);
+    const size = typeof part.size === "number" ? part.size : undefined;
+    const data = nonEmpty(part.data);
+    refs.push({
+      kind: path ? "workspace" : "upload",
+      ...(path ? { path } : {}),
+      name,
+      ...(mime ? { mime } : {}),
+      ...(size !== undefined ? { size } : {}),
+      ...(!path && data ? { data } : {}),
+    });
+  }
+  return refs;
+}
+
+function nonEmpty(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function extractText(content: unknown): string {

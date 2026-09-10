@@ -120,16 +120,20 @@ quota accounting, and it only earns its keep once `@`-attachments exist (a
 workspace file is a *reference*; an upload is for a file not yet in the
 workspace). It moves to Phase 2.
 
-### Phase 2 — attachments, upload, and run control
+### Phase 2 — attachments, upload, and run control — 🟡 in progress
 
-10. `packages/transport`: `AttachmentRef`, the `file` part, `TransportCommand`
-    attachments; fix `normalizeCommands` to lift non-text parts.
-11. Adapters render references via `workspace.toAgentPath()`; composer `@` picker
+10. ✅ `packages/transport`: `AttachmentRef`, the `file` `MessagePart` variant, and
+    `TransportCommand.add-message.attachments`; `normalizeCommands` now lifts
+    file-bearing parts into attachments, accepting BOTH the domain part shape
+    (`path`/`name`) and assistant-ui's `FileMessagePart`
+    (`filename`/`data`/`mimeType`). The converter also renders a `file` part as a
+    chip carrying its workspace path.
+11. ⬜ Adapters render references via `workspace.toAgentPath()`; composer `@` picker
     (files and directories as references).
-12. `Workspace.write` + `POST /api/workspace/upload` (multipart), enforcing
+12. ⬜ `Workspace.write` + `POST /api/workspace/upload` (multipart), enforcing
     `maxUploadBytes` (413) and consulting `QuotaPolicy`; an upload lands in the
     workspace and then travels as an ordinary reference.
-13. Per-session run lock; `POST /api/transport/abort` + `/approve`, the latter
+13. ⬜ Per-session run lock; `POST /api/transport/abort` + `/approve`, the latter
     gated on `capabilities.approvals`.
 
 ### Phase 3 — enterprise module (private repo, later)

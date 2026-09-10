@@ -73,3 +73,21 @@ test("artifact part becomes a file chip (rendered by the app's File component)",
     sourceType: "id",
   });
 });
+
+test("file part becomes a chip carrying its workspace path", () => {
+  const part: MessagePart = {
+    type: "file",
+    path: "analysis/plot.png",
+    name: "plot.png",
+    mime: "image/png",
+    size: 12,
+    source: "workspace",
+  };
+  assert.deepEqual(partToContent(part), {
+    type: "file",
+    filename: "plot.png",
+    mimeType: "image/png",
+    data: "analysis/plot.png",
+    sourceType: "id",
+  });
+});

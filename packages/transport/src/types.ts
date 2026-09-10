@@ -23,11 +23,33 @@ export interface Message {
   parts: MessagePart[];
 }
 
+/**
+ * A file handed to the agent alongside a user message.
+ *
+ * A `workspace` attachment is a REFERENCE to a file the agent can already open
+ * (the agent's cwd is the workspace), so no bytes move. An `upload` attachment
+ * is one that is not in the workspace yet; the file service writes it, after
+ * which it travels as an ordinary `workspace` reference — one code path for
+ * both (see docs/design/research-agent-framework.md §6).
+ */
+export interface AttachmentRef {
+  kind: "workspace" | "upload";
+  /** Workspace-relative path for `kind: "workspace"`. */
+  path?: string;
+  name: string;
+  mime?: string;
+  size?: number;
+  /** Base64 payload for `kind: "upload"`. */
+  data?: string;
+}
+
 export type MessagePart =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
   | { type: "tool-call"; id: Id; name: string; args: string; result?: string; isError?: boolean }
-  | { type: "artifact"; artifactId: Id; name: string; kind: string };
+  | { type: "artifact"; artifactId: Id; name: string; kind: string }
+  /** A file the agent produced or referenced; `path` is workspace-relative. */
+  | { type: "file"; path: string; name: string; mime?: string; size?: number; source: "workspace" | "upload" };
 
 /**
  * A whole (not incremental) snapshot of a session's canonical transcript,
@@ -86,7 +108,16 @@ export type StateDelta =
  * and kept decoupled so this package stays React-free.
  */
 export type TransportCommand =
-  | { type: "add-message"; message: { id: Id; role: "user" | "assistant"; content: string } }
+  | {
+      type: "add-message";
+      message: {
+        id: Id;
+        role: "user" | "assistant";
+        content: string;
+        /** Files attached to this message (see `AttachmentRef`). */
+        attachments?: AttachmentRef[];
+      };
+    }
   | { type: "add-tool-result"; toolCallId: Id; result: string };
 
 /**
