@@ -1,69 +1,26 @@
 import "@assistant-ui/react-markdown/styles/dot.css";
 
-import {
-  MarkdownTextPrimitive,
-  unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
-  useIsMarkdownCodeBlock,
-} from "@assistant-ui/react-markdown";
+import { useIsMarkdownCodeBlock } from "@assistant-ui/react-markdown";
 import type { TextMessagePartProps } from "@assistant-ui/react";
-import { type FC, memo, useMemo, useRef } from "react";
-import remarkGfm from "remark-gfm";
+import { type FC } from "react";
+import {
+  MarkdownText as BaseMarkdownText,
+  type MarkdownComponents,
+} from "@science-studio/transport-client";
 
 /**
- * Markdown renderer for assistant text parts — a plain-CSS port of the
- * registry `MarkdownText` element (docs /elements/markdown-text), built on
- * `@assistant-ui/react-markdown`'s `MarkdownTextPrimitive`.
- *
- * `MarkdownTextPrimitive` reads the part text from its message-part context,
- * renders GitHub-flavored markdown (tables, task lists, …), and shows the
- * streaming caret (`styles/dot.css`) on the trailing content while the part
- * is `running` — the same cue the default text renderer used, so nothing is
- * lost by replacing it.
+ * Markdown renderer for assistant text parts — a plain-CSS skin over the
+ * shared mechanism (`BaseMarkdownText` from
+ * `@science-studio/transport-client`, built on
+ * `@assistant-ui/react-markdown`'s `MarkdownTextPrimitive`): GitHub-flavored
+ * markdown, shallow-stable component maps, and the streaming caret
+ * (`styles/dot.css`) on the trailing content while the part is `running`.
+ * This file only styles each element with the example's plain CSS classes.
  */
 
-type MarkdownTextProps = Partial<TextMessagePartProps> & {
-  components?: Parameters<typeof memoizeMarkdownComponents>[0];
-};
+type MarkdownTextProps = Partial<TextMessagePartProps>;
 
-const useShallowStable = <T extends Record<string, unknown> | undefined>(
-  value: T,
-): T => {
-  const ref = useRef(value);
-  if (value !== ref.current) {
-    const prev = ref.current;
-    const stable =
-      value !== undefined &&
-      prev !== undefined &&
-      Object.keys(prev).length === Object.keys(value).length &&
-      Object.keys(value).every((key) => prev[key] === value[key]);
-    if (!stable) ref.current = value;
-  }
-  return ref.current;
-};
-
-const MarkdownTextImpl: FC<MarkdownTextProps> = ({ components }) => {
-  const stableComponents = useShallowStable(components);
-  const markdownComponents = useMemo(() => {
-    if (!stableComponents) return defaultComponents;
-    return {
-      ...defaultComponents,
-      ...memoizeMarkdownComponents(stableComponents),
-    };
-  }, [stableComponents]);
-
-  return (
-    <MarkdownTextPrimitive
-      remarkPlugins={[remarkGfm]}
-      className="aui-md"
-      components={markdownComponents}
-      defer
-    />
-  );
-};
-
-export const MarkdownText = memo(MarkdownTextImpl);
-
-const defaultComponents = memoizeMarkdownComponents({
+const defaultComponents: MarkdownComponents = {
   h1: ({ ...props }) => <h1 className="md-h1" {...props} />,
   h2: ({ ...props }) => <h2 className="md-h2" {...props} />,
   h3: ({ ...props }) => <h3 className="md-h3" {...props} />,
@@ -92,4 +49,9 @@ const defaultComponents = memoizeMarkdownComponents({
     const cls = isCodeBlock ? "md-code-block" : "md-code-inline";
     return <code className={className ? `${cls} ${className}` : cls} {...props} />;
   },
-});
+};
+
+/** The styled text renderer used by the message parts map. */
+export const MarkdownText: FC<MarkdownTextProps> = (props) => (
+  <BaseMarkdownText components={defaultComponents} {...props} />
+);

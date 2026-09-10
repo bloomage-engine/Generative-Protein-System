@@ -4,60 +4,28 @@ import "@assistant-ui/react-markdown/styles/dot.css";
 
 import {
   type CodeHeaderProps,
-  MarkdownTextPrimitive,
-  unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
   useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown";
-import remarkGfm from "remark-gfm";
-import { type FC, memo, useMemo, useRef } from "react";
 import type { TextMessagePartProps } from "@assistant-ui/react";
+import { type FC } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
+import {
+  MarkdownText as BaseMarkdownText,
+  type MarkdownComponents,
+} from "@science-studio/transport-client";
 
-type MarkdownTextProps = Partial<TextMessagePartProps> & {
-  components?: Parameters<typeof memoizeMarkdownComponents>[0];
-};
-
-const useShallowStable = <T extends Record<string, unknown> | undefined>(
-  value: T,
-): T => {
-  const ref = useRef(value);
-  if (value !== ref.current) {
-    const prev = ref.current;
-    const stable =
-      value !== undefined &&
-      prev !== undefined &&
-      Object.keys(prev).length === Object.keys(value).length &&
-      Object.keys(value).every((key) => prev[key] === value[key]);
-    if (!stable) ref.current = value;
-  }
-  return ref.current;
-};
-
-const MarkdownTextImpl: FC<MarkdownTextProps> = ({ components }) => {
-  const stableComponents = useShallowStable(components);
-  const markdownComponents = useMemo(() => {
-    if (!stableComponents) return defaultComponents;
-    return {
-      ...defaultComponents,
-      ...memoizeMarkdownComponents(stableComponents),
-    };
-  }, [stableComponents]);
-
-  return (
-    <MarkdownTextPrimitive
-      remarkPlugins={[remarkGfm]}
-      className="aui-md"
-      components={markdownComponents}
-      defer
-    />
-  );
-};
-
-export const MarkdownText = memo(MarkdownTextImpl);
+/**
+ * Markdown renderer for assistant text parts — this app's skin over the
+ * shared mechanism (`BaseMarkdownText` from `@science-studio/transport-client`:
+ * GFM, shallow-stable component maps, streaming caret). This file only styles
+ * each element (Tailwind/shadcn) and adds the code-block copy button.
+ * `MarkdownTextPrimitive` reads the part text from its message-part context,
+ * so the component needs no props of its own.
+ */
 
 const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
   const { isCopied, copyToClipboard } = useCopyToClipboard();
@@ -83,7 +51,7 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
   );
 };
 
-const defaultComponents = memoizeMarkdownComponents({
+const defaultComponents: MarkdownComponents = {
   h1: ({ className, ...props }) => (
     <h1
       className={cn(
@@ -265,4 +233,9 @@ const defaultComponents = memoizeMarkdownComponents({
     );
   },
   CodeHeader,
-});
+};
+
+/** The styled text renderer used by the thread and reasoning part maps. */
+export const MarkdownText: FC<Partial<TextMessagePartProps>> = (props) => (
+  <BaseMarkdownText components={defaultComponents} {...props} />
+);

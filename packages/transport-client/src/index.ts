@@ -14,3 +14,8 @@ export {
   type ReasoningStep,
   type ReasoningTrace,
 } from "./reasoning.js";
+export {
+  MarkdownText,
+  type MarkdownComponents,
+  type MarkdownTextProps,
+} from "./markdown.js";
