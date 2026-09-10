@@ -6,13 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.0",
     "@assistant-ui/react-markdown": "0.14.14",
     "@science-studio/transport": "*",
-        "@science-studio/transport-client": "*",
+    "@science-studio/transport-client": "*",
     "@tailwindcss/postcss": "4.3.3",
     "assistant-stream": "^0.3.41",
     "class-variance-authority": "0.7.1",
@@ -33,6 +34,7 @@
     "@types/node": "^20.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "playwright-core": "1.55.0",
     "typescript": "^5.5.0"
   }
 }

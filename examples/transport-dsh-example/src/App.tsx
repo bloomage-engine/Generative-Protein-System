@@ -1,3 +1,4 @@
+import { memo } from "react";
 import {
   AssistantRuntimeProvider,
   MessagePrimitive,
@@ -34,7 +35,15 @@ const AssistantMessage = () => (
   </div>
 );
 
-export default function App() {
+/**
+ * The app shell, memoized: `useTransport` must not be called by a component
+ * that re-renders. Assistant-ui rebuilds its internal thread-list adapter on
+ * every invocation, and a re-render of the owning component reads as an adapter
+ * swap — it tears the active thread down and starts an empty one, wiping the
+ * transcript (see `useTransport`). This shell holds no state, so `memo` (no
+ * props) keeps the hook inert against re-renders from above.
+ */
+export default memo(function App() {
   // The single session hook: assistant-ui transport runtime over the
   // transport-service, with the history loaded on mount (command-less probe —
   // the backend reconciles against its canonical transcript, restored from the
@@ -66,4 +75,4 @@ export default function App() {
       </main>
     </div>
   );
-}
+});

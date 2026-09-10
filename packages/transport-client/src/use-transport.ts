@@ -70,6 +70,15 @@ export type UseTransportOptions = {
  * `complete` (and a message holding a result-less tool-call even becomes
  * `requires-action`), so tool/reasoning UIs pop in looking finished and
  * never animate while the backend is still working.
+ *
+ * IMPORTANT — the owning component must never re-render. Assistant-ui rebuilds
+ * its internal thread-list adapter on every invocation of
+ * `useAssistantTransportRuntime`, and on a re-render the library reads the new
+ * adapter identity as an adapter swap: it tears the active thread runtime down
+ * and starts an empty one, wiping the transcript. The mount probe does not
+ * re-run (its effect deps are stable), so the conversation stays blank until a
+ * page reload. Keep the hook's component state-free and memoized, and hold UI
+ * state in a child (see `apps/web/app/page.tsx`).
  */
 export function useTransport(options: UseTransportOptions = {}): AssistantRuntime {
   const api = options.api ?? DEFAULT_API;

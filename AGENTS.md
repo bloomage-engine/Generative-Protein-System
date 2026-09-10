@@ -63,6 +63,7 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   (`parseWorkspaceMentions`) — a directory stays a reference, never expanded.
 - `npm run dev -w @science-studio/transport-openclaw-example` — the example app: Vite (5173, proxies `/api`) + the openclaw adapter behind `@science-studio/transport-service` (3200). Needs `examples/transport-openclaw-example/.env` (see its `.env.example`) and a live gateway, and `npm run build` first (imports deps from dist). Dev-only — intentionally NOT in the root build gate; its `npm run test` drives the same wiring against a scripted gateway (no live gateway needed).
 - `npm run dev -w @science-studio/transport-dsh-example` — the same shape over the dsh adapter: Vite (5173) + `@science-studio/transport-service` (3300); the adapter spawns `dsh --profile sdk` locally (needs `examples/transport-dsh-example/.env` with `DEEPSEEK_API_KEY` only — the harness child runs with that folder as cwd, so the dsh CLI reads that same `.env` and hard-refuses launch-only `DSH_*` keys there; defaults: profile `sdk`, home `~/.dsh`, workspace = the example dir, transcript mirror under the service tmp dir — override `DSH_HOME`/`DSH_TRANSCRIPT_DIR`/`DSH_MODEL`… via exported env). Its `npm run test` drives the wiring against a scripted turn client (no dsh process needed).
+- `npm run test:e2e -w @science-studio/web` — the web app's browser regression test: mocks the transport + workspace HTTP surface, loads history, clicks the Files panel and asserts the history survives (the re-render invariant above). Needs a Chromium (auto-detected; the test SKIPS without one) and `npm run build -w @science-studio/transport-client` first. Dev-only — NOT part of the root `npm test`.
 - `npm run build` — build record → transport → workspace → contract-tests → transport-client → transport-openclaw → transport-dsh → transport-service; this is the real type gate
 - `npm run typecheck` — **known-broken**: fails in transport-service with pre-existing TS6310 (composite refs + `--noEmit`). Other workspaces pass; use `npm run build` for the service.
 - `npm run smoke:adapter` — connect a real openclaw adapter to a live gateway and drive one `chat.send` (sends a real message to `OPENCLAW_DEFAULT_SESSION` unless `SMOKE_SESSION` overrides it). Needs `npm run build` first.
@@ -205,7 +206,14 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   canonical-snapshot pushes — remote turns and native command replies, which
   never stream over a run channel), plus the command catalog and the
   slash-menu / reasoning-trace helpers; the web app and both examples use it,
-  and each app owns only its Thread UI/skin.
+  and each app owns only its Thread UI/skin. **The component that calls
+  `useTransport` must never re-render**: assistant-ui rebuilds its internal
+  thread-list adapter on every invocation, so a re-render of the owning
+  component reads as an adapter swap — it tears the active thread down and
+  starts an empty one, wiping the transcript (recovered only by a reload). Keep
+  the hook's host state-free and memoized, with all UI state in a child below it
+  (`apps/web/app/page.tsx`); `apps/web/test/workspace-panel-history.test.mjs` is
+  the regression guard.
 - **Adapters share one fold-and-fan-out kit** in `@science-studio/transport`:
   the `Transcript` base (canonical state + `emit` = foldState → attached
   `RunFlow`) and the `RunFlow` queue (enqueue-time snapshot clones). Per-
