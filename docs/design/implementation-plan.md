@@ -86,8 +86,11 @@ preamble, and runtimes plug in through factories. Wire contract unchanged.
    `SS_ENTERPRISE_MODULE` dynamic import, `resolveRuntimePlugins`). Routes hijack
    the Node response for SSE/NDJSON. `createTransportService()` keeps a
    `{ adapters }` compat path for the examples/tests.
-6. ⬜ `packages/contract-tests`: skeletons for `PrincipalResolver`, `Workspace`,
-   `RuntimeFactory` conformance (reused later by the private repo). Next up.
+6. ✅ `packages/contract-tests`: the shared seam conformance suites
+   (`testPrincipalResolver`, `testWorkspace`, `testRuntimeFactory`,
+   `testQuotaPolicy`), self-tested against the OSS reference implementations (14
+   tests) and ADOPTED by transport-openclaw / transport-dsh for the factory
+   contract.
 
 **Done when:** `npm run build` passes; `npm run test` is green with
 `SS_ENTERPRISE_MODULE` unset; the service starts without waiting on the runtime
@@ -147,7 +150,9 @@ workspace). It moves to Phase 2.
 3. Adding a runtime package touches no core package (enforced by a dependency
    check).
 4. The suite is green with `SS_ENTERPRISE_MODULE` unset.
-5. The private repo runs the OSS `contract-tests` suites.
+5. The private repo runs the OSS `contract-tests` suites
+   (`@science-studio/contract-tests`) — implemented, and already adopted by the
+   two OSS runtime packages.
 
 ## 6. Sequencing notes and risks
 

@@ -22,6 +22,7 @@
     "@science-studio/transport": "*"
   },
   "devDependencies": {
+    "@science-studio/contract-tests": "*",
     "@types/node": "^20.0.0",
     "tsx": "^4.19.0"
   }

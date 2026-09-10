@@ -652,8 +652,9 @@ packages/transport                    + principal.ts, environment.ts, runtime.ts
                                       + AttachmentRef, file part, RuntimeInitOptions.{binding,workspace}
 packages/transport-openclaw           runtime 自有：GatewayBinding + 工厂
 packages/transport-dsh                runtime 自有：DshBinding + 工厂
-packages/workspace            （新增）  Workspace 接口, FsWorkspace, 限制, QuotaPolicy, 文件引用语法（服务端）
-packages/sandbox              （新增）  Sandbox/SandboxProvider（tenant+state+roots+binding）, Local + Dsh providers
+packages/workspace            （新增）  FsWorkspace + 限制强制（接缝类型在 transport）
+packages/contract-tests       （新增）  共享的接缝一致性套件，所有实现都运行
+packages/sandbox              （新增）  Local + Dsh providers（接缝类型在 transport）
 packages/transport-client             + useWorkspaceMentions, workspace 客户端, 文件引用 resolver,
                                         useWorkspace（拉取条目）, file part 转换
 services/transport-service            + Fastify server + 插件, composition.ts, workspace 路由, principal hook,

@@ -710,8 +710,9 @@ packages/transport                    + principal.ts, environment.ts, runtime.ts
                                       + AttachmentRef, file part, RuntimeInitOptions.{binding,workspace}
 packages/transport-openclaw           runtime-owned: GatewayBinding + factory
 packages/transport-dsh                runtime-owned: DshBinding + factory
-packages/workspace            (new)     Workspace interface, FsWorkspace, limits, QuotaPolicy, file-reference grammar (server side)
-packages/sandbox              (new)     Sandbox/SandboxProvider (tenant+state+roots+binding), Local + Dsh providers
+packages/workspace            (new)     FsWorkspace + limits enforcement (seam types live in transport)
+packages/contract-tests       (new)     the shared seam conformance suites every implementation runs
+packages/sandbox              (new)     Local + Dsh providers (seam types live in transport)
 packages/transport-client             + useWorkspaceMentions, workspace client, file-reference resolver,
                                         useWorkspace (fetch entries), file part conversion
 services/transport-service            + Fastify server + plugins, composition.ts, workspace routes, principal hook,

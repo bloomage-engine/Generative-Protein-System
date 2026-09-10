@@ -17,6 +17,7 @@ apps/web                          Next.js frontend (assistant-ui Thread UI, port
 packages/record                   domain + record layer (Run is the atomic unit)
 packages/transport                SEAM PACKAGE: every seam interface (RuntimeAdapter/StateDelta, RuntimeBinding/RuntimeFactory/RuntimePlugin/RuntimeCapabilities, Principal/PrincipalResolver, Environment/EnvironmentProvider, Workspace + limits + QuotaPolicy) + the shared adapter kit (Transcript base / RunFlow queue) + pure single-user defaults (LocalPrincipalResolver, LocalEnvironmentProvider, NullWorkspace, NoopQuotaPolicy)
 packages/workspace                Workspace implementations (FsWorkspace + containment/symlink/size invariants); depends on transport
+packages/contract-tests          the SHARED seam conformance suites (testPrincipalResolver/testWorkspace/testRuntimeFactory/testQuotaPolicy) every implementation runs; the OSS reference impls self-test here, the private module and third-party runtimes run the same suites in their CI
 packages/transport-client         assistant-ui client boundary (single `useTransport` session hook = history probe + standing watch + guarded import; state converter; command catalog + slash-menu / reasoning-trace helpers)
 packages/transport-openclaw       openclaw runtime adapter — owns its OWN launch surface (`GatewayBinding`), factory, capabilities and `runtimePlugins`; ports gateway WS
 packages/transport-dsh            dsh runtime adapter — owns `DshBinding` + factory + `runtimePlugins` (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC)
@@ -52,7 +53,7 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   instead of navigating.
 - `npm run dev -w @science-studio/transport-openclaw-example` — the example app: Vite (5173, proxies `/api`) + the openclaw adapter behind `@science-studio/transport-service` (3200). Needs `examples/transport-openclaw-example/.env` (see its `.env.example`) and a live gateway, and `npm run build` first (imports deps from dist). Dev-only — intentionally NOT in the root build gate; its `npm run test` drives the same wiring against a scripted gateway (no live gateway needed).
 - `npm run dev -w @science-studio/transport-dsh-example` — the same shape over the dsh adapter: Vite (5173) + `@science-studio/transport-service` (3300); the adapter spawns `dsh --profile sdk` locally (needs `examples/transport-dsh-example/.env` with `DEEPSEEK_API_KEY` only — the harness child runs with that folder as cwd, so the dsh CLI reads that same `.env` and hard-refuses launch-only `DSH_*` keys there; defaults: profile `sdk`, home `~/.dsh`, workspace = the example dir, transcript mirror under the service tmp dir — override `DSH_HOME`/`DSH_TRANSCRIPT_DIR`/`DSH_MODEL`… via exported env). Its `npm run test` drives the wiring against a scripted turn client (no dsh process needed).
-- `npm run build` — build record → transport → workspace → transport-client → transport-openclaw → transport-dsh → transport-service; this is the real type gate
+- `npm run build` — build record → transport → workspace → contract-tests → transport-client → transport-openclaw → transport-dsh → transport-service; this is the real type gate
 - `npm run typecheck` — **known-broken**: fails in transport-service with pre-existing TS6310 (composite refs + `--noEmit`). Other workspaces pass; use `npm run build` for the service.
 - `npm run smoke:adapter` — connect a real openclaw adapter to a live gateway and drive one `chat.send` (sends a real message to `OPENCLAW_DEFAULT_SESSION` unless `SMOKE_SESSION` overrides it). Needs `npm run build` first.
 - `npm run smoke:replay -- <file>` — fold recorded SSE frames through the client decoder/accumulator (verifies a stream terminates with `[DONE]` and only uses `set` ops).
@@ -158,7 +159,10 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   runtimes DYNAMICALLY (`SS_RUNTIME_MODULES` → each module's `runtimePlugins`),
   so adding a runtime touches no core package — and the private enterprise
   module is loaded the same way (`SS_ENTERPRISE_MODULE`). See
-  docs/design/implementation-plan.md §5 for the CI invariants.
+  docs/design/implementation-plan.md §5 for the CI invariants. The
+  `@science-studio/contract-tests` package publishes the executable form of
+  these invariants: implementers (including the private enterprise module) run
+  its suites.
 - **A runtime's launch surface belongs to its package.** `RuntimeInitOptions`
   carries an opaque `RuntimeBinding` (+ optional `workspace`/`env`), never a
   `{url, token}`; only `transport-openclaw`/`transport-dsh` know their own shape.
