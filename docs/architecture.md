@@ -22,70 +22,91 @@ This document captures the agreed framework. The domain vocabulary lives in
 
 ## 2. Monorepo layout
 
+npm-workspaces TypeScript monorepo. Two hard rules shape the layout: **all seam
+*interfaces* live in `packages/transport`, implementations live in their own
+packages** (no cycles), and **a runtime's launch surface belongs to its own
+package** (the core never names a `url`/`token`/child handle).
+
 ```
-science-studio/                         # npm-workspaces TypeScript monorepo
+science-studio/
 ├── apps/
-│   └── web/                            # Next.js frontend
-│       ├── app/page.tsx                # renders the registered assistant-ui Thread + history sync
-│       ├── components/assistant-ui/    # Thread elements from the assistant-ui registry
-│       ├── components/ui/              # shadcn/ui base components
-│       ├── hooks/ + lib/               # registry helpers, transport hook, session probe
-│       └── (Tailwind v4 + shadcn/ui styling stack)
+│   └── web/                            Next.js 15 frontend (assistant-ui Thread + Files panel, :3000)
+│       ├── app/page.tsx                Session (runtime owner) + WorkspaceShell (UI state)
+│       ├── app/api/{transport,workspace}  streaming Route Handlers (never next.config rewrites)
+│       ├── components/assistant-ui/    Thread elements from the assistant-ui registry
+│       ├── components/workspace/       workspace browser/viewer panel
+│       └── test/                       Playwright regression (panel re-render keeps history)
 ├── packages/
-│   ├── transport/                      # assistant-transport seam (runtime-agnostic)
-│   │   └── src/types.ts                #   RuntimeAdapter, SessionState/Message, StateDelta
-│   ├── transport-openclaw/             # openclaw runtime adapter (port of openclaw-adapter)
-│   ├── record/                         # domain + record layer (Run is the atomic unit)
-│   │   └── Project/Study/Task/Run/Artifact/Evidence/Conclusion
-│   └── (future: transport-codex, …)    # further runtimes behind the same seam
+│   ├── record/                         domain + record layer (Run is the atomic unit)
+│   ├── transport/                      SEAM PACKAGE, two entries:
+│   │   ├── ./seams                     the contract alone — interfaces + error classes + limits
+│   │   └── .                           the contract + the shared adapter kit + pure single-user defaults
+│   ├── workspace/                      Workspace implementations (FsWorkspace + containment/symlink/size invariants)
+│   ├── contract-tests/                 shared seam conformance suites every implementation runs
+│   ├── transport-client/               assistant-ui client boundary (useTransport, workspace hooks, catalog)
+│   ├── transport-openclaw/             openclaw adapter — GatewayBinding, factory, capabilities, runtimePlugins
+│   └── transport-dsh/                  dsh adapter — DshBinding, local harness child via the SDK, runtimePlugins
 ├── services/
-│   └── transport-service/              # backend transport service (frontend → uniform protocol)
-├── scripts/                            # dev smoke tools (adapter smoke test, SSE replay)
-├── docs/                               # architecture + ADRs
-└── CONTEXT.md / AGENTS.md              # domain glossary / agent operational notes
+│   └── transport-service/              backend assistant-transport service (Fastify, :3001) — composition root
+├── examples/
+│   ├── transport-openclaw-example/     minimal assistant-ui app over the openclaw adapter (Vite; service :3200)
+│   └── transport-dsh-example/          minimal assistant-ui app over the dsh adapter (Vite; service :3300)
+├── scripts/                            dev smoke tools (adapter smoke, dsh smoke, SSE replay, …)
+├── docs/
+│   ├── architecture.md                 this document
+│   ├── adr/                            0001–0004
+│   └── design/                         research-agent framework + implementation plan (EN/ZH)
+├── CONTEXT.md                          domain glossary (authoritative vocabulary)
+└── AGENTS.md                           repo & wire-contract operational notes
 ```
+
+`transport` has two entries on purpose: implementers that only need the
+interface import `./seams`; the shared kit and the pure single-user defaults
+(`LocalPrincipalResolver`, `LocalEnvironmentProvider`, `NullWorkspace`,
+`NoopQuotaPolicy`) live behind `.`. Exports are explicit (no `export *`) and
+pinned by `packages/transport/test/seams.test.ts`.
 
 ## 3. Data flow
 
 ```
-① Conversation path (UI)
-   frontend assistant-ui Thread
-     useAssistantTransportRuntime({ api: "/api/transport", converter })
-     │ POST { commands: [add-message, ...], threadId }
-     ▼
-  assistant-transport service  (implements the assistant-ui transport protocol)
-     │ stream state snapshots (SSE "assistant-transport" or "data-stream")
-     │ → frontend converter → assistant-ui messages
-     ▼
-  RuntimeAdapter.openclaw  ──► openclaw gateway
+① Conversation path (a client-driven run)
+   apps/web  assistant-ui Thread
+     useTransport  (transport-client: mount probe + standing watch, one interlock)
+       │ POST /api/transport  { commands, state, threadId }
+       ▼
+     app/api/transport/route.ts        streaming Route Handler (forwards Authorization)
+       ▼
+     transport-service :3001            composition root picks the runtime
+       │ RuntimeAdapter.run(session, commands) → AsyncIterable<StateDelta>
+       │ wire fold → `set` / `append-text` ops → SSE frames → data: [DONE]
+       ▼
+     RuntimeAdapter (openclaw: gateway WS | dsh: local harness child)
+       └─ every research turn ⇒ one Run persisted via RecordStoreLike
 
-② Record path (traceability)
-   every turn = one Run, authored by the transport-service
-     └─► record-service: Project/Study/Task/Run/Artifact/Evidence/Conclusion
+② Watch path (content that settles with no local run)
+     GET /api/transport/watch (NDJSON)
+       │ baseline on attach + one canonical WatchSnapshot per settle
+       ▼
+     transport-client adopts it via importExternalState (same guarded interlock)
+
+③ Workspace path (opt-in, v1 read-only + raw upload)
+     GET  /api/workspace/{entries,stat,file}   POST /api/workspace/upload
+       ▼
+     app/api/workspace/[...path] proxy → transport-service → FsWorkspace | NullWorkspace
 ```
 
-## 4. The transport seam (assistant-ui assistant-transport)
+The frontend only ever speaks assistant-ui's assistant-transport protocol; the
+converter maps Science Studio's normalized state to assistant-ui messages. The
+UI is never rewritten when the runtime swaps.
 
-We adopt assistant-ui's **`useAssistantTransportRuntime`** as the uniform
-frontend transport. It is a command-in / state-snapshot-out protocol, so the
-frontend is a stateless view over a backend-owned agent state and never changes
-when the runtime swaps.
-
-- **Frontend**: `useAssistantTransportRuntime({ api, initialState, converter })`.
-  It POSTs `commands` (add-message, add-tool-result, plus custom ones) to the
-  backend and consumes streamed state snapshots. `converter` maps the Science
-  Studio session state to assistant-ui messages (text / reasoning / tool-call /
-  artifact cards).
-- **Backend transport-service**: implements the wire protocol (`data-stream`
-  default, or `assistant-transport` SSE with `data: … [DONE]`). It delegates to an
-  adapter to drive the concrete runtime.
+## 4. The transport seam
 
 ### RuntimeAdapter
 
-`RuntimeAdapter` is the runtime-agnostic boundary. It consumes a normalized
-`SessionState` and a batch of `TransportCommand`s and drives the concrete agent
-runtime, yielding `StateDelta`s that the transport-service folds into client-
-safe state operations:
+`RuntimeAdapter` (`packages/transport/src/types.ts`) is the runtime-agnostic
+boundary. It consumes a normalized `SessionState` and a batch of
+`TransportCommand`s and drives the concrete runtime, yielding `StateDelta`s that
+the transport-service folds into client-safe state operations:
 
 ```ts
 interface RuntimeAdapter {
@@ -93,11 +114,11 @@ interface RuntimeAdapter {
   init(opts: RuntimeInitOptions): Promise<void>;    // called once on registration
   run(session: SessionState, commands: TransportCommand[]): AsyncIterable<StateDelta>;
   abort(reason?: string): void;
-  approve(approvalId: string, decision: "approve" | "reject"): void;
-  listCommands?(): Promise<CommandDescriptor[]>;    // slash-menu catalog (ADR 0003)
+  approve?(approvalId: string, decision: "approve" | "reject"): void; // gate on capabilities
   onArtifact?(artifact: ArtifactInput): void;       // reserved seam; wired later
-  subscribe?(sessionId: string, sink: (snapshot: WatchSnapshot) => void): () => void; // standing watch
+  listCommands?(): Promise<CommandDescriptor[]>;    // slash-menu catalog (ADR 0003)
   resolveSessionKey?(threadId: string | null): string; // canonical session a client threadId targets
+  subscribe?(sessionId: string, sink: (snapshot: WatchSnapshot) => void): () => void; // standing watch
 }
 ```
 
@@ -105,36 +126,97 @@ interface RuntimeAdapter {
   carries the adapter's canonical transcript. The transport-service compares it
   against the state the client claimed in the request body (`state`) and, when
   they differ, streams a whole-message-map `set` snapshot — so a fresh page load
-  or a reload always converges to the full history (no per-request history
-  fetch needed on the client beyond a mount-time probe).
+  or a reload always converges to the full history (the client needs no
+  per-request history fetch beyond a mount-time probe). openclaw additionally
+  re-syncs against gateway `chat.history` at the START of every `run()`: the
+  gateway is not the only writer, so remote turns (including their USER rows,
+  which never pass through this process) are converged by rebuilding the
+  transcript whenever the history is not a content-prefix of it.
 - **Client-safe ops.** The assistant-ui client accumulator accepts only `set`
-  (and `append-text`) operations, so the transport-service materializes purely
-  incremental deltas (`add-part`, `append-text`) into full `parts` `set` ops and
-  never emits raw `append`. The openclaw adapter maps gateway chat/agent events
-  (or `chat.history` when a transcript is first created) into `StateDelta`s,
-  ported from `openclaw-adapter` and run server-side rather than in the browser.
-- Future adapters (e.g. codex) implement the same interface against their own
-  protocol.
-- **Shared adapter kit.** `@science-studio/transport` ships the transcript
-  machinery every adapter subclasses rather than re-implementing: the
-  `Transcript` base (canonical state + `emit` = foldState onto state, then
-  push into the attached flow) and the `RunFlow` queue (drainable per `run()`;
-  enqueue-time snapshot clones keep the wire mirror safe from deltas that
-  reference the adapter's LIVE objects). Per-adapter code is only the
-  event→delta mapping and session policies. The transport-service is
-  runtime-agnostic end to end: which `threadId` means which session is answered
-  by the SELECTED adapter's `resolveSessionKey` (each runtime's namespace and
-  default session travel with it, never with the service).
-- **Standing watch.** The service's `/api/transport/watch` endpoint keeps open
-  browsers converged by pushing the canonical `WatchSnapshot`: on attach
-  (baseline) and on settles. openclaw coalesces remote settles; dsh baselines
-  warm sessions synchronously and COLD sessions (restart) from its own mirror,
-  then pushes once per settled run — a watcher never hangs on an open stream.
-  On the client, `useTransport` (transport-client) mounts the mount-time
-  history probe AND the watch consumer behind ONE guarded-import interlock
-  (`canImportThread`): `importExternalState` is a whole-replace, so imports
-  are skipped while a local run is active and the probe requires an empty
-  thread.
+  and `append-text`, so the transport-service materializes purely incremental
+  deltas (`add-part`, `append-text`) into full `parts` `set` ops and never emits
+  raw `append`. Token fragments grow a single text part at its exact path.
+  Adapters map their runtime's events into `StateDelta`s.
+- **Session identity is record-owned.** A runtime session key IS the Science
+  Studio `Session` id (1:1). `createSessionResolver` mints the `Session` (and the
+  default `Study` it hangs off, from `PROJECT_ID`/`STUDY_ID`/
+  `AGENT_BLUEPRINT_ID`) on first use; the adapter persists `Run`s through a
+  narrowed view (`RecordStoreLike`) of the SAME `RecordStore` the service reads
+  identity from.
+
+### Runtime plurality
+
+The seam carries HOW a runtime plugs in without the core learning a launch
+surface (`packages/transport/src/runtime.ts`):
+
+- `RuntimeBinding` — opaque connection material, `config`'s shape private to the
+  runtime package (openclaw: `{url, token}`; dsh: harness spawn options).
+- `RuntimeFactory` — `create(binding)` + declared `RuntimeCapabilities`.
+- `RuntimePlugin` — the single export a runtime package publishes
+  (`runtimePlugins: RuntimePlugin[]`), whose `localBinding(env)` builds the
+  single-user binding (the `LocalSandboxProvider` role, kept in the package).
+- `RuntimeCapabilities` — traits consumers need up front (`commandCatalog`,
+  `remoteSettleWatch`, `tokenStreaming`, `approvals`, `hostedSandbox`,
+  `perSessionCwd`), so no consumer hardcodes a runtime's name.
+
+The **composition root** (`services/transport-service/src/composition.ts`) loads
+runtime modules DYNAMICALLY by specifier, so the service statically imports NO
+runtime package. The default module list is DATA — `scienceStudio.runtimeModules`
+in the service's own `package.json` — and `SS_RUNTIME_MODULES` overrides it
+entirely. `SS_ENTERPRISE_MODULE` swaps in the private multi-user backend; unset
+means the complete single-user product.
+
+### Shared adapter kit
+
+Both shipped adapters **compose** one shared `SessionRuntime`
+(`packages/transport/src/session-runtime.ts`, kit tier — see docs/adr/0005)
+rather than re-implementing the run lifecycle. The module owns the run-loop
+skeleton (reconcile-first, probe termination, user-row echo, flow
+attach/drain), the settle pipeline (project → `RecordStoreLike.addRun` →
+durability hook → watched notify) with the invariant that no persist or hook
+failure escapes into the run stream, the watch registry (baseline on attach,
+one sink set per Session, coalescing window), the Run projection skeleton, the
+tool-part merge invariant (one `tool-call` part per id, merged never appended),
+and the transcript-equality rule.
+
+Each adapter supplies a `SessionBehavior`: its event→delta mapping, its launch
+surface (`dispatch`), and only the hooks its runtime genuinely differs on —
+openclaw: history convergence (`history-sync.ts`), the command-run guard, 250 ms
+notify coalescing and fire-and-forget persistence; dsh: the harness turn (with
+its create-only retry) plus transcript mirror restore/save, immediate notify and
+an asynchronous cold baseline. Which `threadId` means which session is answered
+by the selected adapter's `resolveSessionKey` (each runtime's namespace and
+default session travel with it, never with the service).
+
+### Standing watch
+
+`GET /api/transport/watch` keeps open browsers converged by pushing the canonical
+`WatchSnapshot` — on attach (baseline) and on settles. openclaw coalesces remote
+settles (its transcript is re-synced from `chat.history`); dsh baselines warm
+sessions synchronously and COLD sessions (service restart, nothing in memory)
+asynchronously from its own mirror, then pushes once per settled run — so a
+watcher that attached before any content still wakes on the first settle instead
+of hanging on an open stream. On the client, `useTransport` mounts the mount-time
+history probe AND the watch consumer behind ONE guarded-import interlock
+(`canImportThread`): `importExternalState` is a whole-replace, so imports are
+skipped while a local run is active, and the probe additionally requires an empty
+thread so an older in-flight snapshot never clobbers a newer watch push.
+
+### The client boundary
+
+`@science-studio/transport-client` owns the assistant-ui boundary as ONE session
+module: `useTransport` (probe + watch + guarded import), the command catalog, the
+workspace hooks, and the slash-menu / reasoning-trace helpers. The web app and
+both examples use it; each app owns only its Thread UI/skin.
+
+**The component that calls `useTransport` must never re-render.** Assistant-ui
+rebuilds its internal thread-list adapter on every invocation of
+`useAssistantTransportRuntime`, and on a re-render the library reads the new
+adapter identity as an adapter swap: it tears the active thread runtime down and
+starts an empty one, wiping the transcript (recovered only by a reload). Keep the
+hook's host state-free and memoized, with all UI state in a child below it
+(`apps/web/app/page.tsx`); `apps/web/test/workspace-panel-history.test.mjs` is the
+regression guard.
 
 ### Runtime commands (slash commands)
 
@@ -144,49 +226,69 @@ The gateway interprets a standalone `/command` message itself; the transcript,
 reconcile and watch paths treat command rows exactly like any other rows.
 
 - **Command ≠ Run.** A command message is never persisted as a `Run`: the
-  openclaw adapter tracks runIds driven by `/`-prefixed sends, and remote
-  settles are persisted only after the `chat.history` sync (whose transcript
-  guard skips settles whose immediately preceding user row starts with `/`), so
-  a remote command turn never becomes a research `Run`.
+  openclaw adapter tracks runIds driven by `/`-prefixed sends, and remote settles
+  are persisted only after the `chat.history` sync (whose transcript guard skips
+  settles whose immediately preceding user row starts with `/`).
 - **Catalog.** `RuntimeAdapter.listCommands()` returns runtime-agnostic
-  `CommandDescriptor`s (`{ id, label, description, icon?, category?,
-  invocationText }`). The openclaw adapter proxies the gateway's `commands.list`
-  (60s cached) and curates it: a native-text, no-required-argument allowlist
-  (session controls + discovery), so availability is still gated by what the
-  gateway reports. The transport-service exposes it at
-  `GET /api/transport/commands` (JSON); the web route handler proxies it.
+  `CommandDescriptor`s. The openclaw adapter proxies the gateway's
+  `commands.list` (60s cached) and curates it; the transport-service exposes it
+  at `GET /api/transport/commands` (JSON), and the web route handler proxies it.
 - **Frontend.** `useRuntimeSlashMenu` (transport-client) fetches the catalog
-  (through the `TransportApiProvider` context) and builds the assistant-ui
-  slash adapter; the web composer (`elements/composer.aui.tsx`) and both
-  examples' plain-CSS composer only skin the popover. The "/" menu opens only
-  while a non-empty catalog is loaded and the thread is idle
-  (`slashMenuEnabled`); picking a command appends its invocation text as a
-  normal user message, leaving any partial draft untouched. Hand-typed
-  `/commands` behave identically.
+  through `TransportApiProvider` and builds the assistant-ui slash adapter; the
+  web composer and both examples only skin the popover. The "/" menu opens only
+  while a non-empty catalog is loaded and the thread is idle (`slashMenuEnabled`);
+  picking a command appends its invocation text as a normal user message,
+  leaving any partial draft untouched. Hand-typed `/commands` behave identically.
 
 ## 5. Record layer
 
 Science Studio owns the research record; it is the source of truth, not any
-runtime. `Run` is captured per turn: input message, Agent identity, parameters,
-tool calls, outputs. `Artifact` capture is a **reserved interface** now and wired
-up in a later iteration.
+runtime. `Run` is captured per research turn: input message, Agent identity,
+parameters, tool calls, outputs. `Artifact` capture is a **reserved interface**
+now and wired up in a later iteration.
 
 **The streamed transport state is Science Studio's own normalized Session/Run
 state**, not a runtime transcript. The frontend `converter` reads that normalized
-state; runtime adapters translate runtime events (e.g. openclaw chat/agent frames)
-into updates to it. This keeps the converter runtime-agnostic and the record
-authoritative.
+state; runtime adapters translate runtime events (e.g. openclaw chat/agent
+frames) into updates to it. This keeps the converter runtime-agnostic and the
+record authoritative.
 
-## 6. Version 1 scope
+## 6. Workspace file service
+
+Workspace access is **opt-in** and **read-only in v1**, served by the SAME
+service behind the same principal/environment preamble:
+
+- `WORKSPACE_ROOT` gives the single-user service a real `FsWorkspace`
+  (`packages/workspace`), which enforces containment, symlink and size
+  invariants; unset means `NullWorkspace` and no file surface (every request
+  answers 503).
+- Routes: `GET /api/workspace/{entries,stat,file}` and
+  `POST /api/workspace/upload?path=` (a **raw** body, one file per request — no
+  multipart parser). `file` streams inline up to `WORKSPACE_MAX_INLINE_BYTES`
+  (413 over it) and `?download=1` streams any size; a missing path is 404, a
+  traversal/absolute path 400. Upload answers 413 over `WORKSPACE_MAX_UPLOAD_BYTES`
+  and 507 from `QuotaPolicy` on the declared size (`WORKSPACE_QUOTA_BYTES`).
+- Client-side: `useWorkspaceBrowser` / `useWorkspaceFile` /
+  `useWorkspaceAvailability` / `useWorkspaceMentions` and `WorkspaceOpenProvider`
+  (the seam that lets an agent file link in markdown open the viewer instead of
+  navigating). The composer `@` picker inserts assistant-ui directive text
+  (`:file[label]{name=id}` / `:directory[...]`) which the service lifts back into
+  a workspace `AttachmentRef` — a directory stays a reference, never expanded.
+
+## 7. Version 1 scope
 
 - Conversation-first: a Researcher chats with a configured Agent in a `Session`
-  under a `Study`; each turn produces a `Run` in the record layer.
-- Backend transport service with an openclaw adapter.
+  under a `Study`; each research turn produces a `Run` in the record layer.
+- Backend transport service as a composition root; two shipped runtimes
+  (openclaw, dsh) behind the same seam; a private enterprise module swaps in the
+  multi-user backend.
+- Workspace file access (read-only + upload) opt-in via `WORKSPACE_ROOT`.
 - `Artifact` interface reserved, not wired.
 - `Workflow` (DAG) orchestration is a later overlay, not in v1.
 
-## 7. Open questions (non-blocking)
+## 8. Open questions (non-blocking)
 
 - Persistence details for the record layer (Postgres schema, artifact storage backend).
-- Auth model for Managers vs Researchers (scopes, device pairing).
-- Uniform transport protocol details (SSE vs WS; streaming frame shape).
+- Auth model for Managers vs Researchers (scopes, device pairing); the hosted
+  `PrincipalResolver` seam exists, the full model is deferred.
+- Per-runtime hosted sandbox provisioning (`hostedSandbox`, `perSessionCwd`).

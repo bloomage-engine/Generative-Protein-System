@@ -15,9 +15,9 @@ apps/web                          Next.js frontend (assistant-ui Thread UI, port
   components/ui + hooks + lib       shadcn/ui base, registry helpers
   (Tailwind v4 + shadcn/ui styling stack: postcss.config.mjs, components.json)
 packages/record                   domain + record layer (Run is the atomic unit)
-packages/transport                SEAM PACKAGE, two entries. `./seams` = the contract only: every seam interface (RuntimeAdapter/StateDelta, RuntimeBinding/RuntimeFactory/RuntimePlugin/RuntimeCapabilities, Principal/PrincipalResolver, Environment/EnvironmentProvider, Workspace + limits + QuotaPolicy) plus their error classes and limit constants. `.` = that contract + the shared adapter kit (Transcript base / RunFlow queue / foldState / attachment helpers) + pure single-user defaults (LocalPrincipalResolver, LocalEnvironmentProvider, NullWorkspace, NoopQuotaPolicy). Exports are explicit (no `export *`); pinned by test/seams.test.ts
+packages/transport                SEAM PACKAGE, two entries. `./seams` = the contract only: every seam interface (RuntimeAdapter/StateDelta, RuntimeBinding/RuntimeFactory/RuntimePlugin/RuntimeCapabilities, Principal/PrincipalResolver, Environment/EnvironmentProvider, Workspace + limits + QuotaPolicy) plus their error classes and limit constants. `.` = that contract + the shared adapter kit (`SessionRuntime` + its `SessionBehavior` / `RunFlow` queue / `foldState` / attachment helpers) + pure single-user defaults (LocalPrincipalResolver, LocalEnvironmentProvider, NullWorkspace, NoopQuotaPolicy). Exports are explicit (no `export *`); pinned by test/seams.test.ts
 packages/workspace                Workspace implementations (FsWorkspace + containment/symlink/size invariants); depends on transport
-packages/contract-tests          the SHARED seam conformance suites (testPrincipalResolver/testWorkspace/testRuntimeFactory/testQuotaPolicy) every implementation runs; the OSS reference impls self-test here, the private module and third-party runtimes run the same suites in their CI. Imports the contract from `@science-studio/transport/seams` (never the kit)
+packages/contract-tests          the SHARED seam conformance suites (testPrincipalResolver/testWorkspace/testRuntimeFactory/testAdapterLifecycle/testQuotaPolicy) every implementation runs; the OSS reference impls self-test here, the private module and third-party runtimes run the same suites in their CI. Imports the contract from `@science-studio/transport/seams` (never the kit)
 packages/transport-client         assistant-ui client boundary (single `useTransport` session hook = history probe + standing watch + guarded import; state converter; command catalog + slash-menu / reasoning-trace helpers)
 packages/transport-openclaw       openclaw runtime adapter — owns its OWN launch surface (`GatewayBinding`), factory, capabilities and `runtimePlugins`; ports gateway WS
 packages/transport-dsh            dsh runtime adapter — owns `DshBinding` + factory + `runtimePlugins` (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC)
@@ -113,8 +113,8 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   probe **must end with `data: [DONE]`**
   (the service always writes it), otherwise the import never settles and the
   composer stays locked. The same is true for any run whose flow never ends —
-  the attached `RunFlow` must be ended on a terminal chat event (`apply()`
-  ends the flow via the transcript) and immediately for empty command batches.
+  the kit's flow must be ended on a terminal runtime event (`SessionBehavior.apply`
+  returns `settled`) and immediately for empty command batches.
 - The service fold seeds its mirror from the claimed/`reconcile` state; if a
   client's claimed state already matches the canonical transcript, the probe
   returns only `[DONE]` (no redundant snapshot).
@@ -156,9 +156,9 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `curl -sN -X POST http://localhost:3001/api/transport -H 'content-type: application/json' -d '{"commands":[{"type":"add-message","message":{"role":"user","parts":[{"type":"text","text":"hi"}]}}]}'`
   — with a live gateway this streams real frames and must terminate with `[DONE]`.
 - **One in-flight run per session.** A second `POST /api/transport` for the same
-  session while one is running is refused with **409**: `Transcript.attachFlow`
-  overwrites the current flow, so concurrent runs would corrupt both streams.
-  Run control reaches the adapter through `POST /api/transport/abort` and
+  session while one is running is refused with **409**: an adapter attaches one
+  flow per Session (`SessionRuntime`), so concurrent runs would corrupt both
+  streams. Run control reaches the adapter through `POST /api/transport/abort` and
   `POST /api/transport/approve`; `/approve` answers **501** when the runtime has
   no approval surface (`RuntimeAdapter.approve` is optional).
 
@@ -214,15 +214,18 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   the hook's host state-free and memoized, with all UI state in a child below it
   (`apps/web/app/page.tsx`); `apps/web/test/workspace-panel-history.test.mjs` is
   the regression guard.
-- **Adapters share one fold-and-fan-out kit** in `@science-studio/transport`:
-  the `Transcript` base (canonical state + `emit` = foldState → attached
-  `RunFlow`) and the `RunFlow` queue (enqueue-time snapshot clones). Per-
-  adapter code is only the event→delta mapping plus session policies (openclaw:
-  history convergence in `history-sync.ts`, tool-result merging in
-  `tool-result.ts`; dsh: the `Turn` module + mirror restore) — never a
-  re-implementation of the transcript. Deltas that carry payloads reference
-  live transcript objects, so the queue's snapshot-at-enqueue is what keeps
-  the wire mirror and the client safe.
+- **Adapters compose one shared run lifecycle** in `@science-studio/transport`
+  (docs/adr/0005): `SessionRuntime` owns the run loop (reconcile-first, probe
+  termination, user echo, flow drain), the settle pipeline (project →
+  `RecordStoreLike.addRun` → durability hook → watched notify, with no failure
+  escaping the run stream), the watch registry + Run projection, the tool-part
+  merge invariant, and the transcript-equality rule. An adapter supplies a
+  `SessionBehavior` — its event→delta mapping, its launch surface (`dispatch`),
+  and only the hooks it differs on (openclaw: history convergence in
+  `history-sync.ts` + `chat.send` + 250 ms coalescing; dsh: `runTurn` + mirror
+  restore/save + async cold baseline). Per-adapter code never re-implements the
+  loop. The `RunFlow` queue (enqueue-time snapshot clones) is what keeps the
+  wire mirror and the client safe from deltas referencing live objects.
 - **Don't hand-roll the gateway WS state machine.** Use
   `@openclaw/gateway-client` / `@openclaw/gateway-protocol` primitives, pinned
   EXACTLY (calendar release train, not semver; `2026.8.1`). Reference

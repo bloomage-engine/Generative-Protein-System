@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import type { Message, MessagePart } from "@science-studio/transport";
 import {
   attachHistoryToolResult,
-  findToolCallIndex,
   formatResultText,
   mergeToolResult,
   TOOL_RESULT_ROLES,
@@ -19,13 +18,6 @@ test("TOOL_RESULT_ROLES recognizes the row-role spellings", () => {
   assert.equal(TOOL_RESULT_ROLES.has("tool_result"), true);
   assert.equal(TOOL_RESULT_ROLES.has("tool-result"), true);
   assert.equal(TOOL_RESULT_ROLES.has("assistant"), false);
-});
-
-test("findToolCallIndex locates the first tool-call part with the id", () => {
-  const parts: MessagePart[] = [toolCall("a"), { type: "text", text: "x" }, toolCall("b")];
-  assert.equal(findToolCallIndex(parts, "b"), 2);
-  assert.equal(findToolCallIndex(parts, "a"), 0);
-  assert.equal(findToolCallIndex(parts, "ghost"), -1);
 });
 
 test("mergeToolResult attaches result text and isError to the matching part", () => {

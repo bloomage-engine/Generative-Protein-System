@@ -17,8 +17,8 @@ the existing transport seam:
    files to the agent with `@`, and open files the agent returns.
 
 It keeps the existing seams (assistant-ui transport protocol, `RuntimeAdapter`,
-`Transcript`/`RunFlow`, record ownership) unchanged in *shape*, and adds new
-modules around them.
+the shared `SessionRuntime` run lifecycle, record ownership) unchanged in
+*shape*, and adds new modules around them.
 
 The backend service is **Fastify**. The multi-user capability is a **private
 enterprise module that is not in the open-source repo**; the OSS core stays a
@@ -55,7 +55,7 @@ adding a third must not touch the core (§4.3).
 | --- | --- |
 | assistant-ui transport protocol (`useAssistantTransportRuntime`) | The UI is a stateless view; `converter` is runtime-agnostic. |
 | `RuntimeAdapter` (`packages/transport/src/types.ts`) | Runtime swap stays an adapter swap. |
-| `Transcript` + `RunFlow` kit | Adapters keep sharing one fold-and-fan-out; no re-implementation. |
+| `SessionRuntime` + `RunFlow` kit | Adapters keep composing one shared run lifecycle; no re-implementation. |
 | Reconcile-first + standing watch | History convergence semantics; untouched. |
 | Record ownership (`docs/adr/0002`) | Science Studio owns `Run`/`Artifact`, not the runtime. |
 | The assistant-transport wire (SSE frames, `[DONE]`) | Migrating to Fastify is an implementation change, not a protocol change. |

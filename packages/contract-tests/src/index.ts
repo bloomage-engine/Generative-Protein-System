@@ -22,4 +22,8 @@ export {
   testRuntimeFactory,
   type RuntimeFactoryCase,
 } from "./runtime-factory.js";
+export {
+  testAdapterLifecycle,
+  type AdapterLifecycleCase,
+} from "./adapter-lifecycle.js";
 export { testQuotaPolicy, type QuotaPolicyCase } from "./quota-policy.js";

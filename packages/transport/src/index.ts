@@ -4,8 +4,9 @@
  * 1. the CONTRACT surface (re-exported from `./seams.js`): every seam interface
  *    plus its error classes and limit constants. Import it alone via
  *    `@science-studio/transport/seams`.
- * 2. the KIT: behavior adapters share rather than re-implement (`Transcript`,
- *    `RunFlow`, `foldState`, the attachment rendering/mention helpers).
+ * 2. the KIT: behavior adapters share rather than re-implement (`SessionRuntime`
+ *    + its `SessionBehavior`, `foldState`, the attachment rendering/mention
+ *    helpers).
  * 3. the pure SINGLE-USER DEFAULTS: the constant principal, the local
  *    environment, `NullWorkspace`, `NoopQuotaPolicy`.
  *
@@ -61,9 +62,30 @@ export {
 export { RuntimeBindingError } from "./seams.js";
 
 // -- 2. Kit ------------------------------------------------------------------
-export { foldState, sameMessages } from "./fold.js";
+export { foldState, sameMessages, sameConversation } from "./fold.js";
 export type { DeltaEffect, FoldState } from "./fold.js";
-export { RunFlow, Transcript } from "./transcript.js";
+// `RunFlow` stays a public kit primitive: the service's wire regression test
+// replays the fold-and-fan-out pipeline with it (unlike `Transcript`, retired
+// in docs/adr/0005).
+export { RunFlow } from "./run-flow.js";
+export { SessionRuntime, textOutput, mergeToolResult } from "./session-runtime.js";
+export type {
+  ApplyContext,
+  ApplyResult,
+  DispatchMessage,
+  DispatchRequest,
+  RunControl,
+  RunSink,
+  RunSpec,
+  Scheduler,
+  SessionBehavior,
+  SessionRuntimeDeps,
+  SettleContext,
+  SettleDirective,
+  ToolCallUpdate,
+  TranscriptHandle,
+  WatchPolicy,
+} from "./session-runtime.js";
 export {
   attachmentsFromMentions,
   parseWorkspaceMentions,

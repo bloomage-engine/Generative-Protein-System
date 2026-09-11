@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { foldState, sameMessages, type DeltaEffect, type FoldState } from "../src/fold.js";
+import { foldState, sameConversation, sameMessages, type DeltaEffect, type FoldState } from "../src/fold.js";
 import type { Message, MessagePart, SessionState, StateDelta } from "../src/types.js";
 
 type Status = SessionState["status"];
@@ -169,6 +169,38 @@ test("sameMessages compares content AND order", () => {
   const changed: Message = { id: "m1", role: "user", parts: [{ type: "text", text: "hello" }] };
   assert.equal(sameMessages([a], [changed]), false);
   assert.equal(sameMessages([], []), true);
+});
+
+test("sameConversation ignores volatile ids and enrichment-only parts, but not role", () => {
+  const local: Message = {
+    id: "client-1",
+    role: "user",
+    parts: [{ type: "text", text: "hi" }, { type: "file", path: "a.txt", name: "a.txt", source: "workspace" }],
+  };
+  const history: Message = { id: "hist-0", role: "user", parts: [{ type: "text", text: "hi" }] };
+  assert.equal(sameConversation([local], [history]), true, "ids ignored, file chip neutralized");
+
+  // Role is part of the conversation: same parts, different role, NOT converged.
+  const assistant: Message = { id: "x", role: "assistant", parts: [{ type: "text", text: "hi" }] };
+  const user: Message = { id: "y", role: "user", parts: [{ type: "text", text: "hi" }] };
+  assert.equal(sameConversation([assistant], [user]), false);
+
+  // Conversational parts still count, and order is significant.
+  const a: Message = { id: "a", role: "assistant", parts: [{ type: "text", text: "one" }] };
+  const b: Message = { id: "b", role: "assistant", parts: [{ type: "text", text: "two" }] };
+  assert.equal(sameConversation([a], [b]), false);
+  assert.equal(sameConversation([a, b], [b, a]), false);
+  assert.equal(sameConversation([a, b], [a]), false);
+
+  // An artifact reference is a Run output the runtime history cannot see.
+  const withArtifact: Message = {
+    id: "c",
+    role: "assistant",
+    parts: [{ type: "text", text: "out" }, { type: "artifact", artifactId: "art-1", name: "f", kind: "figure" }],
+  };
+  const textOnly: Message = { id: "d", role: "assistant", parts: [{ type: "text", text: "out" }] };
+  assert.equal(sameConversation([withArtifact], [textOnly]), true);
+  assert.equal(sameConversation([], []), true);
 });
 
 test("repeated delta stream folds to the expected canonical transcript", () => {

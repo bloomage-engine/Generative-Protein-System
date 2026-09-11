@@ -1,4 +1,5 @@
 import type { Message, MessagePart } from "@science-studio/transport";
+import type { RunStatus } from "@science-studio/record";
 import type { ContentBlock } from "@deepseek-ai/dsh-llm";
 import type { TurnEndReason } from "@deepseek-ai/dsh-session";
 
@@ -48,15 +49,11 @@ export function extractResultText(content: readonly ContentBlock[]): string {
   return texts.join("\n");
 }
 
-/** Find a message part by role index helpers used across the transcript. */
-export function findToolCallPart(
-  message: Message,
-  callId: string,
-): { part: Extract<MessagePart, { type: "tool-call" }>; index: number } | null {
-  for (let i = 0; i < message.parts.length; i++) {
-    const part = message.parts[i];
-    if (part && part.type === "tool-call" && part.id === callId) {
-      return { part, index: i };
+/** Find the message holding the `tool-call` part for `callId` (merge target). */
+export function findToolCallMessage(messages: readonly Message[], callId: string): Message | null {
+  for (const message of messages) {
+    if (message.parts.some((part) => part.type === "tool-call" && part.id === callId)) {
+      return message;
     }
   }
   return null;
@@ -65,4 +62,11 @@ export function findToolCallPart(
 /** Map a dsh `turn/end` reason to the terminal Science Studio session status. */
 export function turnEndStatus(reason: TurnEndReason): "idle" | "error" {
   return reason.kind === "error" ? "error" : "idle";
+}
+
+/** Map a turn's terminal reason onto the record's `Run` status. A turn that
+ *  never reported a reason (e.g. the harness died mid-turn) is an error Run. */
+export function runStatus(reason: TurnEndReason | undefined): RunStatus {
+  if (!reason) return "error";
+  return reason.kind === "completed" ? "completed" : reason.kind === "error" ? "error" : "aborted";
 }

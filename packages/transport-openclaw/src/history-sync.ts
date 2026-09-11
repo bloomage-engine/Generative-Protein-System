@@ -1,4 +1,5 @@
 import type { Message } from "@science-studio/transport";
+import { sameConversation } from "@science-studio/transport";
 import { parseParts } from "./mapping.js";
 import { attachHistoryToolResult, TOOL_RESULT_ROLES } from "./tool-result.js";
 
@@ -40,30 +41,6 @@ export function parseHistoryRows(rows: readonly unknown[], offset = 0): Message[
     });
   }
   return messages;
-}
-
-/**
- * A content fingerprint of a message, ignoring volatile ids: role plus the
- * text of every part (text / reasoning / tool args+result). Two messages with
- * equal signatures are the same conversational turn rendered from different
- * sources (live stream events vs the persisted history row), so the sync can
- * treat them as converged without churning transcript ids on every probe.
- */
-function messageSignature(m: Message): string {
-  return JSON.stringify(
-    m.parts.map((p) => {
-      switch (p.type) {
-        case "text":
-          return ["t", p.text];
-        case "reasoning":
-          return ["r", p.text];
-        case "tool-call":
-          return ["c", p.id, p.name, p.args, p.result ?? "", p.isError === true];
-        case "artifact":
-          return ["a", p.artifactId, p.name, p.kind];
-      }
-    }),
-  );
 }
 
 /** What the transcript should do given the gateway's current history. */
@@ -111,10 +88,11 @@ export function decideHistorySync(input: HistorySyncInput): HistorySyncDecision 
   }
   if (input.messages.length === 0) return { action: "rebuild", messages: gateway };
   // Gateway rows are a content-prefix of the transcript: already converged
-  // (equal), or the gateway simply lags our not-yet-persisted tail. Keep.
+  // (equal), or the gateway simply lags our not-yet-persisted tail. Keep. The
+  // shared `sameConversation` rule ignores volatile ids and client-side file
+  // chips, and compares `role` (the previous local signature did not).
   if (gateway.length <= input.messages.length) {
-    const local = input.messages;
-    if (gateway.every((m, i) => messageSignature(m) === messageSignature(local[i]!))) {
+    if (sameConversation(gateway, input.messages.slice(0, gateway.length))) {
       return { action: "keep" };
     }
   }

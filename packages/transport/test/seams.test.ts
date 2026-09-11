@@ -22,10 +22,13 @@ const CONTRACT_VALUES = [
 
 const NON_CONTRACT_NAMES = [
   // Kit
-  "Transcript",
   "RunFlow",
+  "SessionRuntime",
   "foldState",
   "sameMessages",
+  "sameConversation",
+  "textOutput",
+  "mergeToolResult",
   "renderAttachments",
   "promptWithAttachments",
   "userMessageParts",

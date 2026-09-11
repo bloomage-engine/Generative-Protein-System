@@ -1,4 +1,9 @@
-import type { Message, MessagePart } from "@science-studio/transport";
+import type { Message } from "@science-studio/transport";
+import { mergeToolResult } from "@science-studio/transport";
+
+// The one tool-part merge invariant lives in the shared kit (docs/adr/0005);
+// re-exported here because this module is the tool-result vocabulary's home.
+export { mergeToolResult };
 
 /**
  * Pure tool-result vocabulary + resolution shared by every source that
@@ -15,9 +20,8 @@ import type { Message, MessagePart } from "@science-studio/transport";
  * - inline content blocks (`parseParts` in mapping.ts): search within the
  *   parts already parsed in the same message; an unmatched result becomes a
  *   standalone text part.
- * - live gateway tool events (`applyToolPart`): the same locate primitive; the
- *   part is created on `start` and later lifecycle fields are merged by the
- *   transcript, not here.
+ * - live gateway tool events: the shared kit's `mergeToolCall` primitive; the
+ *   part is created on `start` and later lifecycle fields are merged there.
  */
 
 /** `chat.history` row roles that carry a tool result instead of a message. */
@@ -42,38 +46,6 @@ export function formatResultText(result: unknown): string {
     }
   }
   return JSON.stringify(result);
-}
-
-export function findToolCallIndex(parts: readonly MessagePart[], toolCallId: string): number {
-  for (let i = 0; i < parts.length; i++) {
-    const p = parts[i]!;
-    if (p.type === "tool-call" && p.id === toolCallId) return i;
-  }
-  return -1;
-}
-
-/**
- * Attach `text` (and `isError` when true) to the first `tool-call` part with
- * id `toolCallId`, replacing it in place. Returns whether a part matched; the
- * caller decides what an unmatched result means (drop vs text fallback). An
- * existing `isError` flag survives a non-error merge (errors are only ever
- * added, never cleared).
- */
-export function mergeToolResult(
-  parts: MessagePart[],
-  toolCallId: string,
-  text: string,
-  isError: boolean,
-): boolean {
-  const idx = findToolCallIndex(parts, toolCallId);
-  if (idx === -1) return false;
-  const part = parts[idx] as Extract<MessagePart, { type: "tool-call" }>;
-  parts[idx] = {
-    ...part,
-    result: text,
-    ...(isError ? { isError: true } : {}),
-  };
-  return true;
 }
 
 /**

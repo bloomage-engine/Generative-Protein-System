@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { foldState, RunFlow, Transcript } from "@science-studio/transport";
+import { foldState, RunFlow } from "@science-studio/transport";
 import type { Message, SessionState, StateDelta } from "@science-studio/transport";
 import { WireOpsBuilder, type WireOp } from "../src/wire.js";
 
@@ -8,8 +8,8 @@ import { WireOpsBuilder, type WireOp } from "../src/wire.js";
  * Regression coverage for the wire fold's STATE PRIVACY requirement.
  *
  * The adapter folds every delta onto its canonical transcript BEFORE the wire
- * mirror folds it (the shared Transcript.emit folds FIRST, then pushes a
- * snapshot into the attached RunFlow), and payload-bearing deltas (add-message
+ * mirror folds it (the shared `emit` folds FIRST, then pushes a snapshot into
+ * the attached `RunFlow`), and payload-bearing deltas (add-message
  * / add-part / update-message) reference the adapter's LIVE message objects.
  * If the mirror adopted those references, its own fold would re-apply
  * mutations the adapter's fold already made to the shared objects — doubling
@@ -19,9 +19,9 @@ import { WireOpsBuilder, type WireOp } from "../src/wire.js";
  *
  *   Error: Expected string at path [messages, <id>, parts, <N>, text]
  *
- * These tests replay the real pipeline (a shared Transcript + RunFlow feeding
- * WireOpsBuilder, adapter running either ahead of or interleaved with the wire
- * drain) against a strict client accumulator with GorpStreamAccumulator's
+ * These tests replay the real pipeline (a shared canonical fold + RunFlow
+ * feeding WireOpsBuilder, adapter running either ahead of or interleaved with
+ * the wire drain) against a strict client accumulator with GorpStreamAccumulator's
  * exact semantics, and assert the stream is applicable and the client
  * converges to the transcript.
  */
@@ -81,23 +81,23 @@ function clientState(
 }
 
 /**
- * The real transport pipeline for one run: a shared `Transcript` (fold onto
- * canonical state, then push a snapshot into the attached `RunFlow`) feeding a
- * `WireOpsBuilder` that drains the flow. `drainPerEvent` mirrors the adapter
- * running ahead of the wire (false = all events folded before any drain) or
- * interleaved with it (true = each delta is wire-folded before the next lands,
- * like the service's for-await over the adapter stream).
+ * The real transport pipeline for one run: a shared canonical fold (fold every
+ * delta onto the canonical state, then push the SAME delta into a `RunFlow`)
+ * feeding a `WireOpsBuilder` that drains the flow — the same fold-and-fan-out
+ * the `SessionRuntime` performs. `drainPerEvent` mirrors the adapter running
+ * ahead of the wire (false = all events folded before any drain) or interleaved
+ * with it (true = each delta is wire-folded before the next lands, like the
+ * service's for-await over the adapter stream).
  */
 function makePipeline(drainPerEvent: boolean) {
-  const transcript = new Transcript(sessionKey, {
+  const state: SessionState = {
     sessionId: sessionKey,
     studyId: "study-1",
     agentId: "main",
     status: "idle",
     messages: [],
-  });
+  };
   const flow = new RunFlow();
-  transcript.attachFlow(flow);
   const wire = new WireOpsBuilder({ status: "idle", messages: [] });
   const ops: WireOp[] = [];
   const iterator = flow.iterate();
@@ -113,11 +113,12 @@ function makePipeline(drainPerEvent: boolean) {
   };
 
   return {
-    state: transcript.state,
+    state,
     ops,
     /** Fold one delta (and, when interleaving, wire-fold it right away). */
     async emit(delta: StateDelta): Promise<void> {
-      transcript.emit(delta);
+      foldState(state, delta);
+      flow.push(delta);
       if (drainPerEvent) await drainOne();
     },
     /** End the run (the adapter ends the flow at the terminal event), then

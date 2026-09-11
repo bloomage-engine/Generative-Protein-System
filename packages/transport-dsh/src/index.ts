@@ -10,8 +10,6 @@ export { createDshTurnClient } from "./client.js";
 export type { DshTurnClient, DshClientLaunchOptions } from "./client.js";
 export { TranscriptMirror } from "./mirror.js";
 export type { MirrorFile } from "./mirror.js";
-export { DshTranscript } from "./transcript.js";
-export type { ApplyMeta } from "./transcript.js";
 
 /**
  * The package's plugin export. The service dynamically imports runtime modules

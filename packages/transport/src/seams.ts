@@ -6,7 +6,7 @@
  *
  * Use this entry (`@science-studio/transport/seams`) when you implement or
  * consume a seam and want nothing else. It deliberately excludes the shared kit
- * (`Transcript`, `RunFlow`, `foldState`, the attachment helpers) and the pure
+ * (`SessionRuntime`, `RunFlow`, `foldState`, the attachment helpers) and the pure
  * single-user defaults (`LocalPrincipalResolver`, `LocalEnvironmentProvider`,
  * `NullWorkspace`, `NoopQuotaPolicy`); the package root re-exports all three
  * surfaces together.

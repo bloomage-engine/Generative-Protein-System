@@ -1,5 +1,5 @@
 import type { Id } from "@science-studio/record";
-import type { Message, SessionState, StateDelta } from "./types.js";
+import type { Message, MessagePart, SessionState, StateDelta } from "./types.js";
 
 /**
  * The fold target: the slice of session state that `StateDelta`s mutate.
@@ -138,7 +138,13 @@ export function foldState(state: FoldState, delta: StateDelta): DeltaEffect[] {
   }
 }
 
-/** Ordered content equality for two message lists — order is significant. */
+/**
+ * Ordered identity equality for two message lists — ids, role and every part,
+ * order significant. This is the WIRE's comparison: a client that lost a file
+ * chip must be re-sent the whole message map, so enrichment-only parts count.
+ * For convergence against a runtime's own persisted history, use
+ * `sameConversation`.
+ */
 export function sameMessages(a: readonly Message[], b: readonly Message[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((m, i) => messagesEqual(m, b[i]!));
@@ -148,4 +154,33 @@ function messagesEqual(a: Message, b: Message): boolean {
   if (a.id !== b.id || a.role !== b.role) return false;
   if (a.parts.length !== b.parts.length) return false;
   return a.parts.every((p, i) => JSON.stringify(p) === JSON.stringify(b.parts[i]!));
+}
+
+/**
+ * The parts that make up the observable conversation. A `file` chip is client
+ * enrichment and an `artifact` reference is a Run output the runtime's persisted
+ * history cannot see, so both are dropped before comparing: otherwise every
+ * probe would look drifted and rebuild the transcript.
+ */
+function conversationParts(parts: readonly MessagePart[]): MessagePart[] {
+  return parts.filter((p) => p.type !== "file" && p.type !== "artifact");
+}
+
+/**
+ * Content equality for convergence against a runtime's own history: message ids
+ * are ignored (they are volatile across sources — `hist-<n>` vs client-minted),
+ * `role` is compared, and only the conversation-observable parts count (see
+ * `conversationParts`). Distinct from `sameMessages`, which is the wire's
+ * identity comparison.
+ */
+export function sameConversation(a: readonly Message[], b: readonly Message[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((m, i) => {
+    const other = b[i]!;
+    if (m.role !== other.role) return false;
+    const mine = conversationParts(m.parts);
+    const theirs = conversationParts(other.parts);
+    if (mine.length !== theirs.length) return false;
+    return mine.every((p, j) => JSON.stringify(p) === JSON.stringify(theirs[j]!));
+  });
 }

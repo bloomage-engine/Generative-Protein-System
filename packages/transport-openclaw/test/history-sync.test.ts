@@ -84,6 +84,28 @@ test("an in-flight run is never touched, whatever the gateway says", () => {
   });
 });
 
+test("role is part of convergence (same parts, different role, does NOT keep)", () => {
+  // The previous local signature compared parts only: an assistant turn whose
+  // text matched a user row compared equal. The shared rule compares role.
+  const local = [msg("assistant", "hi", "a")];
+  assert.deepEqual(decide({ messages: local, rows: [row("user", "hi")] }).action, "rebuild");
+});
+
+test("a client-side file chip is neutral (the gateway history cannot see it)", () => {
+  const local: Message[] = [
+    {
+      id: "u1",
+      role: "user",
+      parts: [
+        { type: "text", text: "hi" },
+        { type: "file", path: "a.txt", name: "a.txt", source: "workspace" },
+      ],
+    },
+  ];
+  // Same conversation without the enrichment-only part → converged, keep ids.
+  assert.deepEqual(decide({ messages: local, rows: [row("user", "hi")] }), { action: "keep" });
+});
+
 test("parseHistoryRows drops system rows and merges tool-result rows in order", () => {
   const messages = parseHistoryRows([
     row("system", "reset"),
