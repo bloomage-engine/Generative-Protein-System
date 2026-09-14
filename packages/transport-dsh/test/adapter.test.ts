@@ -35,13 +35,22 @@ class FakeDshClient implements DshTurnClient {
 }
 
 /**
- * Scripted client that mimics a session id a PREVIOUS harness process already
- * persisted in the home: the SDK runtime rejects the id with `already exists`
- * and can never create it, so the adapter must fall back to a fresh id.
+ * A harness home SHARED by every client generation: the SDK runtime materializes
+ * each prompted session id into it, and a later child can never create an id it
+ * already holds (`session "<id>" already exists` — the pinned SDK has no resume
+ * path). Reusing an id across generations is therefore a rejected prompt, not a
+ * resumed conversation.
  */
-class StaleSessionClient implements DshTurnClient {
+class HarnessHome {
+  readonly materialized = new Set<string>();
+}
+
+/** One harness child generation over a durable home. */
+class HomeBackedClient implements DshTurnClient {
   readonly sessionIds: string[] = [];
-  private rejected = false;
+  /** Ids THIS child created: resumable in-process, though never by a later child. */
+  private readonly live = new Set<string>();
+  constructor(private readonly home: HarnessHome) {}
   async start(): Promise<void> {}
   async close(): Promise<void> {}
   async runTurn(
@@ -50,11 +59,33 @@ class StaleSessionClient implements DshTurnClient {
     onEvent: (event: SessionEvent) => void,
   ): Promise<void> {
     this.sessionIds.push(sessionId);
-    if (!this.rejected) {
-      this.rejected = true;
-      throw new Error(`session "${sessionId}" already exists`);
+    if (!this.live.has(sessionId)) {
+      if (this.home.materialized.has(sessionId)) throw new Error(`session "${sessionId}" already exists`);
+      this.home.materialized.add(sessionId);
+      this.live.add(sessionId);
     }
-    for (const event of completedReply(`am-${this.sessionIds.length}`, "Hello from dsh.")) onEvent(event);
+    const assistantId = `am-${sessionId}-${this.sessionIds.length}`;
+    for (const event of completedReply(assistantId, "Hello from dsh.")) onEvent(event);
+  }
+}
+
+/**
+ * A home that already holds the exact id this generation asks for (another
+ * process minted the same one): the create fails BEFORE any agent work, so the
+ * adapter must retry once on a fresh id rather than settle the run to error.
+ */
+class CollidingHomeClient implements DshTurnClient {
+  readonly sessionIds: string[] = [];
+  async start(): Promise<void> {}
+  async close(): Promise<void> {}
+  async runTurn(
+    sessionId: string,
+    _text: string,
+    onEvent: (event: SessionEvent) => void,
+  ): Promise<void> {
+    this.sessionIds.push(sessionId);
+    if (this.sessionIds.length === 1) throw new Error(`session "${sessionId}" already exists`);
+    for (const event of completedReply(`am-${sessionId}`, "Hello from dsh.")) onEvent(event);
   }
 }
 
@@ -172,28 +203,86 @@ test("a fresh adapter instance cold-starts from the mirror and reconciles histor
   }
 });
 
-test("a persisted-but-unresumable session falls back to a fresh harness id and later turns continue it", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "dsh-stale-session-"));
+test("harness session ids are generation-scoped, so a restart never prompts an id the home holds", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-generation-"));
+  const home = new HarnessHome();
   const store = new FakeRecordStore();
-  const client = new StaleSessionClient();
+  const first = new HomeBackedClient(home);
+  const adapter1 = new DshRuntimeAdapter({ createClient: () => first, transcriptDir: dir });
+  try {
+    await adapter1.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
+
+    // Every prompt lands on an id minted for THIS child generation — never the
+    // bare session key, which an earlier generation may already have created.
+    const deltas = await collect(adapter1.run(session(), [
+      { type: "add-message", message: { id: "u1", role: "user", content: "hi" } },
+    ]));
+    const idle = deltas.find((d) => d.type === "session-status" && d.status === "idle");
+    assert.ok(idle, "the first turn of a generation must settle idle");
+    assert.equal(first.sessionIds.length, 1, "a fresh generation issues exactly one prompt");
+    const harnessId = first.sessionIds[0]!;
+    assert.ok(
+      harnessId.startsWith("sess-1-") && harnessId !== "sess-1",
+      "the harness id is scoped to the child generation, never the bare session key",
+    );
+    assert.deepEqual([...home.materialized], [harnessId], "the turn created exactly that one harness session");
+
+    const mirror = new TranscriptMirror(dir);
+    assert.ok(await mirror.load("sess-1"), "the run persists its mirror before the stream ends");
+    assert.equal(store.runs.length, 1);
+    assert.equal(store.runs[0]!.status, "completed");
+    assert.equal(store.runs[0]!.output, "Hello from dsh.");
+
+    // Later turns in the SAME child continue that one harness session.
+    await collect(adapter1.run(session(), [
+      { type: "add-message", message: { id: "u2", role: "user", content: "hi again" } },
+    ]));
+    assert.equal(first.sessionIds.length, 2, "a second turn issues exactly one prompt");
+    assert.equal(first.sessionIds[1], harnessId, "later turns continue the SAME harness session");
+
+    // Simulate a service restart: a NEW child generation over the SAME home.
+    // Nothing it asks for may be an id the home already holds, or the restart
+    // would burn a rejected prompt before its first reply.
+    const store2 = new FakeRecordStore();
+    const second = new HomeBackedClient(home);
+    const adapter2 = new DshRuntimeAdapter({ createClient: () => second, transcriptDir: dir });
+    await adapter2.init({ binding: { runtime: "dsh", config: {} }, recordStore: store2 });
+    const restarted = await collect(adapter2.run(session(), [
+      { type: "add-message", message: { id: "u3", role: "user", content: "after restart" } },
+    ]));
+    assert.equal(second.sessionIds.length, 1, "a restart must NOT burn a prompt on an id the home already holds");
+    assert.notEqual(second.sessionIds[0], harnessId, "the new generation gets its own harness session");
+    assert.ok(
+      restarted.some((d) => d.type === "session-status" && d.status === "idle"),
+      "the restarted turn settles idle");
+    assert.equal(store2.runs.length, 1);
+    assert.equal(store2.runs[0]!.status, "completed");
+  } finally {
+    await adapter1.abort();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a harness id another process already took falls back to a fresh harness session", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-collision-"));
+  const store = new FakeRecordStore();
+  const client = new CollidingHomeClient();
   const adapter = new DshRuntimeAdapter({ createClient: () => client, transcriptDir: dir });
   try {
     await adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
 
-    // First run: the plain session id is rejected (persisted by an earlier
-    // runtime); the adapter must mint a fresh id and retry so the turn settles
-    // with a reply instead of dying as an error.
+    // First attempt collides; the adapter must retry on a fresh id so the turn
+    // settles with a reply instead of dying as an error.
     const deltas = await collect(adapter.run(session(), [
       { type: "add-message", message: { id: "u1", role: "user", content: "hi" } },
     ]));
-    const types = deltas.map((d) => d.type);
-    assert.ok(!types.includes("session-status") || deltas.every((d) => !(d.type === "session-status" && d.status === "error")), "a resumable-session failure must NOT settle the run to error");
-    const idle = deltas.find((d) => d.type === "session-status" && d.status === "idle");
-    assert.ok(idle, "the fallback run must settle idle with a reply");
-    assert.equal(client.sessionIds.length, 2, "first attempt on the stale id, retry on a fresh one");
-    assert.equal(client.sessionIds[0], "sess-1", "the first attempt uses the session key itself");
+    assert.ok(
+      deltas.every((d) => !(d.type === "session-status" && d.status === "error")),
+      "a create-only harness failure must NOT settle the run to error",
+    );
+    assert.equal(client.sessionIds.length, 2, "first attempt on the collided id, retry on a fresh one");
     const fresh = client.sessionIds[1]!;
-    assert.ok(fresh.startsWith("sess-1-") && fresh !== "sess-1", "the retry uses a freshly minted child-scoped id");
+    assert.ok(fresh.startsWith(`${client.sessionIds[0]}-`), "the retry stays in this generation's id space");
 
     const mirror = new TranscriptMirror(dir);
     assert.ok(await mirror.load("sess-1"), "the fallback run persists before its stream ends");
@@ -201,19 +290,12 @@ test("a persisted-but-unresumable session falls back to a fresh harness id and l
     assert.equal(store.runs[0]!.status, "completed", "the fallback turn is recorded as a completed Run");
     assert.equal(store.runs[0]!.output, "Hello from dsh.");
 
-    // Second run on the same session: the minted id is reused for the life of
-    // this child (conversation continuity), never the stale plain id again.
+    // The fresh id is the one this child keeps using.
     await collect(adapter.run(session(), [
       { type: "add-message", message: { id: "u2", role: "user", content: "hi again" } },
     ]));
     assert.equal(client.sessionIds.length, 3, "second run issues exactly one prompt");
     assert.equal(client.sessionIds[2], fresh, "later turns continue the SAME fresh harness session");
-    // The second settle's mirror write lands before that run's stream ends.
-    const second = await mirror.load("sess-1");
-    assert.ok(
-      second?.messages.some((m) => m.id === "u2"),
-      "the second run's mirror write is durable before its stream settles",
-    );
     assert.equal(store.runs.length, 2);
   } finally {
     await adapter.abort();

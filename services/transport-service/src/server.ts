@@ -1,10 +1,15 @@
 /**
- * Fastify server: the assistant-transport wire, unchanged.
+ * Fastify server: the assistant-transport wire.
  *
- * Every route runs the same preamble — resolve the `Principal`, then acquire the
- * session's `Environment` (runtime + workspace) — so deployment mode and
- * tenancy never reach a route body. The transport/watch routes stream by
- * hijacking the Node response; Fastify's buffering must never sit in that path.
+ * Every route runs the same preamble — resolve the `Principal`, then resolve the
+ * request's Project and acquire ITS `Environment` (runtime + workspace, one per
+ * Project — docs/adr/0006) — so deployment mode and tenancy never reach a route
+ * body. The transport/watch routes stream by hijacking the Node response;
+ * Fastify's buffering must never sit in that path.
+ *
+ * Project and Session identity are record-owned (docs/adr/0002, 0007): the
+ * Project/Session routes write the record, and the transport route resolves a
+ * claimed session key to an existing Session rather than minting one.
  */
 import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import cors from "@fastify/cors";
@@ -29,7 +34,7 @@ import {
   parseWorkspaceMentions,
 } from "@science-studio/transport";
 import type { Backend, CorsConfig } from "./composition.js";
-import { createSessionResolver } from "./sessions.js";
+import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS } from "./directory.js";
 import { encodeOp, parseClaimedState, WireOpsBuilder } from "./wire.js";
 
 declare module "fastify" {
@@ -66,16 +71,87 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     request.principal = principal;
   });
 
-  // One in-flight run per session. `Transcript.attachFlow` overwrites the
-  // current flow, so two concurrent runs on the same session would interleave
-  // and corrupt both streams — refuse the second instead.
+  // One in-flight run per session, and identity is record-owned: the store IS the
+  // authority for Project/Session, and a runtime session key IS the Session id.
+  const records = backend.records ?? createInMemoryRecordStore();
+  const directory = createRecordDirectory({
+    store: records,
+    ...(backend.recordDefaults ? { defaults: backend.recordDefaults } : {}),
+  });
+  const defaultProjectId = backend.recordDefaults?.projectId ?? DEFAULT_RECORD_DEFAULTS.projectId;
   const activeRuns = new Set<string>();
 
-  // Session identity is record-owned (docs/adr/0002): a runtime session key is
-  // the Science Studio Session id, minted on first use.
-  const sessions = createSessionResolver({
-    store: backend.records ?? createInMemoryRecordStore(),
-    ...(backend.sessionDefaults ? { defaults: backend.sessionDefaults } : {}),
+  const projectOf = (value: unknown): string =>
+    typeof value === "string" && value.length > 0 ? value : defaultProjectId;
+
+  /**
+   * Resolve the request's Session inside a Project: acquire the Project's
+   * environment, map the claimed threadId to the runtime's canonical session key,
+   * then find — or lazily mint — the matching record. `projectId` is optional and
+   * falls back to the default Project, so a client that names no Project (the
+   * mount probe, the examples) keeps converging instead of 404ing.
+   */
+  const resolveSession = async (
+    principal: Principal,
+    projectId: string,
+    threadId: string | null,
+  ): Promise<{ environment: Awaited<ReturnType<Backend["environments"]["acquire"]>>; session: Awaited<ReturnType<typeof directory.resolveOrCreateSession>> }> => {
+    const environment = await backend.environments.acquire(principal, projectId);
+    const adapter = environment.adapter;
+    const sessionKey =
+      typeof adapter.resolveSessionKey === "function"
+        ? adapter.resolveSessionKey(threadId)
+        : (threadId ?? "default");
+    const session = await directory.resolveOrCreateSession(projectId, sessionKey);
+    return { environment, session };
+  };
+
+  // -- Project / Session / Run record surface --------------------------------
+  app.post("/api/projects", async (request, reply) => {
+    const body = (request.body ?? {}) as { name?: unknown };
+    if (typeof body.name !== "string" || body.name.trim() === "") {
+      return reply.code(400).send({ error: "name is required" });
+    }
+    return reply.code(201).send({ project: await directory.createProject(body.name.trim()) });
+  });
+
+  app.get("/api/projects", async (request) => {
+    const includeArchived = (request.query as { includeArchived?: string }).includeArchived === "1";
+    return { projects: await directory.listProjects({ includeArchived }) };
+  });
+
+  app.post("/api/projects/:id/archive", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      return { project: await directory.archiveProject(id) };
+    } catch {
+      return reply.code(404).send({ error: `project not found: ${id}` });
+    }
+  });
+
+  app.post("/api/projects/:id/sessions", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { agentId?: unknown; title?: unknown };
+    try {
+      const session = await directory.createSession(id, {
+        ...(typeof body.agentId === "string" && body.agentId ? { agentId: body.agentId } : {}),
+        ...(typeof body.title === "string" && body.title ? { title: body.title } : {}),
+      });
+      return reply.code(201).send({ session });
+    } catch {
+      return reply.code(404).send({ error: `project not found: ${id}` });
+    }
+  });
+
+  app.get("/api/projects/:id/sessions", async (request) => {
+    const { id } = request.params as { id: string };
+    return { sessions: await directory.listSessions(id) };
+  });
+
+  // The Project-level result rollup: the turns of ALL its Sessions (docs/adr/0007).
+  app.get("/api/projects/:id/runs", async (request) => {
+    const { id } = request.params as { id: string };
+    return { runs: await directory.listRuns(id) };
   });
 
   // -- Conversation path -----------------------------------------------------
@@ -85,13 +161,26 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       commands?: unknown[];
       state?: unknown;
       threadId?: string | null;
+      projectId?: string | null;
     };
     const commands = normalizeCommands(body.commands ?? []);
-    const environment = await backend.environments.acquire(principal, body.threadId ?? null);
+    // The scope may ride in the body (our own probe) or in the query. The query
+    // is AUTHORITATIVE because assistant-ui builds its OWN send body: it always
+    // puts a per-page local `__LOCALID_*` threadId there, which must not shadow
+    // the Session the app selected in the URL (that would resolve the send to
+    // the adapter's default session, so the reply would reconcile against a
+    // DIFFERENT transcript — the app would appear to switch sessions). The body
+    // stays the fallback for clients that scope nothing in the URL (the mount
+    // probe and the examples).
+    const query = request.query as { projectId?: string; threadId?: string };
+    const projectId = projectOf(query.projectId ?? body.projectId);
+    const claimedThread = query.threadId ?? body.threadId ?? null;
+    const claimed = typeof claimedThread === "string" && claimedThread.length > 0 ? claimedThread : null;
 
-    const runKey = `${principal.tenant}:${environment.sessionKey}`;
     // Resolve identity BEFORE taking the lock, so a failure here cannot leak it.
-    const sessionRecord = await sessions.resolve(environment.sessionKey);
+    const { environment, session: sessionRecord } = await resolveSession(principal, projectId, claimed);
+
+    const runKey = `${principal.tenant}:${sessionRecord.id}`;
     if (activeRuns.has(runKey)) {
       return reply
         .code(409)
@@ -105,8 +194,8 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     const wire = new WireOpsBuilder(parseClaimedState(body));
     const session: SessionState = {
       sessionId: sessionRecord.id,
-      studyId: sessionRecord.studyId,
-      agentId: sessionRecord.agentBlueprintId,
+      projectId,
+      agentId: sessionRecord.agentId,
       status: "idle",
       messages: [],
     };
@@ -125,16 +214,16 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
   });
 
   // -- Run control -----------------------------------------------------------
-  app.post("/api/transport/abort", async (request, reply) => {
-    const body = (request.body ?? {}) as { threadId?: string | null; reason?: string };
-    const environment = await backend.environments.acquire(request.principal!, body.threadId ?? null);
+  app.post("/api/transport/abort", async (request) => {
+    const body = (request.body ?? {}) as { projectId?: string; reason?: string };
+    const environment = await backend.environments.acquire(request.principal!, projectOf(body.projectId));
     environment.adapter.abort(body.reason);
     return { ok: true };
   });
 
   app.post("/api/transport/approve", async (request, reply) => {
     const body = (request.body ?? {}) as {
-      threadId?: string | null;
+      projectId?: string;
       approvalId?: string;
       decision?: "approve" | "reject";
     };
@@ -143,7 +232,7 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
         .code(400)
         .send({ error: "approvalId and decision (approve|reject) are required" });
     }
-    const environment = await backend.environments.acquire(request.principal!, body.threadId ?? null);
+    const environment = await backend.environments.acquire(request.principal!, projectOf(body.projectId));
     const adapter = environment.adapter;
     // The adapter's method IS the capability; the conformance suite pins that it
     // agrees with the declared `capabilities.approvals`.
@@ -158,7 +247,7 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
 
   // -- Runtime command catalog (slash menu, docs/adr/0003) -------------------
   app.get("/api/transport/commands", async (request) => {
-    const environment = await backend.environments.acquire(request.principal!, null);
+    const environment = await backend.environments.acquire(request.principal!, defaultProjectId);
     let commands: CommandDescriptor[] = [];
     if (typeof environment.adapter.listCommands === "function") {
       try {
@@ -172,18 +261,31 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
 
   // -- Standing watch (NDJSON, long-lived, NOT [DONE]-terminated) ------------
   app.get("/api/transport/watch", async (request, reply) => {
-    const threadId = (request.query as { threadId?: string }).threadId ?? null;
-    const environment = await backend.environments.acquire(request.principal!, threadId);
+    // `projectId` is what the client sends (matching the transport route);
+    // `project` is accepted for older callers.
+    const { projectId, project, threadId = null } = request.query as {
+      projectId?: string;
+      project?: string;
+      threadId?: string | null;
+    };
+    const environment = await backend.environments.acquire(
+      request.principal!,
+      projectOf(projectId ?? project),
+    );
     if (typeof environment.adapter.subscribe !== "function") {
       return reply.code(400).send("adapter does not support watch");
     }
+    const adapter = environment.adapter;
+    const sessionId =
+      typeof adapter.resolveSessionKey === "function"
+        ? adapter.resolveSessionKey(threadId)
+        : (threadId ?? "default");
 
     reply.hijack();
     reply.raw.writeHead(200, { ...ndjsonHeaders(), ...corsHeaders(backend.cors) });
     reply.raw.flushHeaders?.();
 
-    const adapter = environment.adapter;
-    const unsub = adapter.subscribe!(environment.sessionKey, (snapshot) => {
+    const unsub = adapter.subscribe!(sessionId, (snapshot) => {
       if (reply.raw.destroyed || reply.raw.writableEnded) return;
       try {
         reply.raw.write(JSON.stringify(snapshot) + "\n");
@@ -200,14 +302,11 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     });
   });
 
-  // -- Workspace file service (read-only in v1; uploads arrive in Phase 2) ---
+  // -- Workspace file service: one workspace per Project (docs/adr/0006) ------
   app.get("/api/workspace/entries", async (request, reply) => {
-    const { path = "", session = null } = request.query as {
-      path?: string;
-      session?: string | null;
-    };
+    const { path = "", project } = request.query as { path?: string; project?: string };
     try {
-      const environment = await backend.environments.acquire(request.principal!, session);
+      const environment = await backend.environments.acquire(request.principal!, projectOf(project));
       return await environment.workspace.list(path);
     } catch (err) {
       return sendWorkspaceError(reply, err);
@@ -215,13 +314,10 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
   });
 
   app.get("/api/workspace/stat", async (request, reply) => {
-    const { path, session = null } = request.query as {
-      path?: string;
-      session?: string | null;
-    };
+    const { path, project } = request.query as { path?: string; project?: string };
     if (!path) return reply.code(400).send({ error: "path is required" });
     try {
-      const environment = await backend.environments.acquire(request.principal!, session);
+      const environment = await backend.environments.acquire(request.principal!, projectOf(project));
       return await environment.workspace.stat(path);
     } catch (err) {
       return sendWorkspaceError(reply, err);
@@ -229,14 +325,14 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
   });
 
   app.get("/api/workspace/file", async (request, reply) => {
-    const {
-      path,
-      session = null,
-      download,
-    } = request.query as { path?: string; session?: string | null; download?: string };
+    const { path, project, download } = request.query as {
+      path?: string;
+      project?: string;
+      download?: string;
+    };
     if (!path) return reply.code(400).send({ error: "path is required" });
     try {
-      const environment = await backend.environments.acquire(request.principal!, session);
+      const environment = await backend.environments.acquire(request.principal!, projectOf(project));
       // Inline reads are capped by the workspace (413 when over); an explicit
       // download streams any size instead of failing.
       const content = download
@@ -257,15 +353,12 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
   });
 
   app.post("/api/workspace/upload", async (request, reply) => {
-    const { path, session = null } = request.query as {
-      path?: string;
-      session?: string | null;
-    };
+    const { path, project } = request.query as { path?: string; project?: string };
     if (!path) return reply.code(400).send({ error: "path is required" });
 
     let environment;
     try {
-      environment = await backend.environments.acquire(request.principal!, session);
+      environment = await backend.environments.acquire(request.principal!, projectOf(project));
     } catch (err) {
       return sendWorkspaceError(reply, err);
     }

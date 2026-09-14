@@ -4,8 +4,8 @@
  * Connects to an OpenClaw gateway as an operator client, drives `chat.send`,
  * and streams state deltas back. Persists a `Run` to the record store when a
  * research turn completes. NOTES:
- * - The gateway `sessionKey` is taken from `SessionState.sessionId`; mapping a
- *   Study `Session` to a gateway session is a later concern.
+ * - The gateway `sessionKey` is taken from `SessionState.sessionId` (the record's
+ *   Session id, 1:1); a gateway-namespace mapping per Project is not needed yet.
  * - The run lifecycle lives in the shared kit `SessionRuntime` (docs/adr/0005);
  *   this adapter holds one runtime per session and supplies the openclaw
  *   behavior (`behavior.ts`) plus the gateway-facing command catalog.

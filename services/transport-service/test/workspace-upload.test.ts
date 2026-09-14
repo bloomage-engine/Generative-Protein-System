@@ -36,7 +36,9 @@ async function withServer(
 ): Promise<void> {
   const backend: Backend = {
     principal: new LocalPrincipalResolver(),
-    environments: new LocalEnvironmentProvider({ adapter: fakeAdapter(), workspace }),
+    environments: new LocalEnvironmentProvider({
+      environmentFor: async () => ({ adapter: fakeAdapter(), workspace }),
+    }),
     cors: { origin: true },
     ...(opts.maxUploadBytes !== undefined
       ? { workspaceLimits: { maxUploadBytes: opts.maxUploadBytes } }

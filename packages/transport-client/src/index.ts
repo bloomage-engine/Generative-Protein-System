@@ -46,3 +46,15 @@ export {
 } from "./workspace.js";
 export type { DirListing, Entry, FileStat } from "./workspace.js";
 export { useWorkspaceMentions, type WorkspaceMentions } from "./mentions.js";
+export {
+  DEFAULT_PROJECTS_API,
+  RecordRequestError,
+  fetchProjects,
+  createProject,
+  fetchProjectSessions,
+  createSession,
+  fetchProjectRuns,
+  type Project,
+  type Run,
+  type Session,
+} from "./projects.js";

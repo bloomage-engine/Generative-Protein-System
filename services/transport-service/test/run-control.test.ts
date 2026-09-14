@@ -25,7 +25,9 @@ async function withServer(
 ): Promise<void> {
   const backend: Backend = {
     principal: new LocalPrincipalResolver(),
-    environments: new LocalEnvironmentProvider({ adapter, workspace: new NullWorkspace() }),
+    environments: new LocalEnvironmentProvider({
+      environmentFor: async () => ({ adapter, workspace: new NullWorkspace() }),
+    }),
     cors: { origin: true },
   };
   const app = await createTransportService({ backend });

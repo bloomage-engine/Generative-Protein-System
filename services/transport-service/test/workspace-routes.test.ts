@@ -32,7 +32,9 @@ function fakeAdapter(): RuntimeAdapter {
 async function withServer<T>(workspace: Workspace, fn: (base: string) => Promise<T>): Promise<T> {
   const backend: Backend = {
     principal: new LocalPrincipalResolver(),
-    environments: new LocalEnvironmentProvider({ adapter: fakeAdapter(), workspace }),
+    environments: new LocalEnvironmentProvider({
+      environmentFor: async () => ({ adapter: fakeAdapter(), workspace }),
+    }),
     cors: { origin: true },
   };
   const app = await createTransportService({ backend });

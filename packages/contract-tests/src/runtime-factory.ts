@@ -20,7 +20,6 @@ import type {
 
 const noopRecordStore: RecordStoreLike = {
   addRun: async () => {},
-  addArtifact: async () => {},
 };
 
 export interface RuntimeFactoryCase {

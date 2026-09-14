@@ -27,8 +27,14 @@ function forwardedAuth(request: Request): Record<string, string> {
 
 export async function GET(request: Request): Promise<NextResponse> {
   const params = new URL(request.url).searchParams;
-  const threadId = params.get("threadId");
-  const qs = threadId ? `?threadId=${encodeURIComponent(threadId)}` : "";
+  const query = new URLSearchParams();
+  // `projectId` is the scope `useTransport` appends; keep `project` too so an
+  // older caller is not silently unscoped.
+  for (const key of ["projectId", "project", "threadId"]) {
+    const value = params.get(key);
+    if (value) query.set(key, value);
+  }
+  const qs = query.toString() ? `?${query}` : "";
 
   const upstream = await fetch(`${TRANSPORT_SERVICE_URL}/api/transport/watch${qs}`, {
     headers: { accept: "application/x-ndjson", ...forwardedAuth(request) },

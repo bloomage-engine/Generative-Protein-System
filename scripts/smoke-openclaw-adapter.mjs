@@ -1,38 +1,41 @@
 /**
  * Dev smoke test for the openclaw runtime adapter.
  *
- * Connects to a live gateway (URL/token from services/transport-service/.env),
- * initializes the adapter and drives one `chat.send` against the default
- * session, printing every state delta.
+ * Connects to a live gateway (URL/token from `services/transport-service/.env`,
+ * or the ambient env), initializes the adapter through the same launch surface
+ * the service uses (`openClawLocalBinding`) and drives one `chat.send` against
+ * the default session, printing every state delta.
  *
  * NOTE: this sends a real message to the configured session. Use
- * `SMOKE_SESSION` to point it at a scratch session instead of the default:
+ * `SMOKE_SESSION` to point it at a scratch session instead of the default — but
+ * the id must name a CONFIGURED agent (the gateway answers `INVALID_REQUEST`
+ * `Agent "<id>" no longer exists in configuration` otherwise):
  *
- *   SMOKE_SESSION="agent:smoke:$(date +%s)" node scripts/smoke-openclaw-adapter.mjs
+ *   SMOKE_SESSION="agent:main:smoke-$(date +%s)" node scripts/smoke-openclaw-adapter.mjs
  *
  * Prereq: `npm run build` (the adapter is imported from dist).
  */
-import { OpenClawRuntimeAdapter } from "../packages/transport-openclaw/dist/index.js";
-import "dotenv/config";
+import { config as loadEnv } from "dotenv";
+loadEnv({ path: "services/transport-service/.env", quiet: true });
+import { OpenClawRuntimeAdapter, openClawLocalBinding } from "../packages/transport-openclaw/dist/index.js";
 
 const sessionId =
   process.env.SMOKE_SESSION ??
   process.env.OPENCLAW_DEFAULT_SESSION ??
   "agent:main:main";
 
+const binding = openClawLocalBinding(process.env);
 const adapter = new OpenClawRuntimeAdapter();
 try {
   await adapter.init({
-    gateway: {
-      url: process.env.OPENCLAW_GATEWAY_URL ?? "ws://127.0.0.1:18789",
-      token: process.env.OPENCLAW_GATEWAY_TOKEN ?? "",
-    },
+    binding,
     recordStore: {
       addRun: async () => {},
       addArtifact: async () => {},
     },
+    env: { ...process.env },
   });
-  console.log("INIT OK");
+  console.log(`INIT OK (gateway ${String(binding.config.url)})`);
 } catch (e) {
   console.log("INIT THREW", String(e));
 }

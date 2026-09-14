@@ -1,29 +1,38 @@
-import type { Study, Id, Run, Artifact, Evidence, Conclusion, Session } from "./types.js";
+import type { Id, Project, Run, Session } from "./types.js";
 import type { RecordStore } from "./index.js";
 
 /**
  * Dev/test-grade in-memory implementation of the authoritative record store.
- * Entities are stored by id and returned as copies; deletions are not part of
- * the interface, so entries are never removed.
+ * Entities are stored by id and returned as copies; nothing is ever removed
+ * (archiving is a flag), so listing order is insertion order.
  */
 export function createInMemoryRecordStore(): RecordStore {
-  const studies = new Map<Id, Study>();
+  const projects = new Map<Id, Project>();
   const sessions = new Map<Id, Session>();
   const runs = new Map<Id, Run>();
-  const artifacts = new Map<Id, Artifact>();
-  const evidence = new Map<Id, Evidence>();
-  const conclusions = new Map<Id, Conclusion>();
 
   const clone = <T>(v: T): T => structuredClone(v);
+  const ordered = <T>(map: Map<Id, T>, matches: (v: T) => boolean): T[] =>
+    [...map.values()].filter(matches).map(clone);
 
   return {
-    async createStudy(study: Study): Promise<Study> {
-      studies.set(study.id, clone(study));
-      return clone(study);
+    async createProject(project: Project): Promise<Project> {
+      projects.set(project.id, clone(project));
+      return clone(project);
     },
-    async getStudy(id: Id): Promise<Study | null> {
-      const s = studies.get(id);
-      return s ? clone(s) : null;
+    async getProject(id: Id): Promise<Project | null> {
+      const p = projects.get(id);
+      return p ? clone(p) : null;
+    },
+    async listProjects(opts: { includeArchived?: boolean } = {}): Promise<Project[]> {
+      return ordered(projects, (p) => opts.includeArchived === true || p.archivedAt === undefined);
+    },
+    async archiveProject(id: Id, archivedAt: string): Promise<Project> {
+      const prev = projects.get(id);
+      if (!prev) throw new Error(`project not found: ${id}`);
+      const next = { ...prev, archivedAt };
+      projects.set(id, clone(next));
+      return clone(next);
     },
     async addSession(session: Session): Promise<Session> {
       sessions.set(session.id, clone(session));
@@ -33,29 +42,15 @@ export function createInMemoryRecordStore(): RecordStore {
       const s = sessions.get(id);
       return s ? clone(s) : null;
     },
+    async listSessions(projectId: Id): Promise<Session[]> {
+      return ordered(sessions, (s) => s.projectId === projectId);
+    },
     async addRun(run: Run): Promise<Run> {
       runs.set(run.id, clone(run));
       return clone(run);
     },
-    async updateRun(id: Id, patch: Partial<Run>): Promise<Run> {
-      const prev = runs.get(id);
-      if (!prev) throw new Error(`run not found: ${id}`);
-      const next = { ...prev, ...patch };
-      runs.set(id, clone(next));
-      return clone(next);
-    },
-    async addArtifact(artifact: Artifact): Promise<Artifact> {
-      artifacts.set(artifact.id, clone(artifact));
-      return clone(artifact);
-    },
-    async addEvidence(evidenceRow: Evidence): Promise<Evidence> {
-      evidence.set(evidenceRow.id, clone(evidenceRow));
-      return clone(evidenceRow);
-    },
-    async getConclusions(studyId: Id): Promise<Conclusion[]> {
-      return [...conclusions.values()]
-        .filter((c) => c.studyId === studyId)
-        .map(clone);
+    async listRuns(projectId: Id): Promise<Run[]> {
+      return ordered(runs, (r) => r.projectId === projectId);
     },
   };
 }

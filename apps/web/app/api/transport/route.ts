@@ -27,9 +27,13 @@ function forwardedAuth(request: Request): Record<string, string> {
 
 export async function POST(request: Request): Promise<NextResponse> {
   const body = await request.text();
+  // Preserve the query: the client carries the Project/Session scope there (it
+  // cannot inject fields into assistant-ui's own send body), and the service
+  // reads it as a fallback.
+  const search = new URL(request.url).search;
 
   const upstream = await fetch(
-    `${TRANSPORT_SERVICE_URL}/api/transport`,
+    `${TRANSPORT_SERVICE_URL}/api/transport${search}`,
     {
       method: "POST",
       headers: {

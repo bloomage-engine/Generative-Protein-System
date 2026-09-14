@@ -92,7 +92,7 @@ function clientState(
 function makePipeline(drainPerEvent: boolean) {
   const state: SessionState = {
     sessionId: sessionKey,
-    studyId: "study-1",
+    projectId: "project-1",
     agentId: "main",
     status: "idle",
     messages: [],
@@ -223,7 +223,7 @@ test("mirror keeps add-message payloads private — later transcript folds never
   // onto its live object BEFORE the wire mirror folds the same add-part delta.
   const adapterTranscript: SessionState = {
     sessionId: sessionKey,
-    studyId: "study-1",
+    projectId: "project-1",
     agentId: "main",
     status: "idle",
     messages: [],

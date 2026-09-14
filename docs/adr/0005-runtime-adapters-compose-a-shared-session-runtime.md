@@ -22,13 +22,13 @@ appended); and the transcript-equality rule.
 
 **What each adapter keeps.** `apply(event) → deltas` (there is no shared event
 vocabulary), `dispatch` (the runtime's launch surface: openclaw `chat.send`,
-dsh `runTurn` including its create-only retry), and the hooks justified by a
-real variation: `prepare` (openclaw `chat.history` convergence; dsh cold-start
-mirror restore), `beforePersist` (dsh mirror save), `projectRun` (openclaw's
-command guard + always-`completed` Run; dsh's `turn/end` reason→status plus
-token usage and baseline-sliced output), `watch` (250 ms coalescing vs
-immediate; async cold baseline from the mirror), and `awaitSettle` (openclaw's
-fire-and-forget persistence).
+dsh `runTurn` on a generation-scoped harness session id), and the hooks
+justified by a real variation: `prepare` (openclaw `chat.history` convergence;
+dsh cold-start mirror restore), `beforePersist` (dsh mirror save), `projectRun`
+(openclaw's command guard + always-`completed` Run; dsh's `turn/end`
+reason→status plus token usage and baseline-sliced output), `watch` (250 ms
+coalescing vs immediate; async cold baseline from the mirror), and `awaitSettle`
+(openclaw's fire-and-forget persistence).
 
 **Why.** Two adapters are what make the seam real: only behaviour they both
 duplicated is absorbed. The duplication had already drifted — the kit's

@@ -8,14 +8,15 @@ Chinese.
 
 ```
 apps/web                          Next.js frontend (assistant-ui Thread UI, port 3000)
-  app/page.tsx                      renders the registry-registered assistant-ui `Thread` + the workspace panel
-  app/api/{transport,workspace}      streaming proxies to the service (NEVER next.config rewrites — they buffer)
+  app/page.tsx                      Project/Session picker (lists + creates via `/api/projects*`)
+  app/projects/[projectId]/sessions/[sessionId]/page.tsx  the conversation: Thread + the Project workspace panel
+  app/api/{transport,workspace,projects}  proxies to the service (streaming ones MUST NOT be next.config rewrites — they buffer)
   components/assistant-ui/elements  Thread UI registered from the assistant-ui registry
   components/workspace              workspace browser/viewer panel
   components/ui + hooks + lib       shadcn/ui base, registry helpers
   (Tailwind v4 + shadcn/ui styling stack: postcss.config.mjs, components.json)
-packages/record                   domain + record layer (Run is the atomic unit)
-packages/transport                SEAM PACKAGE, two entries. `./seams` = the contract only: every seam interface (RuntimeAdapter/StateDelta, RuntimeBinding/RuntimeFactory/RuntimePlugin/RuntimeCapabilities, Principal/PrincipalResolver, Environment/EnvironmentProvider, Workspace + limits + QuotaPolicy) plus their error classes and limit constants. `.` = that contract + the shared adapter kit (`SessionRuntime` + its `SessionBehavior` / `RunFlow` queue / `foldState` / attachment helpers) + pure single-user defaults (LocalPrincipalResolver, LocalEnvironmentProvider, NullWorkspace, NoopQuotaPolicy). Exports are explicit (no `export *`); pinned by test/seams.test.ts
+packages/record                   RECORD SEAM PACKAGE: v1 vocabulary is Project/Session/Run only (Study/Task/Artifact/Evidence/Conclusion/AgentBlueprint deferred — docs/adr/0007) + the RecordStore contract + implementations (in-memory for tests; dependency-free JSONL used by default via RECORD_STORE_PATH). transport depends on it for Id/Run/RunStatus
+packages/transport                SEAM PACKAGE, two entries. `./seams` = the contract only: every RUNTIME seam interface (RuntimeAdapter/StateDelta, RuntimeBinding/RuntimeFactory/RuntimePlugin/RuntimeCapabilities, Principal/PrincipalResolver, Environment/EnvironmentProvider, Workspace + limits + QuotaPolicy) plus their error classes and limit constants. `.` = that contract + the shared adapter kit (`SessionRuntime` + its `SessionBehavior` / `RunFlow` queue / `foldState` / attachment helpers) + pure single-user defaults (LocalPrincipalResolver, LocalEnvironmentProvider, NullWorkspace, NoopQuotaPolicy). Exports are explicit (no `export *`); pinned by test/seams.test.ts
 packages/workspace                Workspace implementations (FsWorkspace + containment/symlink/size invariants); depends on transport
 packages/contract-tests          the SHARED seam conformance suites (testPrincipalResolver/testWorkspace/testRuntimeFactory/testAdapterLifecycle/testQuotaPolicy) every implementation runs; the OSS reference impls self-test here, the private module and third-party runtimes run the same suites in their CI. Imports the contract from `@science-studio/transport/seams` (never the kit)
 packages/transport-client         assistant-ui client boundary (single `useTransport` session hook = history probe + standing watch + guarded import; state converter; command catalog + slash-menu / reasoning-trace helpers)
@@ -27,7 +28,7 @@ examples/transport-dsh-example     minimal assistant-ui example app over the dsh
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/design/                      design specs (research-agent-framework EN/ZH + implementation-plan)
-docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness)
+docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store)
 CONTEXT.md                        domain glossary (authoritative vocabulary)
 ```
 
@@ -36,15 +37,37 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 - `npm install` — install all workspaces
 - `npm run dev` — run service (3001) and web (3000) together via concurrently
 - `npm run dev:service` / `npm run dev:web` — individually
-- Workspace file access is **opt-in** and **read-only (v1)**: `WORKSPACE_ROOT`
-  gives the single-user service a real `FsWorkspace` (optionally
-  `WORKSPACE_AGENT_ROOT` — the path the agent sees — and
-  `WORKSPACE_MAX_INLINE_BYTES`, the inline cap); unset means `NullWorkspace` and
-  no file surface. Routes live on the SAME service behind the same
-  principal/environment preamble: `GET /api/workspace/{entries,stat,file}`.
-  `file` streams inline up to the cap (413 over it) and `?download=1` streams any
-  size; a missing path is 404, a traversal/absolute path 400, no workspace 503.
-  Uploads are `POST /api/workspace/upload?path=` with a **raw** body
+- `npm run dev:dsh` — the same service+web pair, with the service forced onto the
+  **dsh** runtime (`TRANSPORT_RUNTIME=dsh npm run dev`). The launch env is NOT in
+  the `.env`: the service's own `dev` script exports the launch-only knobs
+  (`DSH_PROVIDER`/`DSH_MODEL` default the LAN `ollama-local`/`qwen3.8:latest`,
+  `DSH_WORKSPACE` default `$HOME/workspace/dsh-workspace`,
+  `DSH_DEFAULT_SESSION` default `science-studio`; an ambient `DSH_*` wins) before
+  `tsx src/index.ts`, so every dev launch — root `npm run dev` included — gets a
+  working route, and `dev:dsh` only adds the runtime selector. Those names cannot
+  be spelled in `.env`: the harness child reads the LAUNCHER's cwd `.env` as its
+  project layer and hard-refuses any `DSH_*`/`XDG_*`/`DYLD_*` key there. Unset
+  knobs are a foot-gun — the adapter falls back to
+  `deepseek-official`/`deepseek-v4-flash` and the agent's cwd becomes this
+  package's source directory. The route's credential NAME (`apiKeyEnv`, e.g.
+  `OLLAMA_LOCAL_API_KEY`) is a legal `.env` line and is inherited by the child.
+- Record layer: the v1 record is `Project` → `Session` → `Run` (docs/adr/0007).
+  Project/Session/Run routes live on the same service (`/api/projects*`), and the
+  store is persistent by default — `RECORD_STORE_PATH` (default
+  `$XDG_DATA_HOME/science-studio/record.jsonl`) — with `RECORD_STORE=memory` to
+  opt out. A `project-default` row is auto-ensured so a request that names no
+  Project still works.
+- Workspace file access is **opt-in** and served per **Project**: `PROJECT_ROOT`
+  is the host-side parent of every project directory (each Project's workspace is
+  `<PROJECT_ROOT>/<projectId>/`, shared flatly by all its Sessions — docs/adr/0006),
+  `PROJECT_AGENT_ROOT` is the agent-side counterpart, and
+  `WORKSPACE_MAX_INLINE_BYTES` is the inline cap; unset `PROJECT_ROOT` means
+  `NullWorkspace` and no file surface. Routes live on the SAME service behind the
+  same principal/environment preamble and take `?project=`: `GET
+  /api/workspace/{entries,stat,file}`. `file` streams inline up to the cap (413
+  over it) and `?download=1` streams any size; a missing path is 404, a
+  traversal/absolute path 400, no workspace 503. Uploads are `POST
+  /api/workspace/upload?path=&project=` with a **raw** body
   (`application/octet-stream`, one file per request — no multipart parser);
   `maxUploadBytes` (`WORKSPACE_MAX_UPLOAD_BYTES`, default 100 MB) answers 413 and
   `QuotaPolicy` answers 507 on the declared size. Upload caps: also
@@ -54,7 +77,7 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   access is `@science-studio/transport-client`'s `useWorkspaceBrowser` /
   `useWorkspaceFile` / `resolveFileReference` / `WorkspaceOpenProvider` — the
   provider is the seam that lets an agent file link in markdown open the viewer
-  instead of navigating. A 503 (no `WORKSPACE_ROOT`) is classified by
+  instead of navigating. A 503 (no `PROJECT_ROOT`) is classified by
   `isWorkspaceUnavailable`, and `useWorkspaceAvailability` probes once so the UI
   disables its file affordance with friendly copy rather than opening into the
   raw 503. The composer `@` picker is `useWorkspaceMentions`; a pick
@@ -62,7 +85,7 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `:directory[...]`) which the service lifts into a workspace `AttachmentRef`
   (`parseWorkspaceMentions`) — a directory stays a reference, never expanded.
 - `npm run dev -w @science-studio/transport-openclaw-example` — the example app: Vite (5173, proxies `/api`) + the openclaw adapter behind `@science-studio/transport-service` (3200). Needs `examples/transport-openclaw-example/.env` (see its `.env.example`) and a live gateway, and `npm run build` first (imports deps from dist). Dev-only — intentionally NOT in the root build gate; its `npm run test` drives the same wiring against a scripted gateway (no live gateway needed).
-- `npm run dev -w @science-studio/transport-dsh-example` — the same shape over the dsh adapter: Vite (5173) + `@science-studio/transport-service` (3300); the adapter spawns `dsh --profile sdk` locally (needs `examples/transport-dsh-example/.env` with `DEEPSEEK_API_KEY` only — the harness child runs with that folder as cwd, so the dsh CLI reads that same `.env` and hard-refuses launch-only `DSH_*` keys there; defaults: profile `sdk`, home `~/.dsh`, workspace = the example dir, transcript mirror under the service tmp dir — override `DSH_HOME`/`DSH_TRANSCRIPT_DIR`/`DSH_MODEL`… via exported env). Its `npm run test` drives the wiring against a scripted turn client (no dsh process needed).
+- `npm run dev -w @science-studio/transport-dsh-example` — the same shape over the dsh adapter: Vite (5173) + `@science-studio/transport-service` (3300); the adapter spawns `dsh --profile sdk` locally (needs `examples/transport-dsh-example/.env` with `DEEPSEEK_API_KEY`, the model route `HARNESS_PROVIDER`/`HARNESS_MODEL`, and that route's `apiKeyEnv` name — `server.ts` promotes those two `HARNESS_*` names to the launch-only `DSH_PROVIDER`/`DSH_MODEL` before the adapter reads it, because the harness child runs with that folder as cwd and the dsh CLI reads that same `.env` and hard-refuses any `DSH_*` key in it; the route itself — endpoint/models — is declared harness-side in `<harness home>/settings.yaml`, and the default example route is the LAN ollama `ollama-local`/`qwen3.8:latest`; defaults when `HARNESS_*` is unset: profile `sdk`, home `~/.dsh`, workspace = the example dir, transcript mirror under the service tmp dir, adapter provider/model `deepseek-official`/`deepseek-v4-flash` — override `DSH_HOME`/`DSH_TRANSCRIPT_DIR`/`DSH_MODEL`… via exported env). Its `npm run test` drives the wiring against a scripted turn client (no dsh process needed).
 - `npm run test:e2e -w @science-studio/web` — the web app's browser regression test: mocks the transport + workspace HTTP surface, loads history, clicks the Files panel and asserts the history survives (the re-render invariant above). Needs a Chromium (auto-detected; the test SKIPS without one) and `npm run build -w @science-studio/transport-client` first. Dev-only — NOT part of the root `npm test`.
 - `npm run build` — build record → transport → workspace → contract-tests → transport-client → transport-openclaw → transport-dsh → transport-service; this is the real type gate
 - `npm run typecheck` — **known-broken**: fails in transport-service with pre-existing TS6310 (composite refs + `--noEmit`). Other workspaces pass; use `npm run build` for the service.
@@ -72,6 +95,20 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 
 ## Transport wire contract (frontend ↔ service)
 
+- **Every transport request is Project-scoped.** The client carries `projectId`
+  and the Session (as `threadId`); the service reads them from the **query string
+  first, then the body**. The query wins because assistant-ui builds its own send
+  body and always puts a per-page local `__LOCALID_*` threadId there — a
+  body-first read would shadow the URL's Session, resolve the send to the
+  adapter's default session, and reconcile the reply against a different
+  transcript (the app appears to switch sessions). The body is the fallback for
+  clients that scope nothing in the URL (our mount probe puts the scope in both;
+  the examples put it nowhere and land on the default Project). An omitted
+  `projectId` falls back to the auto-ensured `project-default`, and an unknown
+  session key is first-use recorded under that Project (docs/adr/0007). The
+  workspace routes take `?project=` (omitted → the default Project), and the
+  watch takes `?projectId=&threadId=` (`?project=` is accepted for older
+  callers).
 - Frontend is assistant-ui's `useAssistantTransportRuntime`. It sends user
   messages as **`message.parts`** (array of `{type:"text",text}`), NOT
   `message.content`; `normalizeCommands` reads `msg.content ?? msg.parts`.
@@ -137,10 +174,13 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   (`DSH_TRANSCRIPT_DIR`, default under the service tmp dir) and cold-restores
   from it — an unverifiable empty transcript is never reconciled against a
   claiming client (docs/adr/0004); (4) SDK `session/prompt` is CREATE-ONLY — a
-  NEW harness child cannot resume a session id an earlier process already
-  persisted in the harness home (`session "<id>" already exists`), so the
-  adapter retries that exact failure once on a fresh child-scoped session id
-  (`sessionKey-<ts>-<rand>`) instead of settling the turn to error; the UI
+  NEW harness child cannot create a session id an earlier process already
+  persisted in the harness home (`session "<id>" already exists`), so every
+  harness id is minted inside ITS child's generation
+  (`sessionKey-<ts>-<rand>`, one generation per adapter init, reused by that
+  child's later turns): a restart's first prompt is always creatable — no
+  rejected prompt, no error log — and the `already exists` failure is retried
+  once on a fresh id only as a net for a same-instant collision; the UI
   transcript mirror is unaffected, but the AGENT forgets pre-restart turns.
   (5) `subscribe` pushes a baseline on attach — warm sessions synchronously,
   COLD sessions (service restart, nothing in memory) asynchronously from its
@@ -148,10 +188,11 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   attached before any content still wakes on the first settle instead of
   hanging on an open stream (dsh has no remote settles to coalesce).
   assistant-ui mints a per-page local `threadId` (`__LOCALID_*`) on send
-  while the mount probe sends none — each adapter's `resolveSessionKey` maps
-  those (and absent ids) to its own default session, so the runtime-agnostic
-  service only funnels the id through and probe history and sends always
-  converge.
+  while the mount probe sends none. Each adapter's `resolveSessionKey` maps
+  those (and absent ids) to its own default session, but only for clients that
+  scope nothing in the URL — the web app's URL carries the selected Session and
+  the service's query-first read makes it win, so the runtime-agnostic service
+  only funnels the id through and probe history and sends always converge.
 - Service-adjacent verification without the browser:
   `curl -sN -X POST http://localhost:3001/api/transport -H 'content-type: application/json' -d '{"commands":[{"type":"add-message","message":{"role":"user","parts":[{"type":"text","text":"hi"}]}}]}'`
   — with a live gateway this streams real frames and must terminate with `[DONE]`.
@@ -164,15 +205,18 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 
 ## Architecture rules
 
-- **Record is authoritative.** Science Studio owns the research record
-  (`Project`/`Study`/`Task`/`Run`/`Artifact`/`Evidence`/`Conclusion`); runtimes
-  are adapters behind a transport seam (docs/adr/0002).
+- **Record is authoritative.** Science Studio owns the research record — in v1
+  `Project`/`Session`/`Run` (`Study`/`Task`/`Artifact`/`Evidence`/`Conclusion` are
+  deferred, docs/adr/0007); runtimes are adapters behind a transport seam
+  (docs/adr/0002).
 - **Seam is `RuntimeAdapter`** (`packages/transport`). The frontend only speaks
   assistant-ui's `useAssistantTransportRuntime` protocol; backend transport-service
   delegates to a registered adapter (docs/adr/0001).
-- **All seam *interfaces* live in `packages/transport`; implementations live in
-  their own packages** (runtime packages own their bindings/factories, the
-  workspace package owns `FsWorkspace`). No cycles. `transport` has two entries:
+- **Seam *interfaces* live in a seam package — runtime seams in
+  `packages/transport`, record seams in `packages/record` — and implementations
+  live in their own packages** (runtime packages own their bindings/factories,
+  the workspace package owns `FsWorkspace`; `record` owns its store
+  implementations). No cycles. `transport` has two entries:
   `./seams` is the contract alone (interfaces + their error classes + limit
   constants) and `.` adds the shared kit and the pure single-user defaults —
   implementers that only need the interface import `./seams`.
@@ -191,11 +235,15 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `RuntimeAdapter.approve` is OPTIONAL — gate it on `capabilities.approvals`.
 - **`Run` is the atomic traceable unit**; each Research turn produces one.
 - **Session identity is record-owned.** A runtime session key IS the Science
-  Studio `Session` id (1:1). `createSessionResolver`
-  (`services/transport-service/src/sessions.ts`) mints the `Session` — and the
-  default Study it hangs off, from `PROJECT_ID`/`STUDY_ID`/`AGENT_BLUEPRINT_ID` —
-  on first use, and `POST /api/transport` builds `SessionState` from that record,
-  never from fabricated constants. The adapter persists `Run`s through a narrowed
+  Studio `Session` id (1:1). `POST /api/projects/:id/sessions` creates one
+  explicitly, and `POST /api/transport` also resolves-or-first-use-records the
+  claimed key under the request's Project (optional `projectId`; omitted → the
+  auto-ensured `project-default`) — building `SessionState`
+  (`sessionId`/`projectId`/`agentId`) from the record, never from fabricated
+  constants. The **workspace** is project-scoped: the service acquires the
+  Project's `Environment` (one workspace per Project, one shared adapter per user
+  — docs/adr/0006) and only then maps the claimed `threadId` through the
+  adapter's `resolveSessionKey`. The adapter persists `Run`s through a narrowed
   view of the SAME `RecordStore` the service reads identity from (`records` on
   `Backend`; both `localBackend` and the `{ adapters }` compat path share one
   instance).
@@ -277,15 +325,18 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   history on load is handled by the mount probe in `app/page.tsx` (see wire
   contract above) and by `importExternalState`, so don't add `resumeApi`/
   `resumeStateApi` options to the runtime just to fetch history.
-- `@science-studio/record` exports `createInMemoryRecordStore()`. The service
-  wires it via `toRecordStoreLike` because the authoritative `RecordStore` does
-  NOT structurally satisfy the adapter seam `RecordStoreLike`
-  (`addArtifact` param mismatch: `Artifact` vs `ArtifactInput`) — don't smuggle
-  it in with `as any` or the adapter's `persistRun` fails at runtime. That one
-  `RecordStore` instance is deliberately shared by `toRecordStoreLike` (adapter)
-  and `records`/`sessionDefaults` (service), so Runs and Sessions land together.
-- All four `apps/web` streaming proxies (`app/api/transport/route.ts`,
-  `transport/commands`, `transport/watch`, `workspace/[...path]`) forward the
+- `@science-studio/record` exports `createInMemoryRecordStore()` (and the JSONL
+  store the service uses by default). With `Artifact` out of v1 the adapter seam
+  `RecordStoreLike` (and the kit's `RunSink`) is the single method `addRun`, so
+  the authoritative `RecordStore` satisfies it directly — but the service still
+  wires it explicitly rather than by `as any`, and the ONE `RecordStore` instance
+  is deliberately shared by the adapter's sink and the service's
+  `records`/project-session directory, so Runs and Sessions land together.
+- All five `apps/web` proxies (`app/api/transport/route.ts`, `transport/commands`,
+  `transport/watch`, `workspace/[...path]`, `projects/[[...path]]`) forward the
   caller's `Authorization` header upstream. Single-user installs send none (no
   login); in hosted mode the enterprise `PrincipalResolver` authenticates the
-  bearer, so a proxy that swallows the header breaks auth silently.
+  bearer, so a proxy that swallows the header breaks auth silently. The
+  `projects` one is the only JSON (non-streaming) proxy — it is the record
+  surface (`/api/projects*`) the picker reads, and it is what keeps the browser
+  same-origin on port 3000.

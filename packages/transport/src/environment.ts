@@ -1,17 +1,21 @@
 /**
- * The environment seam: what a principal's session gets — a runtime binding and
- * a file root.
+ * The environment seam: what a Project gets — a runtime adapter and a file root.
  *
  * This is the central deep module of the deployment story. Callers (the HTTP
- * route handlers) ask `acquire(principal, sessionKey)`; behind it sit
- * tenant->sandbox lookup, sandbox provisioning, adapter construction via a
- * runtime factory, connection caching/eviction, tenant-scoped record store
- * wiring, and workspace-root resolution.
+ * route handlers) resolve a Session first, then ask
+ * `acquire(principal, session.projectId)`; behind it sit tenant->project lookup,
+ * sandbox provisioning, adapter construction via a runtime factory, per-Project
+ * connection caching/eviction, tenant-scoped record store wiring, and
+ * workspace-root resolution.
  *
- * Single-user ships `LocalEnvironmentProvider` (one adapter, one root). The
- * hosted implementation (private enterprise module) composes a fleet sandbox
- * provider with a caching lifecycle.
+ * The environment is scoped to a **Project**, not a principal and not a Session:
+ * a Project owns one Project Workspace and its Sessions share it (docs/adr/0006).
+ *
+ * Single-user ships `LocalEnvironmentProvider` (a per-Project builder supplied by
+ * the composition root). The hosted implementation (private enterprise module)
+ * composes a fleet sandbox provider with a caching lifecycle.
  */
+import type { Id } from "@science-studio/record";
 import type { Principal } from "./principal.js";
 import type { RuntimeAdapter } from "./types.js";
 import type { Workspace } from "./workspace.js";
@@ -19,44 +23,59 @@ import type { Workspace } from "./workspace.js";
 export interface Environment {
   readonly adapter: RuntimeAdapter;
   readonly workspace: Workspace;
-  /**
-   * The canonical session key the adapter resolved for the requested threadId.
-   * Resolving it here (not in the route handler) keeps each runtime's session
-   * namespace out of the runtime-agnostic service.
-   */
-  readonly sessionKey: string;
+  /** The Project whose workspace and adapter this environment serves. */
+  readonly projectId: Id;
 }
 
 export interface EnvironmentProvider {
   /**
-   * Get or lazily build the environment for a principal's session. `threadId`
-   * is the raw client claim (`null` for the mount probe); the provider maps it
-   * through the selected adapter's `resolveSessionKey`.
+   * Get or lazily build the environment for a Project. The caller has already
+   * resolved the Session (threadId → sessionKey → Session record), because the
+   * Session's `projectId` decides which environment to build.
    */
-  acquire(principal: Principal, threadId: string | null): Promise<Environment>;
+  acquire(principal: Principal, projectId: Id): Promise<Environment>;
   /** Tear down (logout, tenant deletion, deployment shutdown). */
   dispose(principal: Principal): Promise<void>;
 }
 
+/** How a single-user deployment builds one Project's adapter + workspace. */
+export interface LocalEnvironmentOptions {
+  /** Lazily build a Project's adapter and workspace (called at most once per Project). */
+  environmentFor(projectId: Id): Promise<{ adapter: RuntimeAdapter; workspace: Workspace }>;
+}
+
 /**
- * Single-user: one already-constructed adapter + workspace, shared by every
- * request. No provisioning, no caching, no per-tenant routing — and deliberately
- * no auth, which is what "single-user is login-free" means.
+ * Single-user: environments are built on demand per Project and cached, so a
+ * Project's Sessions share one adapter (and, for dsh, one harness child whose cwd
+ * is that Project's workspace). Deliberately no auth — single-user is login-free.
  */
 export class LocalEnvironmentProvider implements EnvironmentProvider {
-  constructor(private readonly environment: Omit<Environment, "sessionKey">) {}
+  private readonly environments = new Map<Id, Environment>();
+  /** De-duplicate concurrent first uses of the same Project. */
+  private readonly inflight = new Map<Id, Promise<Environment>>();
 
-  async acquire(_principal: Principal, threadId: string | null): Promise<Environment> {
-    const claimed = typeof threadId === "string" && threadId.length > 0 ? threadId : null;
-    const adapter = this.environment.adapter;
-    const sessionKey =
-      typeof adapter.resolveSessionKey === "function"
-        ? adapter.resolveSessionKey(claimed)
-        : (claimed ?? "default");
-    return { ...this.environment, sessionKey };
+  constructor(private readonly local: LocalEnvironmentOptions) {}
+
+  async acquire(_principal: Principal, projectId: Id): Promise<Environment> {
+    const cached = this.environments.get(projectId);
+    if (cached) return cached;
+
+    let pending = this.inflight.get(projectId);
+    if (!pending) {
+      pending = this.local
+        .environmentFor(projectId)
+        .then((built) => {
+          const environment: Environment = { ...built, projectId };
+          this.environments.set(projectId, environment);
+          return environment;
+        })
+        .finally(() => this.inflight.delete(projectId));
+      this.inflight.set(projectId, pending);
+    }
+    return pending;
   }
 
   async dispose(_principal: Principal): Promise<void> {
-    /* nothing to tear down in single-user mode */
+    this.environments.clear();
   }
 }

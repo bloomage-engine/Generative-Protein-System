@@ -20,7 +20,6 @@ export type {
   StateDelta,
   TransportCommand,
   CommandDescriptor,
-  ArtifactInput,
   RuntimeAdapter,
   RuntimeInitOptions,
   RecordStoreLike,

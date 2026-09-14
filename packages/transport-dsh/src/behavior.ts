@@ -4,7 +4,7 @@
  *
  * The kit owns the run loop, reconcile, settle pipeline, watch registry and Run
  * projection; this module supplies only the committed-event→delta mapping, the
- * launch surface (`runTurn` + its create-only retry), and the hooks dsh
+ * launch surface (`runTurn` on a generation-scoped harness session id), and the hooks dsh
  * genuinely differs on: cold-start mirror restore, mirror durability at settle,
  * an async cold watch baseline, and per-turn Run parameters. One prompt = one
  * Harness turn = one persisted `Run`, for EVERY terminal `turn/end` reason
@@ -24,20 +24,18 @@ import type { TranscriptMirror } from "./mirror.js";
 import { contentToParts, extractResultText, findToolCallMessage, runStatus, turnEndStatus } from "./mapping.js";
 
 /**
- * The SDK runtime's create-only `session/prompt` rejects an id that a PREVIOUS
- * harness process already persisted in the home with `session "<id>" already
- * exists` (a plain internal error surfaced as a JSON-RPC error response — the
- * SDK wire has no structured code for it). This is the ONE failure we can retry
- * on: it happens BEFORE any agent work, so re-prompting a fresh session cannot
- * double a reply.
+ * The SDK runtime's create-only `session/prompt` builds the agent+session pair
+ * for a client-chosen id and rejects one the harness home already holds —
+ * `session "<id>" already exists`, a plain internal error on the wire (no
+ * structured code for it). The home is durable ACROSS child generations, so
+ * every id a previous generation persisted is permanently uncreatable (the SDK
+ * wire has no resume path — docs/adr/0004). The only id even this generation
+ * cannot create is one another process minted at the same instant; that failure
+ * happens BEFORE any agent work, so retrying once on a fresh id cannot double a
+ * reply.
  */
 function isSessionAlreadyExists(err: unknown): boolean {
   return err instanceof Error && /session .* already exists/i.test(err.message);
-}
-
-/** A fresh, child-scoped harness session id (never persisted before this child). */
-function mintHarnessSessionId(sessionKey: string): string {
-  return `${sessionKey}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export interface DshBehaviorDeps {
@@ -54,6 +52,14 @@ export interface DshBehaviorDeps {
 export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<SessionEvent> {
   const { client, mirror, harnessSessions, provider, model, workspace } = deps;
   const log = deps.onError ?? ((message: string, error: unknown) => console.warn(`[dsh] ${message}`, error));
+  /**
+   * THIS child's harness id space (one generation per harness child — this
+   * module is built once per adapter init). Every id the child asks for is
+   * minted inside it, so a restart starts on a fresh id instead of one the
+   * durable home already holds; turns within one child stay on the same id, so
+   * the conversation continues for the life of the child.
+   */
+  const generation = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
   function applyEvent(event: SessionEvent, ctx: ApplyContext<SessionEvent>): ApplyResult | void {
     switch (event.type) {
@@ -132,18 +138,20 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
       );
       void (async () => {
         try {
-          // Prefer the session key itself (a clean home creates it on first
-          // use). On the create-only `already exists` failure, retry ONCE on a
-          // fresh child-scoped id instead of settling the turn to error.
-          let harnessSessionId = harnessSessions.get(request.sessionKey) ?? request.sessionKey;
+          // The id is scoped to this child generation, so it cannot collide
+          // with what a previous harness process persisted in the home
+          // (docs/adr/0004); later turns reuse the map entry, keeping ONE
+          // harness conversation for the life of this child.
+          let harnessSessionId =
+            harnessSessions.get(request.sessionKey) ?? `${request.sessionKey}-${generation}`;
           try {
             await client.runTurn(harnessSessionId, prompt, (event) => run.ingest(event));
           } catch (err) {
             if (!isSessionAlreadyExists(err)) throw err;
-            harnessSessionId = mintHarnessSessionId(request.sessionKey);
-            harnessSessions.set(request.sessionKey, harnessSessionId);
+            const collided = harnessSessionId;
+            harnessSessionId = `${collided}-retry`;
             log(
-              `harness session "${request.sessionKey}" already exists in a previous runtime and this SDK cannot resume it; continuing on a fresh harness session "${harnessSessionId}" (the agent does not carry the prior conversation across restarts — the Science Studio transcript mirror still does)`,
+              `harness session "${collided}" is already taken in this harness home; continuing on "${harnessSessionId}" (the agent does not carry the prior conversation across restarts — the Science Studio transcript mirror still does)`,
               err,
             );
             await client.runTurn(harnessSessionId, prompt, (event) => run.ingest(event));

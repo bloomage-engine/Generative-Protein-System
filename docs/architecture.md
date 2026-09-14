@@ -17,15 +17,18 @@ This document captures the agreed framework. The domain vocabulary lives in
   deferred. Managerial governance is a thin cross-cutting layer.
 - **Interaction**: conversation-first. Every Researcher turn is captured as a
   `Run` and persisted by a Science Studio-owned record layer.
-- **Units**: `Run` (one Agent execution) is the atomic traceable unit. `Study`
-  aggregates `Run`s; `Artifact`s are produced by `Run`s; `Conclusion`s cite `Run`s.
+- **Units**: `Run` (one Agent execution in a Session) is the atomic traceable unit.
+  A `Project` owns its Sessions and shares what they produce, so a Project's record
+  of results is the Runs of all of them (`docs/adr/0006`, `0007`).
 
 ## 2. Monorepo layout
 
-npm-workspaces TypeScript monorepo. Two hard rules shape the layout: **all seam
-*interfaces* live in `packages/transport`, implementations live in their own
-packages** (no cycles), and **a runtime's launch surface belongs to its own
-package** (the core never names a `url`/`token`/child handle).
+npm-workspaces TypeScript monorepo. Three hard rules shape the layout: **seam
+*interfaces* live in a seam package — the runtime seams in `packages/transport`,
+the record seams in `packages/record` — and implementations live in their own
+packages** (no cycles); **a runtime's launch surface belongs to its own package**
+(the core never names a `url`/`token`/child handle); and **the record layer's v1
+vocabulary is `Project → Session → Run`** (`docs/adr/0007`).
 
 ```
 science-studio/
@@ -37,7 +40,7 @@ science-studio/
 │       ├── components/workspace/       workspace browser/viewer panel
 │       └── test/                       Playwright regression (panel re-render keeps history)
 ├── packages/
-│   ├── record/                         domain + record layer (Run is the atomic unit)
+│   ├── record/                         record seam: Project/Session/Run + RecordStore (memory & JSONL)
 │   ├── transport/                      SEAM PACKAGE, two entries:
 │   │   ├── ./seams                     the contract alone — interfaces + error classes + limits
 │   │   └── .                           the contract + the shared adapter kit + pure single-user defaults
@@ -54,7 +57,7 @@ science-studio/
 ├── scripts/                            dev smoke tools (adapter smoke, dsh smoke, SSE replay, …)
 ├── docs/
 │   ├── architecture.md                 this document
-│   ├── adr/                            0001–0004
+│   ├── adr/                            0001–0007
 │   └── design/                         research-agent framework + implementation plan (EN/ZH)
 ├── CONTEXT.md                          domain glossary (authoritative vocabulary)
 └── AGENTS.md                           repo & wire-contract operational notes
@@ -89,10 +92,10 @@ pinned by `packages/transport/test/seams.test.ts`.
        ▼
      transport-client adopts it via importExternalState (same guarded interlock)
 
-③ Workspace path (opt-in, v1 read-only + raw upload)
-     GET  /api/workspace/{entries,stat,file}   POST /api/workspace/upload
+③ Workspace path (opt-in; one workspace per Project, read + raw upload)
+     GET  /api/workspace/{entries,stat,file}?project=   POST /api/workspace/upload?project=
        ▼
-     app/api/workspace/[...path] proxy → transport-service → FsWorkspace | NullWorkspace
+     app/api/workspace/[...path] proxy → transport-service → FsWorkspace(project) | NullWorkspace
 ```
 
 The frontend only ever speaks assistant-ui's assistant-transport protocol; the
@@ -115,7 +118,6 @@ interface RuntimeAdapter {
   run(session: SessionState, commands: TransportCommand[]): AsyncIterable<StateDelta>;
   abort(reason?: string): void;
   approve?(approvalId: string, decision: "approve" | "reject"): void; // gate on capabilities
-  onArtifact?(artifact: ArtifactInput): void;       // reserved seam; wired later
   listCommands?(): Promise<CommandDescriptor[]>;    // slash-menu catalog (ADR 0003)
   resolveSessionKey?(threadId: string | null): string; // canonical session a client threadId targets
   subscribe?(sessionId: string, sink: (snapshot: WatchSnapshot) => void): () => void; // standing watch
@@ -138,11 +140,11 @@ interface RuntimeAdapter {
   raw `append`. Token fragments grow a single text part at its exact path.
   Adapters map their runtime's events into `StateDelta`s.
 - **Session identity is record-owned.** A runtime session key IS the Science
-  Studio `Session` id (1:1). `createSessionResolver` mints the `Session` (and the
-  default `Study` it hangs off, from `PROJECT_ID`/`STUDY_ID`/
-  `AGENT_BLUEPRINT_ID`) on first use; the adapter persists `Run`s through a
+  Studio `Session` id (1:1). A Session is created explicitly under a Project
+  (`POST /api/projects/:id/sessions`), and the adapter persists `Run`s through a
   narrowed view (`RecordStoreLike`) of the SAME `RecordStore` the service reads
-  identity from.
+  identity from. `EnvironmentProvider.acquire` is project-scoped, so the adapter
+  and workspace are cached per Project (`docs/adr/0006`).
 
 ### Runtime plurality
 
@@ -182,11 +184,12 @@ and the transcript-equality rule.
 Each adapter supplies a `SessionBehavior`: its event→delta mapping, its launch
 surface (`dispatch`), and only the hooks its runtime genuinely differs on —
 openclaw: history convergence (`history-sync.ts`), the command-run guard, 250 ms
-notify coalescing and fire-and-forget persistence; dsh: the harness turn (with
-its create-only retry) plus transcript mirror restore/save, immediate notify and
-an asynchronous cold baseline. Which `threadId` means which session is answered
-by the selected adapter's `resolveSessionKey` (each runtime's namespace and
-default session travel with it, never with the service).
+notify coalescing and fire-and-forget persistence; dsh: the harness turn (on a
+generation-scoped harness session id) plus transcript mirror restore/save,
+immediate notify and an asynchronous cold baseline. Which `threadId` means
+which session is answered by the selected adapter's `resolveSessionKey` (each
+runtime's namespace and default session travel with it, never with the
+service).
 
 ### Standing watch
 
@@ -243,52 +246,76 @@ reconcile and watch paths treat command rows exactly like any other rows.
 ## 5. Record layer
 
 Science Studio owns the research record; it is the source of truth, not any
-runtime. `Run` is captured per research turn: input message, Agent identity,
-parameters, tool calls, outputs. `Artifact` capture is a **reserved interface**
-now and wired up in a later iteration.
+runtime (`docs/adr/0002`). The v1 record layer is **`Project → Session → Run`**
+(`docs/adr/0007`):
 
-**The streamed transport state is Science Studio's own normalized Session/Run
-state**, not a runtime transcript. The frontend `converter` reads that normalized
-state; runtime adapters translate runtime events (e.g. openclaw chat/agent
-frames) into updates to it. This keeps the converter runtime-agnostic and the
-record authoritative.
+- **Project** owns one Project Workspace and any number of Sessions; everything
+  its Sessions produce is shared at the Project level.
+- **Session** is a conversation under a Project. A Session's id IS its canonical
+  runtime session key (1:1), and Sessions are created explicitly
+  (`POST /api/projects/:id/sessions`) rather than minted from env constants.
+- **Run** is the atomic traceable unit: one Agent execution in a Session, carrying
+  its input, output, status, agent, parameters (token usage) and timestamps. A
+  Project's Runs — the turns of all its Sessions — are its shared record of
+  results, read back through `listRuns(projectId)`.
+
+`Study`/`Task`/`Artifact`/`Evidence`/`Conclusion`/`AgentBlueprint` are named and
+agreed but **deferred** — no entity, no API, no rendering — until their real
+producer or reader is designed (CONTEXT.md, "Deferred vocabulary").
+
+`RecordStore` (`@science-studio/record`) is the record-layer seam: the interface
+an out-of-tree implementer (the private enterprise module) supplies, alongside a
+dependency-free JSONL store the single-user service uses by default
+(`RECORD_STORE_PATH`; `RECORD_STORE=memory` opts out).
+
+**The streamed transport state is Science Studio's own normalized Session state**
+(`SessionState`: `sessionId`/`projectId`/`agentId`), not a runtime transcript. The
+frontend `converter` reads that normalized state; runtime adapters translate
+runtime events (e.g. openclaw chat/agent frames) into updates to it. This keeps
+the converter runtime-agnostic and the record authoritative.
 
 ## 6. Workspace file service
 
-Workspace access is **opt-in** and **read-only in v1**, served by the SAME
-service behind the same principal/environment preamble:
+A **Project** owns one workspace — an `FsWorkspace` (`packages/workspace`) rooted
+at `<PROJECT_ROOT>/<projectId>/` and shared flatly by every Session of that Project
+(`docs/adr/0006`). The agent's cwd and the browser's root are both the project
+root, so paths map 1:1; the directory name is the project id. Workspace access is
+**opt-in**: unset `PROJECT_ROOT` means `NullWorkspace` and no file surface (every
+request answers 503). `PROJECT_AGENT_ROOT` is the agent-side counterpart of the
+host-side `PROJECT_ROOT`.
 
-- `WORKSPACE_ROOT` gives the single-user service a real `FsWorkspace`
-  (`packages/workspace`), which enforces containment, symlink and size
-  invariants; unset means `NullWorkspace` and no file surface (every request
-  answers 503).
-- Routes: `GET /api/workspace/{entries,stat,file}` and
-  `POST /api/workspace/upload?path=` (a **raw** body, one file per request — no
-  multipart parser). `file` streams inline up to `WORKSPACE_MAX_INLINE_BYTES`
-  (413 over it) and `?download=1` streams any size; a missing path is 404, a
-  traversal/absolute path 400. Upload answers 413 over `WORKSPACE_MAX_UPLOAD_BYTES`
-  and 507 from `QuotaPolicy` on the declared size (`WORKSPACE_QUOTA_BYTES`).
+- Routes: `GET /api/workspace/{entries,stat,file}?project=` and
+  `POST /api/workspace/upload?path=&project=` (a **raw** body, one file per
+  request — no multipart parser). `file` streams inline up to
+  `WORKSPACE_MAX_INLINE_BYTES` (413 over it) and `?download=1` streams any size; a
+  missing path is 404, a traversal/absolute path 400. Upload answers 413 over
+  `WORKSPACE_MAX_UPLOAD_BYTES` and 507 from `QuotaPolicy` on the declared size
+  (`WORKSPACE_QUOTA_BYTES`).
 - Client-side: `useWorkspaceBrowser` / `useWorkspaceFile` /
   `useWorkspaceAvailability` / `useWorkspaceMentions` and `WorkspaceOpenProvider`
   (the seam that lets an agent file link in markdown open the viewer instead of
   navigating). The composer `@` picker inserts assistant-ui directive text
   (`:file[label]{name=id}` / `:directory[...]`) which the service lifts back into
   a workspace `AttachmentRef` — a directory stays a reference, never expanded.
+  All of these are keyed by project.
 
 ## 7. Version 1 scope
 
 - Conversation-first: a Researcher chats with a configured Agent in a `Session`
-  under a `Study`; each research turn produces a `Run` in the record layer.
+  under a `Project`; each research turn produces a `Run` in the record layer,
+  rolled up at the Project level.
 - Backend transport service as a composition root; two shipped runtimes
   (openclaw, dsh) behind the same seam; a private enterprise module swaps in the
   multi-user backend.
-- Workspace file access (read-only + upload) opt-in via `WORKSPACE_ROOT`.
-- `Artifact` interface reserved, not wired.
+- One Project Workspace per Project, shared by its Sessions; opt-in via
+  `PROJECT_ROOT`.
+- `Study`/`Task`/`Artifact`/`Evidence`/`Conclusion`/`AgentBlueprint` deferred.
 - `Workflow` (DAG) orchestration is a later overlay, not in v1.
 
 ## 8. Open questions (non-blocking)
 
-- Persistence details for the record layer (Postgres schema, artifact storage backend).
+- Persistence details for the record layer beyond the JSONL store (Postgres
+  schema, artifact storage backend) and when to graduate from JSONL.
 - Auth model for Managers vs Researchers (scopes, device pairing); the hosted
   `PrincipalResolver` seam exists, the full model is deferred.
-- Per-runtime hosted sandbox provisioning (`hostedSandbox`, `perSessionCwd`).
+- Per-runtime hosted sandbox provisioning (`hostedSandbox`, per-project cwd).

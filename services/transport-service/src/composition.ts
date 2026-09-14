@@ -1,14 +1,21 @@
 /**
  * The composition root: the ONE place that knows the deployment mode.
  *
- * Single-user (default): a local principal resolver, one local environment, no
- * enterprise code. Hosted: the private enterprise module named by
+ * Single-user (default): a local principal resolver, a per-Project local
+ * environment, no enterprise code. Hosted: the private enterprise module named by
  * `SS_ENTERPRISE_MODULE` supplies the same `Backend` shape (bearer principal,
  * fleet sandboxes, tenant-scoped store). Nothing downstream branches on mode.
  */
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createInMemoryRecordStore, type Artifact, type ArtifactKind, type RecordStore } from "@science-studio/record";
+import {
+  createInMemoryRecordStore,
+  createJsonlRecordStore,
+  type Id,
+  type RecordStore,
+} from "@science-studio/record";
 import { FsWorkspace } from "@science-studio/workspace";
 import {
   DEFAULT_MAX_UPLOAD_BYTES,
@@ -25,7 +32,7 @@ import {
   type Workspace,
   type WorkspaceLimits,
 } from "@science-studio/transport";
-import { DEFAULT_SESSION_DEFAULTS, type SessionDefaults } from "./sessions.js";
+import { DEFAULT_RECORD_DEFAULTS, type RecordDefaults } from "./directory.js";
 
 export interface CorsConfig {
   /** `true` reflects any origin (loopback single-user); a string locks to it. */
@@ -41,13 +48,13 @@ export interface Backend {
   /** Upload/quota caps for the workspace file service. */
   workspaceLimits?: WorkspaceLimits;
   /**
-   * The authoritative record store. Session identity and Run attribution come
-   * from here (the enterprise module supplies a tenant-scoped one). Defaults to
-   * a fresh in-memory store, which is only useful in tests.
+   * The authoritative record store. Project/Session identity and the Run rollup
+   * come from here (the enterprise module supplies a tenant-scoped one).
+   * Defaults to a fresh in-memory store, which is only useful in tests.
    */
   records?: RecordStore;
-  /** Where a first-use Session/Study is filed when the record has none yet. */
-  sessionDefaults?: SessionDefaults;
+  /** The default Project and Agent a Session is filed under when unspecified. */
+  recordDefaults?: RecordDefaults;
   /** Declared traits of the selected runtime (drives `/approve`, UI hints). */
   capabilities?: RuntimeCapabilities;
 }
@@ -110,19 +117,33 @@ export async function loadRuntimePlugins(specifiers: readonly string[]): Promise
 }
 
 /**
- * The single-user workspace: an `FsWorkspace` when a root is configured, and a
- * `NullWorkspace` otherwise. Both satisfy the same seam, which is what lets the
- * multi-user module swap in a cell's bind-mount later without touching callers.
+ * The single-user workspace for ONE Project: an `FsWorkspace` rooted at
+ * `<PROJECT_ROOT>/<projectId>/` (agent side `<PROJECT_AGENT_ROOT>/<projectId>/`),
+ * or a `NullWorkspace` when no `PROJECT_ROOT` is configured. Callers see one seam
+ * either way, which is what lets the multi-user module swap in a cell's
+ * bind-mount without touching them.
  */
-export function localWorkspace(env: NodeJS.ProcessEnv): Workspace {
-  const root = env.WORKSPACE_ROOT;
+export function localWorkspace(env: NodeJS.ProcessEnv, projectId: Id): Workspace {
+  const root = env.PROJECT_ROOT;
   if (!root) return new NullWorkspace();
+  const agentRoot = env.PROJECT_AGENT_ROOT ?? root;
   const maxInlineRaw = env.WORKSPACE_MAX_INLINE_BYTES;
   const maxInlineBytes = maxInlineRaw && /^\d+$/.test(maxInlineRaw) ? Number(maxInlineRaw) : undefined;
-  return new FsWorkspace(root, {
-    agentRoot: env.WORKSPACE_AGENT_ROOT ?? root,
+  return new FsWorkspace(join(root, projectId), {
+    agentRoot: join(agentRoot, projectId),
     ...(maxInlineBytes !== undefined ? { maxInlineBytes } : {}),
   });
+}
+
+/**
+ * The record store the single-user service uses: the dependency-free JSONL store
+ * at `RECORD_STORE_PATH` (default `$XDG_DATA_HOME/science-studio/record.jsonl`),
+ * or an in-memory one when `RECORD_STORE=memory` (tests/examples).
+ */
+export async function localRecordStore(env: NodeJS.ProcessEnv): Promise<RecordStore> {
+  if (env.RECORD_STORE === "memory") return createInMemoryRecordStore();
+  const base = env.XDG_DATA_HOME ?? join(homedir(), ".local", "share");
+  return createJsonlRecordStore(env.RECORD_STORE_PATH ?? join(base, "science-studio", "record.jsonl"));
 }
 
 /** Narrow the authoritative record store to the runtime-agnostic adapter seam. */
@@ -130,23 +151,6 @@ export function toRecordStoreLike(store: RecordStore): RecordStoreLike {
   return {
     addRun: async (run) => {
       await store.addRun(run);
-    },
-    addArtifact: async (input) => {
-      const kind: ArtifactKind = (
-        ["dataset", "figure", "report", "code", "model", "other"] as const
-      ).includes(input.kind as ArtifactKind)
-        ? (input.kind as ArtifactKind)
-        : "other";
-      const artifact: Artifact = {
-        id: `art-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        runId: input.runId,
-        name: input.name,
-        kind,
-        location: input.location,
-        metadata: input.metadata,
-        createdAt: new Date().toISOString(),
-      };
-      await store.addArtifact(artifact);
     },
   };
 }
@@ -176,11 +180,27 @@ async function localBackend(env: NodeJS.ProcessEnv): Promise<Backend> {
   }
 
   const binding = plugin.localBinding(env);
+  // One authoritative store: the adapter persists Runs through the narrowed view
+  // of it, and the service resolves Project/Session identity from it.
+  const records = await localRecordStore(env);
+  const recordDefaults: RecordDefaults = {
+    projectId: env.PROJECT_ID ?? DEFAULT_RECORD_DEFAULTS.projectId,
+    projectName: env.PROJECT_NAME ?? DEFAULT_RECORD_DEFAULTS.projectName,
+    agentId: env.AGENT_ID ?? DEFAULT_RECORD_DEFAULTS.agentId,
+  };
+  // A configured root must "just work": ensure the default Project exists.
+  if (!(await records.getProject(recordDefaults.projectId))) {
+    await records.createProject({
+      id: recordDefaults.projectId,
+      name: recordDefaults.projectName,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  // One adapter serves every Project (see the Phase 2.6 note in
+  // docs/design/implementation-plan.md: per-Project provisioning — a distinct
+  // harness child/cwd per Project — is the follow-up).
   const adapter = plugin.factory.create(binding);
-  const workspace = localWorkspace(env);
-  // One authoritative store: the adapter persists Runs through the narrowed
-  // view of it, and the service resolves Session identity from it.
-  const records = createInMemoryRecordStore();
   // Init runs in the BACKGROUND, exactly like the pre-seam service: a slow or
   // unreachable runtime must not delay startup. The adapter's own `run()` awaits
   // its readiness, so requests arriving during init wait rather than fail.
@@ -188,21 +208,22 @@ async function localBackend(env: NodeJS.ProcessEnv): Promise<Backend> {
     .init({
       binding,
       recordStore: toRecordStoreLike(records),
-      workspace,
+      workspace: localWorkspace(env, recordDefaults.projectId),
       env: { ...env },
     })
     .catch((err) => console.error("[transport-service] adapter init failed", err));
 
   return {
     principal: new LocalPrincipalResolver(),
-    environments: new LocalEnvironmentProvider({ adapter, workspace }),
+    environments: new LocalEnvironmentProvider({
+      environmentFor: async (projectId) => ({
+        adapter,
+        workspace: localWorkspace(env, projectId),
+      }),
+    }),
     cors: { origin: true },
     records,
-    sessionDefaults: {
-      projectId: env.PROJECT_ID ?? DEFAULT_SESSION_DEFAULTS.projectId,
-      studyId: env.STUDY_ID ?? DEFAULT_SESSION_DEFAULTS.studyId,
-      agentBlueprintId: env.AGENT_BLUEPRINT_ID ?? DEFAULT_SESSION_DEFAULTS.agentBlueprintId,
-    },
+    recordDefaults,
     workspaceLimits: {
       maxUploadBytes: positiveInt(env.WORKSPACE_MAX_UPLOAD_BYTES) ?? DEFAULT_MAX_UPLOAD_BYTES,
       quotaBytes: positiveInt(env.WORKSPACE_QUOTA_BYTES) ?? DEFAULT_QUOTA_BYTES,

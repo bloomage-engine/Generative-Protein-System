@@ -18,8 +18,8 @@ import {
 import { cn } from "@/lib/utils";
 
 export interface WorkspacePanelProps {
-  /** The assistant-ui thread id whose session the workspace belongs to. */
-  threadId?: string | null;
+  /** The Project whose workspace this panel browses. */
+  project?: string | null;
   /** Controlled selection, so an agent file-link click can open the viewer. */
   selected: string | null;
   onSelect: (path: string | null) => void;
@@ -28,20 +28,20 @@ export interface WorkspacePanelProps {
 }
 
 /**
- * The session workspace browser + viewer.
+ * The Project workspace browser + viewer.
  *
  * Browsing is one level at a time (`useWorkspaceBrowser`); selecting a file
  * opens a text preview (`useWorkspaceFile`) with a download escape hatch for
  * binaries and over-cap files. v1 shows text inline only — no binary preview.
  */
 export const WorkspacePanel: FC<WorkspacePanelProps> = ({
-  threadId = null,
+  project = null,
   selected,
   onSelect,
   onClose,
 }) => {
   const { path: dir, listing, isLoading, error, unavailable, navigate, refresh } =
-    useWorkspaceBrowser({ threadId });
+    useWorkspaceBrowser({ project });
 
   // An externally selected file (an agent link) reveals its directory.
   useEffect(() => {
@@ -140,7 +140,7 @@ export const WorkspacePanel: FC<WorkspacePanelProps> = ({
       </div>
 
       {selected && (
-        <FilePreview path={selected} threadId={threadId} onClose={() => onSelect(null)} />
+        <FilePreview path={selected} project={project} onClose={() => onSelect(null)} />
       )}
     </aside>
   );
@@ -148,11 +148,11 @@ export const WorkspacePanel: FC<WorkspacePanelProps> = ({
 
 const FilePreview: FC<{
   path: string;
-  threadId: string | null;
+  project: string | null;
   onClose: () => void;
-}> = ({ path, threadId, onClose }) => {
+}> = ({ path, project, onClose }) => {
   const { text, mime, isBinary, isLoading, error, downloadUrl } = useWorkspaceFile(path, {
-    threadId,
+    project,
   });
   const name = path.slice(path.lastIndexOf("/") + 1);
 

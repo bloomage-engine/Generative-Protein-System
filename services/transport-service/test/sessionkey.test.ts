@@ -76,3 +76,34 @@ test("runtimes without resolveSessionKey accept a threadId verbatim and default 
     assert.equal(seen.sessionId, "default", "an absent threadId means the default session");
   });
 });
+
+test("the explicit query scope wins over the body's local-mint threadId", async () => {
+  const seen = { sessionId: null as string | null };
+  // Mirrors the real adapters: assistant-ui's per-page local id must not become
+  // the canonical session.
+  const adapter = makeAdapter(seen, (t) =>
+    t !== null && !t.startsWith("__LOCALID_") ? t : "default-session",
+  );
+  await withServer(adapter, async (base) => {
+    // A SEND: assistant-ui builds this body itself and always puts its local
+    // `__LOCALID_*` there, while the URL carries the Session the app selected.
+    const res = await fetch(`${base}/api/transport?threadId=sess-1`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commands: [
+          { type: "add-message", message: { role: "user", parts: [{ type: "text", text: "hi" }] } },
+        ],
+        state: { status: "idle", messages: {} },
+        threadId: "__LOCALID_abc123",
+      }),
+    });
+    assert.equal(res.status, 200);
+    await res.text(); // drain; the run terminates with [DONE]
+    assert.equal(
+      seen.sessionId,
+      "sess-1",
+      "the URL's Session must win over the body's local id (else sends land on the default session and the reply reconciles against the wrong transcript)",
+    );
+  });
+});

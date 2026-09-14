@@ -35,7 +35,7 @@ type UserSend = Extract<TransportCommand, { type: "add-message" }>;
 export type RunSpec = Run;
 
 /** The record-store slice the kit persists Runs through. */
-export type RunSink = Pick<RecordStoreLike, "addRun">;
+export type RunSink = RecordStoreLike;
 
 /** The Run projection the settle pipeline records. */
 export interface SettleDirective {
@@ -274,7 +274,7 @@ export class SessionRuntime<E> {
   private readonly onError: (error: unknown) => void;
 
   /** The canonical transcript (Science Studio's owned session state). */
-  state: SessionState = { sessionId: "", studyId: "", agentId: "", status: "idle", messages: [] };
+  state: SessionState = { sessionId: "", projectId: "", agentId: "", status: "idle", messages: [] };
 
   private active: ActiveRun<E> | null = null;
   private readonly sinks = new Set<WatchSink>();
@@ -308,7 +308,7 @@ export class SessionRuntime<E> {
    */
   async *run(session: SessionState, commands: TransportCommand[]): AsyncIterable<StateDelta> {
     this.state.sessionId = session.sessionId;
-    this.state.studyId = session.studyId;
+    this.state.projectId = session.projectId;
     this.state.agentId = session.agentId;
     this.bootstrapped = true;
 
@@ -642,8 +642,8 @@ export class SessionRuntime<E> {
     if (id === null) return null;
     return {
       id,
-      taskId: ctx.sessionKey,
       sessionId: ctx.sessionKey,
+      projectId: ctx.state.projectId,
       status: ctx.directive.status ?? "completed",
       agentId: ctx.state.agentId,
       parameters: ctx.directive.usage !== undefined ? { usage: ctx.directive.usage } : {},

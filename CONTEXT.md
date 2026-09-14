@@ -52,57 +52,38 @@ one model request plus the tools it calls, inside a Turn. Coarser than a
 message; a single assistant reply can span multiple Steps as tools run.
 _Avoid_: Call, Request, Segment
 
-**Workspace** (also **cwd**):
+**Harness cwd** (dsh's own docs call it *Workspace*):
 the filesystem directory a dsh agent operates in (executes tools against,
-reads/writes files in). Supplied by the host at initialize time.
-_Avoid_: Sandbox, Project dir, Home
+reads/writes files in). Supplied by the host at initialize time; under a Project
+it is that Project's Project Workspace.
+_Avoid_: Workspace (collides with Project Workspace), Sandbox, Home
 
 ## Research Work
 
 **Project**:
-The top-level container owned by a Researcher or team. Managers view Project-level
-aggregates. The platform's coarsest unit of oversight.
-_Avoid_: Workspace, Space, Organization
+The top-level container owned by a Researcher or team. A Project owns one Project
+Workspace and any number of Sessions, and everything its Sessions produce is
+shared at the Project level. Managers view Project-level aggregates. The
+platform's coarsest unit of oversight.
+_Avoid_: Space, Organization, Folder
 
-**Study**:
-A single scientific question or objective pursued under a Project. A collection of
-Runs forming an investigation line.
-_Avoid_: Experiment, Case, Investigation
-
-**Task**:
-A concrete piece of work delegated to an Agent (e.g. "run differential expression on
-this dataset").
-_Avoid_: Job, Chore, Assignment
-
-**Run**:
-The atomic unit of traceability. One Agent execution against a Task, carrying its
-inputs, parameters, tool calls, outputs, duration, and cost.
-_Avoid_: Execution, Step, Attempt
-
-**Artifact**:
-An output produced by a Run — a dataset, figure, report, code, or model. Referenced
-by other Runs as input.
-_Avoid_: Output, File, Result
-
-**Evidence** (also **Provenance**):
-The chain linking a Run to its inputs, intermediate steps, Artifacts, and conclusions.
-What makes the platform's records auditable and reproducible.
-_Avoid_: History, Log, Audit trail
-
-**Conclusion** (also **Report**):
-A synthesized finding presented to the Researcher, citing the Evidence and Artifacts
-that support it.
-_Avoid_: Summary, Output document, Answer
-
-**AgentBlueprint**:
-A reusable definition of an Agent — its instructions, tools, model, and parameters.
-Can be composed and referenced by Tasks.
-_Avoid_: Agent config, Agent template, Skill
+**Project Workspace**:
+The one filesystem workspace a Project owns, shared flatly by every Session under
+it. "Independent" means independent of other Projects, not of the Sessions inside
+one — those are meant to share.
+_Avoid_: Workspace (unqualified — collides with the dsh runtime term), Sandbox,
+Project dir
 
 **Session**:
-A conversation between a Researcher and an Agent under a Study. Rendered as an
+A conversation between a Researcher and an Agent under a Project. Rendered as an
 assistant-ui thread. Each Researcher turn drives one Run.
 _Avoid_: Thread, Chat, Conversation
+
+**Run**:
+The atomic unit of traceability. One Agent execution in a Session, carrying its
+inputs, parameters, tool calls, outputs, duration, and cost. The Runs of a
+Project's Sessions are its shared record of results.
+_Avoid_: Execution, Step, Attempt
 
 **Runtime Command** (also **Slash command**):
 A runtime-level operation invoked by a standalone "/"-prefixed user message
@@ -121,17 +102,53 @@ the frontend never hardcodes a runtime's command set.
 _Avoid_: Menu config, Slash list, Command registry
 
 **Workflow** (also **DAG**):
-A composition overlay that chains multiple Tasks so that one Run's output becomes
-a downstream Task's input. Optional in the first version; a later structured mode
+A composition overlay that chains multiple steps so that one Run's output becomes
+a downstream step's input. Optional in the first version; a later structured mode
 over the Run-based record.
 _Avoid_: Pipeline, Chain, Script
+
+### Deferred vocabulary
+
+Named and agreed, but not in v1: no record entity, no API, no rendering. Each
+returns when its real producer or reader is designed (see docs/adr/0007).
+
+**Study**:
+A single scientific question or objective pursued under a Project; an optional
+grouping of Sessions into an investigation line.
+_Avoid_: Experiment, Case, Investigation
+
+**Task**:
+A concrete piece of work delegated to an Agent (e.g. "run differential expression
+on this dataset").
+_Avoid_: Job, Chore, Assignment
+
+**Artifact**:
+An output produced by a Run — a dataset, figure, report, code, or model.
+Referenced by other Runs as input.
+_Avoid_: Output, File, Result
+
+**Evidence** (also **Provenance**):
+The chain linking a Run to its inputs, intermediate steps, Artifacts, and
+conclusions. What makes the platform's records auditable and reproducible.
+_Avoid_: History, Log, Audit trail
+
+**Conclusion** (also **Report**):
+A synthesized finding presented to the Researcher, citing the Evidence and
+Artifacts that support it.
+_Avoid_: Summary, Output document, Answer
+
+**AgentBlueprint**:
+A reusable definition of an Agent — its instructions, tools, model, and
+parameters.
+_Avoid_: Agent config, Agent template, Skill
 
 ### Core decision
 
 The platform records its work at the granularity of a **Run**: everything needed to
-reproduce and attribute an action hangs off a single Run. Studies aggregate Runs;
-Artifacts are produced by Runs; Conclusions cite Runs.
-_Avoid_: Recording at the depth of Project, Study, or Artifact as the atomic unit.
+reproduce and attribute an action hangs off a single Run. Sessions aggregate Runs,
+and a Project aggregates its Sessions — so a Project's shared record of results is
+the Runs of all of them.
+_Avoid_: Recording at the depth of Project, Session, or Artifact as the atomic unit.
 
 ### Scope decisions
 
@@ -139,7 +156,8 @@ _Avoid_: Recording at the depth of Project, Study, or Artifact as the atomic uni
   hypothesis generation). Wet-lab and instrument integration is deferred. Managerial
   governance is a thin cross-cutting layer.
 - **Interaction**: conversation-first. Every Researcher turn is captured as a Run and
-  persisted by a Science Studio-owned record layer. The Artifact capture interface is
-  reserved now and wired up later. Workflow (DAG) orchestration is a later overlay.
+  persisted by a Science Studio-owned record layer, rolled up at the Project level.
+  Artifact capture and conclusion synthesis are deferred until their real producers
+  exist. Workflow (DAG) orchestration is a later overlay.
 - **Runtime**: the agent runtime is swappable. Science Studio owns the research record;
   runtimes are adapters behind a single transport seam.

@@ -35,11 +35,17 @@ export async function fetchSessionSnapshot(
   api: string,
   claimed: RuntimeState,
   threadId: string | null,
+  projectId?: string | null,
 ): Promise<RuntimeState | null> {
   const res = await fetch(api, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ commands: [], state: claimed, threadId }),
+    body: JSON.stringify({
+      commands: [],
+      state: claimed,
+      threadId,
+      ...(projectId ? { projectId } : {}),
+    }),
   });
   if (!res.ok || !res.body) return null;
 

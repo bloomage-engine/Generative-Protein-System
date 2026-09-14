@@ -19,6 +19,16 @@ export { DEFAULT_API };
 export type UseTransportOptions = {
   /** Transport endpoint. Defaults to the same-origin `/api/transport`. */
   api?: string;
+  /**
+   * The Project whose Session this runtime drives. Carried on every request
+   * (probe, sends, watch); omitted → the service's default Project.
+   */
+  projectId?: string | null;
+  /**
+   * The Session (a record-owned id) to load and drive. `null`/omitted → the
+   * runtime's own default session (the single-session mount probe).
+   */
+  threadId?: string | null;
   /** Extra request headers for the transport calls. */
   headers?: Record<string, string>;
   /** Called when a run finishes. */
@@ -83,9 +93,15 @@ export type UseTransportOptions = {
 export function useTransport(options: UseTransportOptions = {}): AssistantRuntime {
   const api = options.api ?? DEFAULT_API;
   const base = api.replace(/\/+$/, "");
+  const projectId = options.projectId ?? null;
+  const threadId = options.threadId ?? null;
+  // The scope travels in the URL so it also reaches assistant-ui's OWN send
+  // requests (we do not build their body); the service reads it from the query
+  // when the body does not carry it.
+  const scopedApi = withScope(api, projectId, threadId);
 
   const runtime = useAssistantTransportRuntime<RuntimeState>({
-    api,
+    api: scopedApi,
     protocol: "assistant-transport",
     headers: options.headers ?? {},
     initialState: createInitialRuntimeState(),
@@ -111,7 +127,12 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const snapshot = await fetchSessionSnapshot(base, createInitialRuntimeState(), null);
+      const snapshot = await fetchSessionSnapshot(
+        scopedApi,
+        createInitialRuntimeState(),
+        threadId,
+        projectId,
+      );
       if (cancelled || snapshot === null) return;
       const busy = (() => {
         try {
@@ -130,7 +151,7 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
     return () => {
       cancelled = true;
     };
-  }, [base, runtime]);
+  }, [scopedApi, threadId, projectId, runtime]);
 
   // Standing watch: keep the NDJSON connection open and adopt each pushed
   // canonical snapshot when the interlock allows.
@@ -163,7 +184,7 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
 
     async function frameLoop(): Promise<void> {
       try {
-        const res = await fetch(`${base}/watch`, {
+        const res = await fetch(`${base}/watch${watchQuery(projectId, threadId)}`, {
           headers: { accept: "application/x-ndjson" },
         });
         if (!res.ok || !res.body) throw new Error(`watch ${res.status}`);
@@ -207,7 +228,27 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
       closed = true;
       handle.cancel();
     };
-  }, [base, runtime]);
+  }, [base, projectId, threadId, runtime]);
 
   return runtime;
+}
+
+/** Append the Project/Session scope to a transport URL (sends included). */
+function withScope(api: string, projectId: string | null, threadId: string | null): string {
+  const qs = scopeParams(projectId, threadId);
+  if (!qs) return api;
+  return `${api}${api.includes("?") ? "&" : "?"}${qs}`;
+}
+
+/** The watch endpoint's query (its scope is always explicit). */
+function watchQuery(projectId: string | null, threadId: string | null): string {
+  const qs = scopeParams(projectId, threadId);
+  return qs ? `?${qs}` : "";
+}
+
+function scopeParams(projectId: string | null, threadId: string | null): string {
+  const params = new URLSearchParams();
+  if (projectId) params.set("projectId", projectId);
+  if (threadId) params.set("threadId", threadId);
+  return params.toString();
 }

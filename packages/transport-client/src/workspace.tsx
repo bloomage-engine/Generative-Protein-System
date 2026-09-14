@@ -3,10 +3,11 @@
 /**
  * The client half of the workspace file service.
  *
- * One API base (`WorkspaceApiProvider`, default `/api/workspace`), the fetch
- * helpers every consumer shares, a directory-browsing hook, a text-preview hook,
- * and the open-file context that lets a markdown link or a file chip hand a
- * `FileRef` to whatever viewer the app mounts.
+ * One API base (`WorkspaceApiProvider`, default `/api/workspace`) and the Project
+ * whose files it browses, the fetch helpers every consumer shares, a
+ * directory-browsing hook, a text-preview hook, and the open-file context that
+ * lets a markdown link or a file chip hand a `FileRef` to whatever viewer the app
+ * mounts.
  *
  * The API base is separate from the transport base: the workspace routes are a
  * different surface (`@science-studio/transport-service`'s `/api/workspace/*`),
@@ -17,6 +18,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type FC,
   type PropsWithChildren,
@@ -29,15 +31,31 @@ export type { DirListing, Entry, FileStat };
 
 export const DEFAULT_WORKSPACE_API = "/api/workspace";
 
-const WorkspaceApiContext = createContext<string>(DEFAULT_WORKSPACE_API);
+/**
+ * What a workspace subtree is scoped to: the API base plus the Project whose
+ * files should be browsed (`null` → the service's default Project). The Project
+ * rides in context so registry components (the composer's `@` picker) and the
+ * panel agree without prop-drilling through the app shell.
+ */
+export interface WorkspaceScope {
+  api: string;
+  project: string | null;
+}
 
-/** Provide the workspace API base to the subtree's hooks and components. */
-export const WorkspaceApiProvider: FC<PropsWithChildren<{ api: string }>> = ({
-  api,
-  children,
-}) => <WorkspaceApiContext.Provider value={api}>{children}</WorkspaceApiContext.Provider>;
+const WorkspaceApiContext = createContext<WorkspaceScope>({
+  api: DEFAULT_WORKSPACE_API,
+  project: null,
+});
 
-export function useWorkspaceApi(): string {
+/** Provide the workspace API base (and Project) to the subtree. */
+export const WorkspaceApiProvider: FC<
+  PropsWithChildren<{ api: string; project?: string | null }>
+> = ({ api, project = null, children }) => {
+  const value = useMemo<WorkspaceScope>(() => ({ api, project }), [api, project]);
+  return <WorkspaceApiContext.Provider value={value}>{children}</WorkspaceApiContext.Provider>;
+};
+
+export function useWorkspaceApi(): WorkspaceScope {
   return useContext(WorkspaceApiContext);
 }
 
@@ -46,8 +64,8 @@ function base(api: string): string {
   return api.replace(/\/+$/, "");
 }
 
-function sessionParam(threadId: string | null | undefined): string {
-  return threadId ? `&session=${encodeURIComponent(threadId)}` : "";
+function projectParam(project: string | null | undefined): string {
+  return project ? `&project=${encodeURIComponent(project)}` : "";
 }
 
 /**
@@ -79,10 +97,10 @@ export const WORKSPACE_UNAVAILABLE_REASON =
 export async function fetchWorkspaceEntries(
   api: string,
   path: string,
-  threadId: string | null = null,
+  project: string | null = null,
 ): Promise<DirListing> {
   const res = await fetch(
-    `${base(api)}/entries?path=${encodeURIComponent(path)}${sessionParam(threadId)}`,
+    `${base(api)}/entries?path=${encodeURIComponent(path)}${projectParam(project)}`,
     { headers: { accept: "application/json" } },
   );
   if (!res.ok) throw await requestError(res);
@@ -93,10 +111,10 @@ export async function fetchWorkspaceEntries(
 export async function fetchWorkspaceStat(
   api: string,
   path: string,
-  threadId: string | null = null,
+  project: string | null = null,
 ): Promise<FileStat> {
   const res = await fetch(
-    `${base(api)}/stat?path=${encodeURIComponent(path)}${sessionParam(threadId)}`,
+    `${base(api)}/stat?path=${encodeURIComponent(path)}${projectParam(project)}`,
     { headers: { accept: "application/json" } },
   );
   if (!res.ok) throw await requestError(res);
@@ -107,10 +125,10 @@ export async function fetchWorkspaceStat(
 export function workspaceFileUrl(
   api: string,
   path: string,
-  opts: { download?: boolean; threadId?: string | null } = {},
+  opts: { download?: boolean; project?: string | null } = {},
 ): string {
   const download = opts.download ? "&download=1" : "";
-  return `${base(api)}/file?path=${encodeURIComponent(path)}${sessionParam(opts.threadId)}${download}`;
+  return `${base(api)}/file?path=${encodeURIComponent(path)}${projectParam(opts.project)}${download}`;
 }
 
 async function errorText(res: Response): Promise<string> {
@@ -143,13 +161,14 @@ export interface WorkspaceBrowser {
   refresh: () => void;
 }
 
-/** Directory listing state for one browse session (root by default). */
+/** Directory listing state for one Project's workspace (root by default). */
 export function useWorkspaceBrowser(opts: {
-  threadId?: string | null;
+  project?: string | null;
   initialPath?: string;
 } = {}): WorkspaceBrowser {
-  const api = useWorkspaceApi();
-  const threadId = opts.threadId ?? null;
+  const scope = useWorkspaceApi();
+  const api = scope.api;
+  const project = opts.project ?? scope.project;
   const [path, setPath] = useState(opts.initialPath ?? "");
   const [listing, setListing] = useState<DirListing | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -162,7 +181,7 @@ export function useWorkspaceBrowser(opts: {
     setIsLoading(true);
     setError(null);
     setUnavailable(false);
-    fetchWorkspaceEntries(api, path, threadId)
+    fetchWorkspaceEntries(api, path, project)
       .then((next) => {
         if (!cancelled) setListing(next);
       })
@@ -181,7 +200,7 @@ export function useWorkspaceBrowser(opts: {
     return () => {
       cancelled = true;
     };
-  }, [api, path, threadId, nonce]);
+  }, [api, path, project, nonce]);
 
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
   return { path, listing, isLoading, error, unavailable, navigate: setPath, refresh };
@@ -207,10 +226,11 @@ export interface WorkspaceAvailability {
  * ever shows a 503. The probe is the cheapest workspace call (a root listing).
  */
 export function useWorkspaceAvailability(opts: {
-  threadId?: string | null;
+  project?: string | null;
 } = {}): WorkspaceAvailability {
-  const api = useWorkspaceApi();
-  const threadId = opts.threadId ?? null;
+  const scope = useWorkspaceApi();
+  const api = scope.api;
+  const project = opts.project ?? scope.project;
   const [state, setState] = useState<WorkspaceAvailability>({
     available: null,
     isLoading: true,
@@ -220,7 +240,7 @@ export function useWorkspaceAvailability(opts: {
   useEffect(() => {
     let cancelled = false;
     setState({ available: null, isLoading: true, reason: null });
-    fetchWorkspaceEntries(api, "", threadId)
+    fetchWorkspaceEntries(api, "", project)
       .then(() => {
         if (!cancelled) setState({ available: true, isLoading: false, reason: null });
       })
@@ -235,7 +255,7 @@ export function useWorkspaceAvailability(opts: {
     return () => {
       cancelled = true;
     };
-  }, [api, threadId]);
+  }, [api, project]);
 
   return state;
 }
@@ -256,10 +276,11 @@ export interface WorkspaceFilePreview {
 /** Text preview for one file; binaries and over-cap files surface as download. */
 export function useWorkspaceFile(
   path: string | null,
-  opts: { threadId?: string | null } = {},
+  opts: { project?: string | null } = {},
 ): WorkspaceFilePreview {
-  const api = useWorkspaceApi();
-  const threadId = opts.threadId ?? null;
+  const scope = useWorkspaceApi();
+  const api = scope.api;
+  const project = opts.project ?? scope.project;
   const [state, setState] = useState<Omit<WorkspaceFilePreview, "downloadUrl">>({
     text: null,
     mime: null,
@@ -278,7 +299,7 @@ export function useWorkspaceFile(
 
     void (async () => {
       try {
-        const res = await fetch(workspaceFileUrl(api, path, { threadId }), {
+        const res = await fetch(workspaceFileUrl(api, path, { project }), {
           headers: { accept: "*/*" },
         });
         if (!res.ok) throw await requestError(res);
@@ -309,12 +330,12 @@ export function useWorkspaceFile(
     return () => {
       cancelled = true;
     };
-  }, [api, path, threadId]);
+  }, [api, path, project]);
 
   return {
     ...state,
     downloadUrl: path
-      ? workspaceFileUrl(api, path, { download: true, threadId })
+      ? workspaceFileUrl(api, path, { download: true, project })
       : "",
   };
 }

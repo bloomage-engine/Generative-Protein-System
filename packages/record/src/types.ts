@@ -1,46 +1,60 @@
 /**
- * Domain identifiers.
+ * The v1 record vocabulary: `Project → Session → Run` (docs/adr/0007).
+ *
+ * `Study`/`Task`/`Artifact`/`Evidence`/`Conclusion`/`AgentBlueprint` are named and
+ * agreed but DEFERRED — no entity here, no API, no rendering — until their real
+ * producer or reader is designed (CONTEXT.md, "Deferred vocabulary").
  */
+
+/** Domain identifiers. */
 export type Id = string;
 
-/** A Researcher-defined objective pursued under a Project. */
-export interface Study {
-  id: Id;
-  projectId: Id;
-  /** One-sentence research objective. */
-  objective: string;
-  createdAt: string;
-}
-
-/** The top-level container owned by a Researcher or team. */
+/**
+ * The top-level container owned by a Researcher or team. A Project owns one
+ * Project Workspace and any number of Sessions, and everything its Sessions
+ * produce is shared at the Project level (docs/adr/0006).
+ *
+ * `id` is minted by the server as a filesystem-safe slug and is immutable:
+ * workspace directories are named after it, so the workspace outlives a rename.
+ */
 export interface Project {
   id: Id;
   name: string;
   createdAt: string;
+  /** Set when the Project is archived — hidden from the default listing, never deleted. */
+  archivedAt?: string;
 }
 
-/** A concrete piece of work delegated to an Agent. */
-export interface Task {
+/** A conversation between a Researcher and an Agent under a Project. */
+export interface Session {
   id: Id;
-  studyId: Id;
-  agentBlueprintId: Id;
-  /** Free-form prompt / goal given to the Agent. */
-  prompt: string;
+  projectId: Id;
+  /** The Agent identity active in this session (a flat id; `AgentBlueprint` is deferred). */
+  agentId: Id;
+  title?: string;
   createdAt: string;
+  updatedAt: string;
 }
+
+export type RunStatus = "running" | "completed" | "aborted" | "error";
 
 /**
- * The atomic unit of traceability: one Agent execution against a Task,
- * carrying inputs, parameters, tool calls, outputs, duration and cost.
+ * The atomic unit of traceability: one Agent execution in a Session, carrying
+ * its inputs, parameters, tool calls, outputs, duration and cost. The Runs of a
+ * Project's Sessions are its shared record of results.
  */
 export interface Run {
   id: Id;
-  taskId: Id;
   sessionId: Id;
+  /**
+   * Denormalized from the Session so a project rollup (`listRuns(projectId)`) is
+   * a direct query and stays correct if the Session is archived.
+   */
+  projectId: Id;
   status: RunStatus;
   /** The Agent identity that executed this Run. */
   agentId: Id;
-  /** Parameters/config applied for this Run. */
+  /** Parameters/config applied for this Run (e.g. token usage). */
   parameters: Record<string, unknown>;
   /** Input message that started this Run (the user turn). */
   input: string;
@@ -48,78 +62,4 @@ export interface Run {
   output?: string;
   startedAt?: string;
   finishedAt?: string;
-}
-
-export type RunStatus =
-  | "running"
-  | "completed"
-  | "aborted"
-  | "error";
-
-/** An output produced by a Run — dataset, figure, report, code, model. */
-export interface Artifact {
-  id: Id;
-  runId: Id;
-  name: string;
-  kind: ArtifactKind;
-  /** Where the artifact lives (a URL, URI, or reference). */
-  location?: string;
-  /** JSON summary (shape, hash, size, etc.). */
-  metadata?: Record<string, unknown>;
-  createdAt: string;
-}
-
-export type ArtifactKind =
-  | "dataset"
-  | "figure"
-  | "report"
-  | "code"
-  | "model"
-  | "other";
-
-/** The chain linking a Run to its inputs, steps, Artifacts and conclusions. */
-export interface Evidence {
-  id: Id;
-  runId: Id;
-  /** Structured provenance between entities, e.g. a Run → an input Artifact. */
-  relationships: {
-    from: Id;
-    to: Id;
-    type: string;
-  }[];
-}
-
-/** A synthesized finding presented to the Researcher, citing Evidence. */
-export interface Conclusion {
-  id: Id;
-  studyId: Id;
-  /** References to the Evidence / Runs that support this conclusion. */
-  evidenceIds: Id[];
-  text: string;
-  createdAt: string;
-}
-
-/** A reusable definition of an Agent: instructions, tools, model, parameters. */
-export interface AgentBlueprint {
-  id: Id;
-  name: string;
-  model?: string;
-  instructions?: string;
-  /** Tool identifiers available to the Agent. */
-  tools: string[];
-  parameters: Record<string, unknown>;
-}
-
-/**
- * A conversation between a Researcher and an Agent under a Study.
- * Rendered as an assistant-ui thread. Each Researcher turn drives one Run.
- */
-export interface Session {
-  id: Id;
-  studyId: Id;
-  /** The AgentBlueprint active in this session. */
-  agentBlueprintId: Id;
-  title?: string;
-  createdAt: string;
-  updatedAt: string;
 }

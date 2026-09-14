@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * `@` mentions over the session workspace.
+ * `@` mentions over a Project's workspace.
  *
  * Reuses assistant-ui's mention mechanism rather than re-inventing a picker:
  * `unstable_useMentionAdapter` builds the trigger adapter AND the directive
@@ -34,10 +34,10 @@ export interface WorkspaceMentions {
 }
 
 export function useWorkspaceMentions(
-  opts: { threadId?: string | null; initialPath?: string } = {},
+  opts: { project?: string | null; initialPath?: string } = {},
 ): WorkspaceMentions {
   const browser = useWorkspaceBrowser({
-    threadId: opts.threadId ?? null,
+    ...(opts.project !== undefined ? { project: opts.project } : {}),
     ...(opts.initialPath !== undefined ? { initialPath: opts.initialPath } : {}),
   });
 

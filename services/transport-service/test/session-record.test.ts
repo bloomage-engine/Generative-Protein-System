@@ -16,8 +16,8 @@ import { createTransportService } from "../src/index.js";
 /**
  * Science Studio owns the record (`docs/adr/0002`), so the `SessionState` a run
  * is driven with must come from the record layer rather than fabricated
- * constants (`study-1` / `main`). These tests pin that the service resolves the
- * Session from the store, mints it (and a default Study) on first use, and
+ * constants. These tests pin that the service resolves the Session from the
+ * store, files it under a Project (explicitly named, or the default one), and
  * reports the record's identity to the adapter.
  */
 function capturingAdapter(seen: Partial<SessionState>): RuntimeAdapter {
@@ -26,11 +26,17 @@ function capturingAdapter(seen: Partial<SessionState>): RuntimeAdapter {
     init: async () => {},
     run: async function* (session: SessionState, _commands: TransportCommand[]) {
       seen.sessionId = session.sessionId;
-      seen.studyId = session.studyId;
+      seen.projectId = session.projectId;
       seen.agentId = session.agentId;
     },
     abort: () => {},
   };
+}
+
+function localEnv(adapter: RuntimeAdapter): LocalEnvironmentProvider {
+  return new LocalEnvironmentProvider({
+    environmentFor: async () => ({ adapter, workspace: new NullWorkspace() }),
+  });
 }
 
 async function withServer(backend: Backend, fn: (base: string) => Promise<void>): Promise<void> {
@@ -45,7 +51,11 @@ async function withServer(backend: Backend, fn: (base: string) => Promise<void>)
   }
 }
 
-async function postProbe(base: string, threadId: string): Promise<void> {
+async function postProbe(
+  base: string,
+  threadId: string,
+  projectId?: string,
+): Promise<void> {
   const res = await fetch(`${base}/api/transport`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -53,27 +63,25 @@ async function postProbe(base: string, threadId: string): Promise<void> {
       commands: [],
       state: { status: "idle", messages: {} },
       threadId,
+      ...(projectId ? { projectId } : {}),
     }),
   });
   assert.equal(res.status, 200);
   await res.text(); // drain; the probe terminates with [DONE]
 }
 
-test("a run is driven by the record's Session identity, minted on first use", async () => {
+test("a run is driven by the record's Session identity, filed under the named Project", async () => {
   const records = createInMemoryRecordStore();
   const seen: Partial<SessionState> = {};
   const backend: Backend = {
     principal: new LocalPrincipalResolver(),
-    environments: new LocalEnvironmentProvider({
-      adapter: capturingAdapter(seen),
-      workspace: new NullWorkspace(),
-    }),
+    environments: localEnv(capturingAdapter(seen)),
     cors: { origin: true },
     records,
-    sessionDefaults: {
+    recordDefaults: {
       projectId: "proj-x",
-      studyId: "study-x",
-      agentBlueprintId: "bp-x",
+      projectName: "Project X",
+      agentId: "bp-x",
     },
   };
 
@@ -81,29 +89,25 @@ test("a run is driven by the record's Session identity, minted on first use", as
     await postProbe(base, "sess-1");
 
     // The adapter saw the record's identity, not fabricated constants.
-    assert.deepEqual(seen, { sessionId: "sess-1", studyId: "study-x", agentId: "bp-x" });
+    assert.deepEqual(seen, { sessionId: "sess-1", projectId: "proj-x", agentId: "bp-x" });
 
-    // First use minted the Session and the default Study it hangs off.
+    // First use minted the Session under the (auto-ensured) Project.
     const session = await records.getSession("sess-1");
     assert.ok(session, "the Session row exists");
-    assert.equal(session.studyId, "study-x");
-    assert.equal(session.agentBlueprintId, "bp-x");
+    assert.equal(session.projectId, "proj-x");
+    assert.equal(session.agentId, "bp-x");
 
-    const study = await records.getStudy("study-x");
-    assert.ok(study, "the default Study row exists");
-    assert.equal(study.projectId, "proj-x");
+    const project = await records.getProject("proj-x");
+    assert.ok(project, "the Project row exists");
   });
 });
 
-test("a reused session key is not reminted, and falls back to the default identity", async () => {
+test("a reused session key is not reminted, and falls back to the default Project", async () => {
   const records = createInMemoryRecordStore();
   const seen: Partial<SessionState> = {};
   const backend: Backend = {
     principal: new LocalPrincipalResolver(),
-    environments: new LocalEnvironmentProvider({
-      adapter: capturingAdapter(seen),
-      workspace: new NullWorkspace(),
-    }),
+    environments: localEnv(capturingAdapter(seen)),
     cors: { origin: true },
     records,
   };
@@ -112,7 +116,7 @@ test("a reused session key is not reminted, and falls back to the default identi
     await postProbe(base, "sess-default");
     assert.deepEqual(seen, {
       sessionId: "sess-default",
-      studyId: "study-default",
+      projectId: "project-default",
       agentId: "main",
     });
 

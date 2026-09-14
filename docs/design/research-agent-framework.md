@@ -129,7 +129,7 @@ Two adapters, one interface:
 Inquiries a caller can answer after this: *who is this* and *which tenant are
 they*, in one call. Nothing else.
 
-### 4.2 `Environment` — what a principal's session gets
+### 4.2 `Environment` — what a Project gets
 
 This is the central deep module. It is the single place that answers: *which
 runtime binding and which file root does this request use?*
@@ -139,25 +139,34 @@ runtime binding and which file root does this request use?*
 export interface Environment {
   readonly adapter: RuntimeAdapter;
   readonly workspace: Workspace;
-  /** The canonical session key the adapter resolved for the requested threadId. */
-  readonly sessionKey: string;
+  /** The Project whose workspace and adapter this environment serves. */
+  readonly projectId: Id;
 }
 
 export interface EnvironmentProvider {
   /**
-   * Get or lazily build the environment for a principal's session. `threadId`
-   * is the raw client claim (null for the mount probe); the provider maps it
-   * through the selected adapter's `resolveSessionKey`.
+   * Get or lazily build the environment for a Project. The caller resolves the
+   * Session first (threadId → sessionKey → Session record), because the
+   * Session's `projectId` decides which environment to build.
    */
-  acquire(principal: Principal, threadId: string | null): Promise<Environment>;
+  acquire(principal: Principal, projectId: Id): Promise<Environment>;
   /** Tear down (logout, tenant deletion, deployment shutdown). */
   dispose(principal: Principal): Promise<void>;
 }
 ```
 
+The environment is scoped to a **Project** for its workspace, not a principal and
+not a Session: a Project owns one workspace (CONTEXT.md, docs/adr/0006) and its
+Sessions share it. The **adapter stays one per user** — v1 does not build a
+runtime instance per Project — so the request carries the `projectId` (optional;
+omitted → the default Project) and the caller acquires the environment first, then
+maps the claimed `threadId` through the adapter's own `resolveSessionKey` and
+resolves (or first-use records) the Session. No factory-level session resolver is
+needed.
+
 Behind those two methods sit: tenant→sandbox lookup, sandbox provisioning, adapter
-construction via the runtime factory (§4.3), per-principal connection caching and
-idle eviction, tenant-scoped record store wiring, and workspace-root resolution.
+construction via the runtime factory (§4.3), per-Project connection caching and
+idle eviction, tenant-scoped record store wiring, and project-root resolution.
 Callers — the HTTP route handlers — see none of it.
 
 `CachingEnvironmentProvider` (OSS, generic) supplies the lifecycle; the concrete
@@ -165,9 +174,9 @@ sandbox provider is injected. Adapters:
 
 | Adapter | Mode | Repo | Behind it |
 | --- | --- | --- | --- |
-| `LocalEnvironmentProvider` | single-user / examples | OSS | one adapter built from `process.env`; one workspace root |
-| `FleetEnvironmentProvider` | hosted, openclaw | **private** | one `OpenClawRuntimeAdapter` per tenant cell, cached |
-| `DshEnvironmentProvider` | hosted/local, dsh | OSS provider, private wiring | one harness child per principal, cwd = their workspace |
+| `LocalEnvironmentProvider` | single-user / examples | OSS | one shared adapter + one workspace per Project, built from `process.env` |
+| `FleetEnvironmentProvider` | hosted, openclaw | **private** | one adapter per tenant, one workspace per Project |
+| `DshEnvironmentProvider` | hosted/local, dsh | OSS provider, private wiring | one adapter per principal; the harness child's cwd is the agent root, not the project root |
 
 **Alternative rejected:** make `RuntimeAdapter` tenant-aware (pass `Principal`
 into `init`/`run`). That pushes provisioning, pooling, and identity into every
@@ -249,7 +258,7 @@ export interface RuntimeCapabilities {
   (`listCommands?`, `subscribe?`) — that mechanism stays. `capabilities()` exists
   for the traits a **consumer must know up front**: the service (expose
   `/approve`? provision a hosted sandbox?), the UI (render a token-streaming caret
-  for a step-granular runtime?), and the workspace policy (per-session cwd).
+  for a step-granular runtime?), and the workspace policy (per-project cwd).
 - `RuntimeAdapter.approve` becomes **optional** (`approve?`) rather than a required
   method every non-approving runtime must no-op, with
   `capabilities.approvals === (typeof adapter.approve === "function")`.
@@ -344,9 +353,32 @@ ledger — see §14.2.
 
 The browser sees `analysis/plots/volcano.png`; the openclaw cell's agent sees
 `/home/node/.openclaw/workspace/analysis/plots/volcano.png`. Rather than make
-every caller carry that, `toAgentPath`/`toWorkspacePath` own it. Session
-partitioning (shared workspace vs `sessions/<key>/` subdir) is likewise a
-provider policy, invisible above the seam.
+every caller carry that, `toAgentPath`/`toWorkspacePath` own it. Which root the
+mapping is anchored at is likewise a provider policy, invisible above the seam —
+and v1 anchors it at the **Project**.
+
+### The Project owns the workspace
+
+One `Workspace` instance per Project, rooted at `<PROJECT_ROOT>/<projectId>/`,
+shared flatly by every Session of that Project — no per-Session subdirectory, so
+Session B sees exactly the files Session A wrote (docs/adr/0006). The agent's cwd
+is the project root and the browser's root is the project root, so paths map 1:1.
+The directory name is the project id, minted by the server as a filesystem-safe
+slug.
+
+This reverses the earlier session-partitioning decision (§14.3). The isolation it
+bought is not wanted here: Project-level sharing is the feature. The collision and
+intermediate-leak risks it guarded against remain real, but v1 answers them by
+convention, not by a directory contract.
+
+`PROJECT_ROOT` (the host-side parent of all project directories) replaces
+`WORKSPACE_ROOT`; `PROJECT_AGENT_ROOT` is the agent-side counterpart, so a project
+root maps to `<PROJECT_AGENT_ROOT>/<projectId>/`. **Neither** runtime enforces it:
+one adapter serves the user, so the agent's cwd is the deployment's agent root,
+not the project root — project isolation is a path-mapping + reference convention
+for openclaw's fixed cell cwd and dsh's single child cwd alike (docs/adr/0006).
+`capabilities.perSessionCwd` still means "the host sets the child's cwd", one cwd
+per adapter (§4.4).
 
 ### Implementations
 
@@ -541,23 +573,22 @@ Every route (transport, watch, commands, **workspace**) runs the same preamble:
 
 ```
 RequestContext → PrincipalResolver.resolve → (401 | Principal)
-             → EnvironmentProvider.acquire(principal, sessionKey)
+             → EnvironmentProvider.acquire(principal, projectId ?? default)
+             → adapter.resolveSessionKey(threadId) → Session (found or first-use)
 ```
 
-The runtime adapter is cached **per principal** (one gateway/harness connection
-serves all of that principal's sessions); the workspace is derived **per
-session** from the resolved `sessionKey`. Routes with no session of their own
-(the `GET /commands` catalog) pass the adapter's default session key, exactly as
-the mount probe does today.
+The adapter is cached **per user**; the workspace is cached **per Project**, which
+is what makes a Project's shared files real. Routes with no session of their own
+(the `GET /commands` catalog) use the default Project's environment.
 
 New workspace routes (JSON / streamed bytes), served from the **same service**
 as transport:
 
 | Route | Returns |
 | --- | --- |
-| `GET /api/workspace/entries?path=&session=` | `DirListing` |
-| `GET /api/workspace/stat?path=&session=` | `FileStat` |
-| `GET /api/workspace/file?path=&session=&download=1` | bytes + `Content-Type`, `Content-Disposition` |
+| `GET /api/workspace/entries?path=&project=` | `DirListing` |
+| `GET /api/workspace/stat?path=&project=` | `FileStat` |
+| `GET /api/workspace/file?path=&project=&download=1` | bytes + `Content-Type`, `Content-Disposition` |
 | `POST /api/workspace/upload` (phase 2) | `AttachmentRef` |
 
 Serving files from the transport service rather than a separate process is
@@ -796,10 +827,10 @@ is the live status/checklist. The phases below remain the reference shape.
 - **Enterprise code in-tree, gated by a license flag.** Rejected: it would put
   enterprise code in the open-source repo and couple OSS releases to it. The
   out-of-tree module keeps the boundary physical.
-- **Per-session workspace subdirectories under one cell.** Deferred policy: one
-  cell exposes one `OPENCLAW_WORKSPACE_DIR`; whether sessions share it or get
-  `sessions/<key>/` subdirs is a `WorkspaceProvider` decision, invisible above
-  the seam. Default v1: shared root per sandbox; revisit with real usage.
+- **Per-session workspace subdirectories under one cell.** Rejected for v1: the
+  partition unit is the **Project**, not the Session (docs/adr/0006, §14.3), so
+  Sessions under one Project deliberately share one flat root. A `sessions/<id>/`
+  convention may return if intermediates start colliding.
 - **Upload files as message parts.** Rejected as the primary model: it copies
   bytes the agent can already open, and breaks the runtime-agnostic message
   shape. Uploads become workspace writes, then ordinary references.
@@ -869,35 +900,38 @@ real ceiling, not an advisory.
 because the hard tier is the actual ceiling. Expose usage for the UI meter.
 Deleting a tenant = drop schema + remove the project + purge the state dir.
 
-### 14.3 Session → workspace partitioning
+### 14.3 Project → workspace partitioning (revised)
 
-**Analysis.** A cell exposes exactly one `OPENCLAW_WORKSPACE_DIR` and the
-runtime's cwd is fixed per cell, so sessions under one user's cell cannot get
+**Analysis (original).** A cell exposes exactly one `OPENCLAW_WORKSPACE_DIR` and
+the runtime's cwd is fixed per cell, so sessions under one user's cell cannot get
 their own cwd from openclaw. A fully shared root lets two studies collide on
 common filenames and leaks intermediates across sessions.
 
-**Decision.**
+**Decision (revised).** The **Project is the partition unit** — see docs/adr/0006.
+The original decision (Session as the partition unit,
+`<sandboxRoot>/sessions/<sessionKey>/`) is **superseded**: the product requirement
+is that Sessions of one Project share what they produce, so the flat shared root
+it warned about is now the point.
 
-- The **Session is the partition unit**. Its workspace is
-  `<sandboxRoot>/sessions/<sessionKey>/`, and `toAgentPath` maps browser `a.csv`
-  → agent `sessions/<sessionKey>/a.csv`. References are always unambiguous and
-  the file browser roots at a stable session directory.
-- The partition key is the **canonical `sessionKey`** (what `resolveSessionKey`
-  returns), not the browser's ephemeral `__LOCALID_*`, so reloads and the
-  standing watch converge on the same directory.
-- The **record layer owns Session identity**, so the partition name and the
-  `Session` row share one id and provenance stays intact.
-- The agent *can* still write outside its subdir (it sees the whole root), so
-  isolation is a reference convention, not a hard jail. **dsh differs**: the
-  adapter spawns the child and sets cwd, so it can enforce a true per-session
-  root natively (declared as `capabilities.perSessionCwd`, §4.4). The policy lives
-  in the provider, invisible above the seam.
-- **Rejected: a cell per session.** Provisioning cost and fleet churn are far too
+- One `Workspace` per Project at `<PROJECT_ROOT>/<projectId>/`; every Session of
+  that Project sees the same files, and `toAgentPath` maps browser `a.csv` → agent
+  `<PROJECT_AGENT_ROOT>/<projectId>/a.csv`.
+- The directory name is the **project id** (a server-minted slug), so identity is
+  record-owned and the browser roots at a stable project directory.
+- Each Session still maps 1:1 to a canonical `sessionKey`; the environment is
+  acquired per Project, so the adapter/connection is cached per Project.
+- The agent *can* still write outside its root, so isolation is a reference
+  convention for **both** runtimes: one adapter (and so one child cwd) serves the
+  user, so the agent's cwd is the deployment's agent root, not the project root
+  (docs/adr/0006). `capabilities.perSessionCwd` (§4.4) keeps its meaning as "the
+  host sets the child's cwd" — one cwd per adapter.
+- **Rejected: a cell per Project.** Provisioning cost and fleet churn are far too
   high.
 
-**Consequences.** One cell serves many sessions; the browser shows the session
-subtree. Migration: root-level files are exposed read-only as a "sandbox home"
-until re-homed.
+**Consequences.** One cell serves many Projects; the browser roots at the project
+directory and every Session of the project shares it. Migration: an existing
+single root moves under `<PROJECT_ROOT>/project-default/`; a default project is
+auto-ensured so a configured root still works.
 
 ### 14.4 Enterprise web UI: package vs fork
 
@@ -959,12 +993,13 @@ Migration is a resumable operational job, not an app-startup step.
    Publish reusable suites for `PrincipalResolver`, `SandboxProvider`,
    `Workspace`, `QuotaPolicy`, and `RuntimeFactory`; the enterprise and third-party
    runtime repos run them in CI. Highest-leverage single addition for the split.
-2. **Real `SessionState` from the record layer.** *Resolved (Phase 2.5).* The
-   service resolves the `Session` — whose id IS the canonical runtime session key
-   — through `createSessionResolver` (`services/transport-service/src/sessions.ts`),
-   minting it and its default Study on first use, so `SessionState.studyId`/
-   `agentId` come from the record and `persistRun` attributes
-   `Run.sessionId`/`agentId`/`taskId` correctly.
+2. **Real `SessionState` from the record layer.** *Resolved (Phase 2.5;
+   revised by docs/adr/0006/0007).* The service resolves the `Session` — whose id
+   IS the canonical runtime session key — from the record, so
+   `SessionState.projectId`/`agentId` come from the record and `persistRun`
+   attributes `Run.sessionId`/`projectId`/`agentId` correctly. Sessions are
+   created explicitly under a Project (`POST /api/projects/:id/sessions`) rather
+   than minted from env constants, and `Study`/`Task` leave v1.
 3. **Per-session run concurrency.** *Resolved (Phase 2).* A second concurrent run
    for the same session is refused with **409**, so `Transcript.attachFlow` can
    never overwrite a live flow.
@@ -1001,6 +1036,8 @@ Migration is a resumable operational job, not an app-startup step.
 
 Proposed promotions once accepted: ADR for the principal/environment seam; ADR
 for the open-core split (OSS seam contract + out-of-tree enterprise module); ADR
-for per-tenant fleet cells + workspace file service; ADR for session-partitioned
-workspaces and two-tier quotas; glossary additions (`Principal`, `Tenant`,
-`Sandbox`, `Cell`, `Attachment`, `FileReference`) in `CONTEXT.md`.
+for per-tenant fleet cells + workspace file service; ADR for project-partitioned
+workspaces (docs/adr/0006) and two-tier quotas; glossary additions (`Principal`,
+`Tenant`, `Sandbox`, `Cell`, `Attachment`, `FileReference`) in `CONTEXT.md`.
+Accepted: docs/adr/0006 (Project is the workspace and sharing unit) and
+ docs/adr/0007 (the v1 record layer is Project/Session/Run on a file-backed store).

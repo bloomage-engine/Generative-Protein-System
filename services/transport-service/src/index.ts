@@ -27,6 +27,7 @@ import {
   type Backend,
   type CorsConfig,
 } from "./composition.js";
+import { DEFAULT_RECORD_DEFAULTS } from "./directory.js";
 import { createServer } from "./server.js";
 
 export { createBackend, loadRuntimePlugins, localWorkspace, resolveRuntimePlugins, toRecordStoreLike } from "./composition.js";
@@ -71,7 +72,7 @@ async function backendFromAdapters(options: TransportServiceOptions): Promise<Ba
   // of it, and the service resolves Session identity from the same instance.
   const records = options.recordStore ?? createInMemoryRecordStore();
   const recordStore = toRecordStoreLike(records);
-  const workspace = localWorkspace(env);
+  const workspace = localWorkspace(env, DEFAULT_RECORD_DEFAULTS.projectId);
   const capabilities = plugins.find((p) => p.runtime === first.runtime)?.factory.capabilities;
 
   for (const adapter of adapters) {
@@ -88,7 +89,9 @@ async function backendFromAdapters(options: TransportServiceOptions): Promise<Ba
 
   return {
     principal: new LocalPrincipalResolver(),
-    environments: new LocalEnvironmentProvider({ adapter: first, workspace }),
+    environments: new LocalEnvironmentProvider({
+      environmentFor: async () => ({ adapter: first, workspace }),
+    }),
     cors: options.cors ?? { origin: true },
     records,
     capabilities,

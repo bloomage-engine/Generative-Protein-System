@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
+import { LocalPrincipalResolver, NullWorkspace } from "@science-studio/transport";
+import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 import type { RuntimeAdapter, SessionState, StateDelta, TransportCommand, WatchSnapshot } from "@science-studio/transport";
 
@@ -100,4 +102,35 @@ test("threadId query parameter is honored (agent: prefix accepted)", async () =>
     assert.equal(res.status, 200, "an agent: threadId must be accepted, not 400'd");
     res.body?.cancel();
   });
+});
+
+test("the watch scopes its Project from the projectId query parameter", async () => {
+  const acquired: string[] = [];
+  const { adapter } = makeFakeAdapter();
+  const backend: Backend = {
+    principal: new LocalPrincipalResolver(),
+    environments: {
+      acquire: async (_principal, projectId) => {
+        acquired.push(projectId);
+        return { adapter, workspace: new NullWorkspace(), projectId };
+      },
+      dispose: async () => {},
+    },
+    cors: { origin: true },
+  };
+  const app = await createTransportService({ backend });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const { port } = app.server.address() as AddressInfo;
+  try {
+    const res = await fetch(
+      `http://127.0.0.1:${port}/api/transport/watch?projectId=proj-x&threadId=sess-1`,
+      { headers: { accept: "application/x-ndjson" } },
+    );
+    assert.equal(res.status, 200);
+    res.body?.cancel();
+    assert.deepEqual(acquired, ["proj-x"], "the watch must scope the app's projectId");
+  } finally {
+    app.server.closeAllConnections?.();
+    await app.close();
+  }
 });

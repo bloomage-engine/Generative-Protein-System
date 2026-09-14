@@ -76,10 +76,10 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private runtimes = new Map<string, SessionRuntime<SessionEvent>>();
   private behavior: SessionBehavior<SessionEvent> | null = null;
   /**
-   * Science Studio session key → the harness session id this child process
-   * actually created for it. Filled only when the requested id was NOT
-   * creatable (see behavior.ts); lets later turns continue the SAME fresh
-   * harness conversation for the life of this child.
+   * Science Studio session key → the harness session id this child generation
+   * created for it. Ids are generation-scoped (a previous harness process can
+   * never hand its session over — docs/adr/0004), so this map is what keeps
+   * every turn of THIS child on the same harness conversation.
    */
   private harnessSessions = new Map<string, string>();
   private provider = DEFAULT_PROVIDER;

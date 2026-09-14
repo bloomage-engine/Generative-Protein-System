@@ -1,147 +1,188 @@
 "use client";
 
-import { memo, useState, type FC } from "react";
-import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import { Thread } from "@/components/assistant-ui/elements/thread.aui";
-import { WorkspacePanel } from "@/components/workspace/workspace-panel";
-import { FolderIcon } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { MessageSquarePlusIcon, PlusIcon } from "lucide-react";
 import {
-  TransportApiProvider,
-  WorkspaceApiProvider,
-  WorkspaceOpenProvider,
-  useTransport,
-  useTransportApi,
-  useWorkspaceAvailability,
+  createProject,
+  createSession,
+  fetchProjects,
+  fetchProjectSessions,
+  type Project,
+  type Session,
 } from "@science-studio/transport-client";
+import { cn } from "@/lib/utils";
+
+const PROJECTS_API = process.env.NEXT_PUBLIC_PROJECTS_URL ?? "/api/projects";
 
 /**
- * Conversation page.
+ * The Project / Session picker — the landing route.
  *
- * The chat UI is the Thread component registered from the assistant-ui
- * registry (https://www.assistant-ui.com/docs/installation) —
- * `components/assistant-ui/elements/thread.aui`. The runtime wiring is the
- * single session hook `useTransport` from `@science-studio/transport-client`:
- * assistant-ui transport runtime over the transport-service, with the
- * session's history loaded on mount (command-less probe → importExternalState)
- * and the standing watch adopted (remote turns and native command replies,
- * which never stream over a run channel).
- *
- * The page splits in two on purpose: `Session` owns the runtime and holds no
- * state, `WorkspaceShell` owns the workspace UI state (see their docs). Both
- * providers wrap the whole page so the panel and the Files toggle honor
- * `NEXT_PUBLIC_WORKSPACE_URL`.
+ * A Project owns one workspace and any number of Sessions, and its Sessions
+ * share what they produce (docs/adr/0006). The conversation itself lives at
+ * `/projects/<projectId>/sessions/<sessionId>`; this page only lists, creates and
+ * links, so all identity still comes from the record layer.
  */
 export default function Home() {
-  const api = process.env.NEXT_PUBLIC_TRANSPORT_URL ?? "/api/transport";
-  const workspaceApi = process.env.NEXT_PUBLIC_WORKSPACE_URL ?? "/api/workspace";
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const loadSessions = useCallback(async (projectId: string) => {
+    setSessions(await fetchProjectSessions(PROJECTS_API, projectId));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await fetchProjects(PROJECTS_API);
+        if (cancelled) return;
+        setProjects(list);
+        const first = list[0]?.id ?? null;
+        setSelected(first);
+        if (first) await loadSessions(first);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadSessions]);
+
+  const select = async (projectId: string) => {
+    setSelected(projectId);
+    setError(null);
+    try {
+      await loadSessions(projectId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const addProject = async () => {
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const project = await createProject(PROJECTS_API, name.trim());
+      setName("");
+      setProjects((prev) => [...prev, project]);
+      await select(project.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addSession = async () => {
+    if (!selected || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const session = await createSession(PROJECTS_API, selected);
+      await loadSessions(selected);
+      window.location.href = `/projects/${encodeURIComponent(selected)}/sessions/${encodeURIComponent(session.id)}`;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <TransportApiProvider api={api}>
-      <WorkspaceApiProvider api={workspaceApi}>
-        <Session />
-      </WorkspaceApiProvider>
-    </TransportApiProvider>
+    <main className="mx-auto flex h-svh max-w-3xl flex-col gap-6 p-8">
+      <header className="flex flex-col gap-1">
+        <h1 className="text-lg font-semibold tracking-tight">Science Studio</h1>
+        <p className="text-muted-foreground text-sm">
+          One workspace per project; every session under it shares the files and
+          results. Pick a session or start a new one.
+        </p>
+      </header>
+
+      {error && <p className="text-destructive text-sm">{error}</p>}
+
+      <div className="flex min-h-0 flex-1 gap-6">
+        <section className="flex w-64 shrink-0 flex-col gap-2">
+          <h2 className="text-muted-foreground text-xs font-medium uppercase">Projects</h2>
+          <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+            {projects.map((project) => (
+              <li key={project.id}>
+                <button
+                  type="button"
+                  onClick={() => void select(project.id)}
+                  className={cn(
+                    "hover:bg-muted w-full rounded-md px-2 py-1.5 text-start text-sm",
+                    selected === project.id && "bg-muted",
+                  )}
+                >
+                  {project.name}
+                </button>
+              </li>
+            ))}
+            {projects.length === 0 && (
+              <li className="text-muted-foreground px-2 py-1 text-sm">No projects yet.</li>
+            )}
+          </ul>
+          <div className="flex items-center gap-1">
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void addProject();
+              }}
+              placeholder="New project name"
+              className="border-input min-w-0 flex-1 rounded-md border px-2 py-1 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => void addProject()}
+              disabled={busy || name.trim() === ""}
+              aria-label="Create project"
+              className="hover:bg-muted rounded-md p-1.5 disabled:opacity-40"
+            >
+              <PlusIcon className="size-4" />
+            </button>
+          </div>
+        </section>
+
+        <section className="flex min-h-0 flex-1 flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-muted-foreground text-xs font-medium uppercase">Sessions</h2>
+            <button
+              type="button"
+              onClick={() => void addSession()}
+              disabled={busy || !selected}
+              className="hover:bg-muted ms-auto inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm disabled:opacity-40"
+            >
+              <MessageSquarePlusIcon className="size-4" />
+              New session
+            </button>
+          </div>
+          <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+            {sessions.map((session) => (
+              <li key={session.id}>
+                <Link
+                  href={`/projects/${encodeURIComponent(session.projectId)}/sessions/${encodeURIComponent(session.id)}`}
+                  className="hover:bg-muted block rounded-md px-2 py-1.5 text-sm"
+                >
+                  {session.title ?? session.id}
+                </Link>
+              </li>
+            ))}
+            {sessions.length === 0 && (
+              <li className="text-muted-foreground px-2 py-1 text-sm">
+                No sessions in this project yet.
+              </li>
+            )}
+          </ul>
+        </section>
+      </div>
+    </main>
   );
 }
-
-/**
- * Owns the session runtime, and nothing else — deliberately state-free and
- * `memo`ized.
- *
- * `useTransport` must NOT be called by a component that re-renders: assistant-ui
- * constructs a fresh internal thread-list adapter on every invocation of
- * `useAssistantTransportRuntime`, and on a re-render the library reads the new
- * adapter identity as an adapter swap — it tears the active thread runtime down
- * and starts an empty one, wiping the transcript. The mount-time history probe
- * does not re-run, so the conversation stays blank until a page reload. Keeping
- * this component inert (no props, no state; the API comes from context) means
- * the workspace UI re-rendering below it never reaches the hook.
- */
-const Session = memo(function Session() {
-  const api = useTransportApi();
-  const runtime = useTransport({ api });
-
-  return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <WorkspaceShell />
-    </AssistantRuntimeProvider>
-  );
-});
-
-/**
- * The page chrome and all of its interactive state: the session's workspace
- * browser (`WorkspacePanel`) served by the same service.
- * `WorkspaceOpenProvider` is the seam between chat and panel — a workspace file
- * link in an agent reply (or in markdown) hands a `FileRef` to this page, which
- * reveals the panel and opens the file, with no navigation.
- *
- * State lives here, below the runtime-owning `Session`, so toggling the panel
- * or selecting a file never re-renders the transport hook (see `Session`).
- *
- * Workspace access is opt-in server-side, so the Files toggle probes the
- * service once (`useWorkspaceAvailability`) and disables itself with a tooltip
- * when no workspace is configured, instead of opening a panel that only shows a
- * 503.
- */
-const WorkspaceShell: FC = () => {
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
-
-  return (
-    <WorkspaceOpenProvider
-      onOpen={(ref) => {
-        setSelectedFile(ref.workspacePath);
-        setPanelOpen(true);
-      }}
-    >
-      <main className="flex h-svh flex-col">
-        <header className="border-border/70 flex items-baseline gap-3 border-b px-5 py-3">
-          <h1 className="text-lg font-semibold tracking-tight">Science Studio</h1>
-          <p className="text-muted-foreground text-sm">
-            Research-agent platform for computational life-science R&amp;D — a
-            session with the agent over assistant-ui&apos;s assistant-transport
-            protocol.
-          </p>
-          <FilesToggle open={panelOpen} onToggle={() => setPanelOpen((open) => !open)} />
-        </header>
-        <div className="flex min-h-0 flex-1">
-          <div className="min-w-0 flex-1">
-            <Thread />
-          </div>
-          {panelOpen && (
-            <WorkspacePanel
-              selected={selectedFile}
-              onSelect={setSelectedFile}
-              onClose={() => setPanelOpen(false)}
-            />
-          )}
-        </div>
-      </main>
-    </WorkspaceOpenProvider>
-  );
-};
-
-/**
- * The Files toggle. When this deployment exposes no workspace (the probe answers
- * 503) it disables itself and explains why via its tooltip; otherwise it opens
- * the browser panel.
- */
-const FilesToggle: FC<{ open: boolean; onToggle: () => void }> = ({ open, onToggle }) => {
-  const { available, reason } = useWorkspaceAvailability();
-  const disabled = available === false;
-
-  return (
-    <span className="ms-auto inline-flex" title={disabled ? (reason ?? undefined) : undefined}>
-      <button
-        type="button"
-        onClick={onToggle}
-        disabled={disabled}
-        aria-pressed={open}
-        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        <FolderIcon className="size-4" />
-        Files
-      </button>
-    </span>
-  );
-};

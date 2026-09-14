@@ -11,7 +11,7 @@ import {
 import type { SessionState, StateDelta, TransportCommand } from "../src/types.js";
 
 function session(): SessionState {
-  return { sessionId: "s1", studyId: "study-1", agentId: "main", status: "idle", messages: [] };
+  return { sessionId: "s1", projectId: "p1", agentId: "main", status: "idle", messages: [] };
 }
 
 function addMessage(id: string, text: string): TransportCommand {
@@ -81,7 +81,7 @@ test("default projection persists a completed Run with the baseline output slice
   assert.equal(runs.length, 1);
   const run = runs[0]!;
   assert.equal(run.id, "u1");
-  assert.equal(run.taskId, "s1");
+  assert.equal(run.projectId, "p1");
   assert.equal(run.sessionId, "s1");
   assert.equal(run.agentId, "main");
   assert.equal(run.status, "completed");

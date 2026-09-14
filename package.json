@@ -15,6 +15,8 @@
     "build": "npm run build -w @science-studio/record && npm run build -w @science-studio/transport && npm run build -w @science-studio/workspace && npm run build -w @science-studio/contract-tests && npm run build -w @science-studio/transport-client && npm run build -w @science-studio/transport-openclaw && npm run build -w @science-studio/transport-dsh && npm run build -w @science-studio/transport-service",
     "dev:web": "npm run dev -w @science-studio/web",
     "dev:service": "npm run dev -w @science-studio/transport-service",
+    "dev:dsh": "concurrently -k -n service,web -c blue,green \"npm run dev:dsh:service\" \"npm run dev:web\"",
+    "dev:dsh:service": "npm run dev:dsh -w @science-studio/transport-service",
     "smoke:adapter": "node scripts/smoke-openclaw-adapter.mjs",
     "smoke:dsh": "node scripts/smoke-dsh.mjs",
     "smoke:replay": "node scripts/replay-sse-frames.mjs",

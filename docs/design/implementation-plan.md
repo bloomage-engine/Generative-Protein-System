@@ -1,7 +1,8 @@
 # Research Agent Framework — Implementation Plan
 
 Status: active — **Phases 0–2.5 implemented** (`npm run build` green; 191 tests
-across 9 suites green). Companion to [`research-agent-framework.md`](./research-agent-framework.md)
+across 9 suites green); **Phase 2.6 (docs/adr/0006, 0007) is the next OSS phase,
+not yet built**. Companion to [`research-agent-framework.md`](./research-agent-framework.md)
 (design rev 4) and [`research-agent-framework.zh.md`](./research-agent-framework.zh.md).
 
 Strategy: **single-user first, end to end.** Multi-user is never built now; it
@@ -15,11 +16,14 @@ enterprise module present.
 
 The design placed seam interfaces across three packages, which would make
 `transport` reference `Workspace` from `workspace` while `workspace` references
-`transport` — a cycle. Fix: **all seam *interfaces* live in
-`@science-studio/transport`; implementations live in their own packages.**
+`transport` — a cycle. Fix: **seam *interfaces* live in a seam package — the
+runtime seams in `@science-studio/transport`, the record seams in
+`@science-studio/record` — and implementations live in their own packages**
+(docs/adr/0006, 0007).
 
 | Package | Holds | Depends on |
 | --- | --- | --- |
+| `packages/record` | **The record seam.** `Id`, `Project`/`Session`/`Run` + `RunStatus`, the `RecordStore` contract, and its implementations (in-memory for tests, JSONL used by default) | nothing |
 | `packages/transport` | **Two entries.** `./seams` = the contract only: `RuntimeAdapter`, `Workspace`, `Principal`/`PrincipalResolver`, `Environment`/`EnvironmentProvider`, `Sandbox`/`SandboxProvider`, `RuntimeBinding`/`RuntimeFactory`/`RuntimeCapabilities`, `QuotaPolicy`, `SecretStore`, plus their error classes and limit constants. `.` = that contract **+ the shared kit** (`Transcript`/`RunFlow`/`foldState`/attachment helpers) **+ the pure single-user defaults** (`LocalPrincipalResolver`, `LocalEnvironmentProvider`, `NullWorkspace`, `NoopQuotaPolicy`). Exports are explicit (no `export *`). | `record` only |
 | `packages/workspace` | `FsWorkspace`, file-reference grammar, limits enforcement | `transport` |
 | `packages/sandbox` | `LocalSandboxProvider`, `DshSandboxProvider` | `transport` |
@@ -35,9 +39,11 @@ A local install with no login:
 
 - browser → **one Fastify process** (`transport-service`) → openclaw or dsh
   adapter, chosen by configuration;
-- a **workspace file service** on the same process: browse a session directory,
-  `@`-mention files/directories as references, open agent-returned file links;
-- records in an in-memory/local store; artifacts reserved;
+- a **workspace file service** on the same process: browse a Project directory
+  (one workspace per Project, shared by its Sessions), `@`-mention
+  files/directories as references, open agent-returned file links;
+- records (`Project`/`Session`/`Run`) in a file-backed store by default;
+  `Study`/`Task`/`Artifact`/`Evidence`/`Conclusion` deferred;
 - **zero enterprise code loaded**, and the test suite is green with
   `SS_ENTERPRISE_MODULE` unset.
 
@@ -50,13 +56,13 @@ the *shape*, not the implementation.
 | Seam (in `transport`) | Single-user default (OSS) | Future multi-user (private module) |
 | --- | --- | --- |
 | `PrincipalResolver` | `LocalPrincipalResolver` (constant, no credential) | `BearerPrincipalResolver` (OIDC/JWKS + directory) |
-| `EnvironmentProvider` | `LocalEnvironmentProvider` (one adapter) | `CachingEnvironmentProvider` + `FleetSandboxProvider` |
+| `EnvironmentProvider` | `LocalEnvironmentProvider` (one adapter + workspace per Project) | `CachingEnvironmentProvider` + `FleetSandboxProvider` |
 | `RuntimeFactory` | registered from config; openclaw + dsh factories | same mechanism, unchanged |
-| `Workspace` | `FsWorkspace` rooted at a local dir | `FsWorkspace` over a cell bind-mount |
+| `Workspace` | `FsWorkspace` rooted at `<PROJECT_ROOT>/<projectId>/` | `FsWorkspace` over a cell bind-mount |
 | `QuotaPolicy` | no-op (or local `quotaBytes`) | per-tenant usage ledger + reconciler |
 | `SecretStore` | mode-`0600` file | secret manager / keychain |
 | `SandboxProvider` | `LocalSandboxProvider` | `FleetSandboxProvider` + `SandboxRegistry` |
-| `RecordStore` | `createInMemoryRecordStore()` | per-tenant Postgres schema |
+| `RecordStore` | in-memory (tests) / JSONL (default) | per-tenant Postgres schema |
 
 ## 4. Phases
 
@@ -104,6 +110,8 @@ streams frames terminating with `data: [DONE]`.
    `localWorkspace()` wires it from `WORKSPACE_ROOT` (+ `WORKSPACE_AGENT_ROOT`,
    `WORKSPACE_MAX_INLINE_BYTES`); unset means `NullWorkspace` and no file
    surface. `maxUploadBytes` enforcement lands with the upload route.
+   *(Revised by docs/adr/0006: the env parent is now `PROJECT_ROOT` — one
+   workspace per Project, not one per deployment.)*
 8. ✅ `services/transport-service`: **read-only** workspace routes
    (`GET /api/workspace/{entries,stat,file}`), resolved through the environment.
    Errors map onto HTTP: path/escape → 400, missing → 404, over the inline cap →
@@ -163,15 +171,107 @@ workspace). It moves to Phase 2.
     `Run.sessionId`/`agentId`/`taskId` correctly. `Backend.records` is the
     authoritative store; `localBackend` and the `{ adapters }` compat path both
     share the one instance with the adapter's `toRecordStoreLike` view.
+    *(Revised by docs/adr/0006/0007: Sessions are created explicitly under a
+    Project, `SessionState` carries `projectId`, `Run.taskId` is removed, and
+    `Study`/`Task` leave v1.)*
+
+### Phase 2.6 — Project owns the workspace and the Session — 🟡 15–21 done (docs/adr/0006, 0007)
+
+Goal: a `Project` is the container — **one workspace per Project, shared flatly by
+its Sessions**, with Project/Session created explicitly — and the record layer is
+`Project → Session → Run` on a persistent store. Supersedes Phase 2.5's
+env-constant identity.
+
+15. ✅ `packages/record` — the v1 contract. `types.ts` keeps `Id`, `Project`
+    (`id`/`name`/`createdAt`/`archivedAt?`), `Session`
+    (`id`/`projectId`/`agentId`/`title?`/`createdAt`/`updatedAt`) and `Run` (drop
+    `taskId`; add `projectId`; keep `RunStatus`). Delete `Study`, `Task`,
+    `Artifact`/`ArtifactKind`, `Evidence`, `Conclusion`, `AgentBlueprint`.
+    `RecordStore` = `createProject`/`getProject`/`listProjects`/`archiveProject` +
+    `addSession`/`getSession`/`listSessions(projectId)` + `addRun`/`listRuns(projectId)`;
+    drop `updateRun`/`addArtifact`/`addEvidence`/`getConclusions`. `memory.ts`
+    implements the new surface.
+16. ✅ `packages/record` — the JSONL store. `createJsonlRecordStore(path)`:
+    append-only log, index rebuilt on load, compaction on start, a torn final line
+    skipped (zero new dependencies). Optional follow-on: publish the contract as
+    `record/seams` (pure `RecordStore` + types) once the implementations exist,
+    mirroring `transport/seams`.
+17. ✅ `packages/transport` — the seam changes. `SessionState.studyId` →
+    `projectId` (and `SessionRuntime`'s state init + `run()` assignment);
+    `Environment.sessionKey` → `projectId` and
+    `EnvironmentProvider.acquire(principal, projectId)`; `RecordStoreLike`
+    collapses to `{ addRun }` (delete `ArtifactInput`, `RuntimeAdapter.onArtifact`,
+    `RecordStoreLike.addArtifact`; `RunSink` = `RecordStoreLike`);
+    `RuntimeFactory`/`RuntimePlugin` is UNCHANGED — the request carries
+    `projectId` (optional; omitted → the default Project), so the caller acquires
+    the environment first and then maps the claimed `threadId` through the
+    adapter's own `resolveSessionKey`. Update `packages/contract-tests` for all of
+    the above.
+18. ✅ Adapters (`transport-openclaw`, `transport-dsh`): drop the artifact path
+    and carry `projectId` through `SessionState` (`resolveSessionKey` stays on the
+    adapter). **One adapter serves the user, not the Project** — the child cwd is
+    the deployment's agent root — so no adapter file changed beyond the shared
+    `Run`/`SessionState` types.
+19. ✅ Service composition + directory. `composition.ts`: `PROJECT_ROOT` /
+    `PROJECT_AGENT_ROOT`; `RECORD_STORE_PATH` (default
+    `$XDG_DATA_HOME/science-studio/record.jsonl`) / `RECORD_STORE=memory`;
+    `AGENT_ID` replaces `PROJECT_ID`/`STUDY_ID`/`AGENT_BLUEPRINT_ID`; auto-ensure
+    the `project-default` project; on startup, a read-only scan of `PROJECT_ROOT`
+    that warns about unregistered directories (record is truth — never
+    auto-import). The local environment provider takes an `environmentFor`
+    builder and caches one `{ adapter, workspace }` per Project — **one shared
+    adapter**, a per-Project workspace. `createSessionResolver` is replaced by
+    `directory.ts` (explicit `createProject`/`createSession`, plus
+    `resolveOrCreateSession` for first use). *Not yet done:* the startup scan.
+20. ✅ Service routes: `POST /api/projects`, `GET /api/projects`,
+    `POST /api/projects/:id/sessions`, `GET /api/projects/:id/sessions`,
+    `GET /api/projects/:id/runs` (the Run rollup). `POST /api/transport` acquires
+    the environment by `projectId ?? default`, then maps the claimed `threadId`
+    through `resolveSessionKey` and finds-or-first-use-records the Session before
+    taking the run lock.
+21. ✅ Workspace routes take `?project=` instead of `?session=` (omitted → the
+    default Project); the workspace served is `environment.workspace` (the project
+    root).
+22. ✅ `apps/web` + `transport-client`: URL routing
+    `/projects/<projectId>/sessions/<sessionId>` (refresh- and share-safe) with a
+    `Project/Session` picker on `/`; `useTransport({ projectId, threadId })`
+    carries the scope in the transport URL and scopes the watch;
+    `WorkspaceApiProvider` carries the Project so `useWorkspace*` and the
+    composer's `@` picker browse the project root with `?project=`. **The query
+    scope is AUTHORITATIVE over the body**: assistant-ui builds its own send body
+    and always puts a per-page local `__LOCALID_*` threadId in it, so a
+    body-first read would shadow the URL's Session and resolve every send to the
+    adapter's default session (the reply would then reconcile against the wrong
+    transcript — the app appears to switch sessions). The body stays the fallback
+    for clients that scope nothing in the URL (the mount probe, the examples),
+    and the watch proxy forwards `projectId` (not just `project`).
+23. ✅ `.env.example` (service) updated for the renamed env: `WORKSPACE_ROOT` /
+    `WORKSPACE_AGENT_ROOT` → `PROJECT_ROOT` / `PROJECT_AGENT_ROOT`, documenting
+    the per-Project layout (`<PROJECT_ROOT>/<projectId>/`) and the alignment
+    caveat with `DSH_WORKSPACE` (one adapter serves every Project, so the agent
+    cwd is the deployment root; see docs/adr/0006). The examples need no change:
+    they omit `projectId` and land on the default Project.
+
+**Done so far:** `npm run build` is green; every workspace suite passes
+(record 4, transport 48, workspace 15, contract-tests 15, transport-client 27,
+openclaw 50, dsh 24, service 30, examples 3 + 2) except a known FLAKY
+`transport-openclaw` subscribe test under full-suite load; `POST /api/projects` +
+`POST /api/projects/:id/sessions` yields a session whose workspace is
+`<PROJECT_ROOT>/<projectId>/`; two sessions in one project see each other's files;
+the JSONL store restores the project/session lists and their Runs across a
+restart; no `Study`/`Task`/`Artifact` symbol remains in the tree.
+
+**Still to do:** the startup `PROJECT_ROOT` scan (step 19); the service's
+`.env.example` rename (step 23 — blocked, see above).
 
 ### Phase 3 — enterprise module (private repo, later)
 
-15. `@acme/ss-enterprise`: `BearerPrincipalResolver` + `PrincipalDirectory`,
+24. `@acme/ss-enterprise`: `BearerPrincipalResolver` + `PrincipalDirectory`,
     `SecretStore`, `FleetSandboxProvider` + `SandboxRegistry`,
     `SchemaRecordStore`, `QuotaPolicy`, enterprise Fastify plugin; wired via
     `SS_ENTERPRISE_MODULE`.
-16. Control schema + migration runner; two-tier quotas.
-17. Origin-locked CORS; login gate + quota meters in the web UI slot.
+25. Control schema + migration runner; two-tier quotas.
+26. Origin-locked CORS; login gate + quota meters in the web UI slot.
 
 ## 5. Guardrails (CI)
 
@@ -202,3 +302,14 @@ workspace). It moves to Phase 2.
   constant; nothing in the service or UI may assume a credential exists.
 - **Reserve, don't build.** No `SandboxProvider` fleet work, no bearer resolver,
   no Postgres in this repo until Phase 3 lands in the private repo.
+- **`EnvironmentProvider` becomes project-scoped** (Phase 2.6) — a breaking seam
+  change (`acquire` signature + `Environment` shape) the private module and any
+  third-party provider migrate in the same release.
+- **`PROJECT_ROOT` renames `WORKSPACE_ROOT`** — an existing install moves its
+  files under `<PROJECT_ROOT>/project-default/`; a default project is
+  auto-ensured so a configured root still works.
+- **JSONL crash semantics**: the last appended record may be lost; the loader
+  skips a torn final line and compacts on start.
+- **dsh gets one harness child per Project** (cwd = the project root), so a
+  Project's Sessions share a child; the create-only session-id rule (ADR-0004) is
+  unchanged per generation.

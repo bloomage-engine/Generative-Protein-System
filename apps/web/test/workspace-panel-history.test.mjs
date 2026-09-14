@@ -141,8 +141,9 @@ test(
       browser = await chromium.launch({ executablePath });
       const page = await browser.newPage();
 
-      // The transport probe reconciles to the full transcript.
-      await page.route("**/api/transport", async (route) => {
+      // The transport probe reconciles to the full transcript. The route now
+      // carries the Project/Session scope in its query, so the glob must allow it.
+      await page.route("**/api/transport*", async (route) => {
         if (route.request().method() !== "POST") return route.continue();
         await route.fulfill({
           status: 200,
@@ -177,7 +178,11 @@ test(
         route.fulfill({ status: 200, headers: { "content-type": "text/plain" }, body: "hi" }),
       );
 
-      await page.goto(`http://localhost:${port}`, { waitUntil: "domcontentloaded" });
+      // The conversation lives at the session route; the URL scopes every
+      // request (the page itself fetches no project metadata).
+      await page.goto(`http://localhost:${port}/projects/p1/sessions/s1`, {
+        waitUntil: "domcontentloaded",
+      });
       await page.getByText(HISTORY_MARKER).waitFor({ timeout: 30_000 });
       assert.equal(
         await page.getByText(HISTORY_MARKER).count(),

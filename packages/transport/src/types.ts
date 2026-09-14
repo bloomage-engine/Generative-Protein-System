@@ -10,7 +10,7 @@ import type { Workspace } from "./workspace.js";
  */
 export interface SessionState {
   sessionId: Id;
-  studyId: Id;
+  projectId: Id;
   agentId: Id;
   status: "idle" | "running" | "error";
   messages: Message[];
@@ -150,15 +150,6 @@ export interface CommandDescriptor {
   invocationText: string;
 }
 
-/** Reserved seam for Artifact capture; wired up in a later iteration. */
-export interface ArtifactInput {
-  runId: Id;
-  name: string;
-  kind: string;
-  location?: string;
-  metadata?: Record<string, unknown>;
-}
-
 /**
  * The runtime-agnostic boundary. A concrete runtime (openclaw, codex, …)
  * implements this interface; the transport-service drives it, and the frontend
@@ -182,8 +173,6 @@ export interface RuntimeAdapter {
    * to write a no-op.
    */
   approve?(approvalId: string, decision: "approve" | "reject"): void;
-  /** Reserved: Artifact capture, wired later. */
-  onArtifact?(artifact: ArtifactInput): void;
   /**
    * Command catalog for the frontend slash menu, adapted from the runtime's
    * own command list (for openclaw, the gateway's `commands.list`) into
@@ -237,8 +226,7 @@ export interface RuntimeInitOptions {
   workspace?: Workspace;
 }
 
-/** Narrow view of the record store an adapter uses to persist Runs/Artifacts. */
+/** Narrow view of the record store an adapter uses to persist Runs. */
 export interface RecordStoreLike {
   addRun(run: Run): Promise<void>;
-  addArtifact(artifact: ArtifactInput): Promise<void>;
 }

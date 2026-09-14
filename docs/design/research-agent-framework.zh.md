@@ -117,7 +117,7 @@ export interface PrincipalResolver {
 
 有了它之后，调用者一次调用即可回答：*这是谁*、*属于哪个 tenant*。再无其他。
 
-### 4.2 `Environment` — 一个 principal 的 session 能得到什么
+### 4.2 `Environment` — 一个 Project 能得到什么
 
 这是核心的深模块。它是唯一回答「*这次请求使用哪个 runtime 绑定、哪个文件根*」的
 地方。
@@ -127,25 +127,32 @@ export interface PrincipalResolver {
 export interface Environment {
   readonly adapter: RuntimeAdapter;
   readonly workspace: Workspace;
-  /** 适配器为请求的 threadId 解析出的规范 session key。 */
-  readonly sessionKey: string;
+  /** 本 environment 所服务的 Project（其 workspace 与适配器）。 */
+  readonly projectId: Id;
 }
 
 export interface EnvironmentProvider {
   /**
-   * 获取或惰性构建某个 principal 的 session 所需的环境。`threadId` 是客户端的
-   * 原始声明（mount probe 为 null）；provider 会用选中适配器的
-   * `resolveSessionKey` 映射它。
+   * 获取或惰性构建某个 Project 所需的环境。调用方先解析 Session
+   * （threadId → sessionKey → Session 记录），因为 Session 的 `projectId`
+   * 决定要构建哪个环境。
    */
-  acquire(principal: Principal, threadId: string | null): Promise<Environment>;
+  acquire(principal: Principal, projectId: Id): Promise<Environment>;
   /** 拆除（登出、删除租户、部署关停）。 */
   dispose(principal: Principal): Promise<void>;
 }
 ```
 
+环境的作用域在**工作区**这一层是 **Project**，而不是 principal、也不是 Session：一个
+Project 拥有一个 workspace（CONTEXT.md、docs/adr/0006），它的各个 Session 共享之。
+但 **adapter 仍是「一个用户一个」** —— v1 不为每个 Project 建一个运行时实例 —— 所以请求
+自带 `projectId`（可选；省略则落到默认 Project），调用方先获取环境，再把客户端声明的
+`threadId` 经适配器自己的 `resolveSessionKey` 映射，并解析（或首次使用时登记）Session。
+不需要 factory 级别的 session 解析器。
+
 这两个方法背后是：tenant→沙盒查找、sandbox 供给、经由 runtime 工厂（§4.3）构造
-适配器、按 principal 的连接缓存与空闲回收、按租户隔离的 record store
-接线，以及 workspace 根目录解析。调用方 —— 也就是各个 HTTP 路由 handler —— 完全看
+适配器、按 Project 的连接缓存与空闲回收、按租户隔离的 record store
+接线，以及 project 根目录解析。调用方 —— 也就是各个 HTTP 路由 handler —— 完全看
 不到这些。
 
 `CachingEnvironmentProvider`（开源，通用）提供生命周期；具体的 sandbox provider 由
@@ -153,9 +160,9 @@ export interface EnvironmentProvider {
 
 | 适配器 | 模式 | 仓库 | 背后是什么 |
 | --- | --- | --- | --- |
-| `LocalEnvironmentProvider` | 单用户 / 示例 | 开源 | 由 `process.env` 构建的一个适配器；一个 workspace 根 |
-| `FleetEnvironmentProvider` | 托管，openclaw | **私有** | 每个 tenant cell 一个 `OpenClawRuntimeAdapter`，带缓存 |
-| `DshEnvironmentProvider` | 托管/本地，dsh | 开源 provider，私有接线 | 每个 principal 一个 harness 子进程，cwd = 他的 workspace |
+| `LocalEnvironmentProvider` | 单用户 / 示例 | 开源 | 共享一个适配器 + 每个 Project 一个 workspace，由 `process.env` 构建 |
+| `FleetEnvironmentProvider` | 托管，openclaw | **私有** | 每个租户一个适配器，每个 Project 一个 workspace |
+| `DshEnvironmentProvider` | 托管/本地，dsh | 开源 provider，私有接线 | 每个 principal 一个适配器；harness 子进程 cwd 是 agent 根，不是项目根 |
 
 **已否决的替代方案：** 让 `RuntimeAdapter` 感知租户（把 `Principal` 传进
 `init`/`run`）。那会把 provisioning、连接池和身份塞进每一个适配器，与「按适配器
@@ -230,7 +237,7 @@ export interface RuntimeCapabilities {
 - 服务端分支继续使用适配器的可选方法（`listCommands?`、`subscribe?`）—— 该机制保留。
   `capabilities()` 用于消费方**必须提前知道**的特质：服务（是否暴露 `/approve`？是否
   供给托管沙盒？）、UI（对一个 step 粒度的 runtime，是否渲染 token 流式光标？）、以及
-  workspace 策略（per-session cwd）。
+  workspace 策略（per-project cwd）。
 - `RuntimeAdapter.approve` 改为**可选**（`approve?`），而不是要求每个不支持审批的
   runtime 写空实现；`capabilities.approvals === (typeof adapter.approve === "function")`。
 - 保持集合精简。只有当一个字段能让消费方避免硬编码 runtime 名称时，它才配留在其中。
@@ -319,9 +326,26 @@ export interface QuotaPolicy {
 
 browser 看到的是 `analysis/plots/volcano.png`；openclaw cell 中 agent 看到的是
 `/home/node/.openclaw/workspace/analysis/plots/volcano.png`。与其让每个调用方都携带
-这层差异，不如由 `toAgentPath`/`toWorkspacePath` 拥有它。session 的分区方式
-（共享 workspace 还是 `sessions/<key>/` 子目录）同样是 provider 的策略，在接缝之上
-不可见。
+这层差异，不如由 `toAgentPath`/`toWorkspacePath` 拥有它。映射锚定在哪个根上，同样是
+provider 的策略，在接缝之上不可见 —— v1 把它锚定在 **Project** 上。
+
+### Project 拥有 workspace
+
+每个 Project 一个 `Workspace` 实例，根为 `<PROJECT_ROOT>/<projectId>/`，由该 Project 的
+所有 Session **扁平共享** —— 没有按 session 的子目录，因此 Session B 看到的正是
+Session A 写的那些文件（docs/adr/0006）。agent 的 cwd 是项目根，浏览器的根也是项目根，
+所以路径 1:1 映射。目录名就是 project id，由服务端铸造成文件系统安全的 slug。
+
+这推翻了早先「按 session 分区」的决定（§14.3）。它买来的隔离在这里并不想要：Project
+层面的共享才是这个特性本身。它当初防范的「文件名相撞、中间产物泄漏」风险依然真实，
+但 v1 靠约定而非目录契约来应对。
+
+`PROJECT_ROOT`（所有项目目录的宿主父目录）取代 `WORKSPACE_ROOT`；`PROJECT_AGENT_ROOT`
+是 agent 侧对应物，项目根映射为 `<PROJECT_AGENT_ROOT>/<projectId>/`。**两个运行时都不
+强制它**：一个适配器服务整个用户，因此 agent 的 cwd 是部署的 agent 根，而不是项目根 ——
+openclaw 固定的 cell cwd 与 dsh 单一子进程 cwd 在这一点上没有区别，项目隔离都是路径
+映射 + 引用约定（docs/adr/0006）。`capabilities.perSessionCwd` 仍是「由宿主设置子进程
+cwd」之意，且是一个适配器一个 cwd（§4.4）。
 
 ### 实现
 
@@ -501,21 +525,20 @@ part，因此伪造的路径永远无法指向另一个 tenant 的文件。
 
 ```
 RequestContext → PrincipalResolver.resolve → (401 | Principal)
-             → EnvironmentProvider.acquire(principal, sessionKey)
+             → EnvironmentProvider.acquire(principal, projectId ?? 默认)
+             → adapter.resolveSessionKey(threadId) → Session（已存在或首次登记）
 ```
 
-runtime 适配器按 **principal 缓存**（一个 gateway/harness 连接服务该 principal 的
-所有 session）；workspace 则根据解析出的 `sessionKey` 按 **session 派生**。自身不携带
-session 的路由（`GET /commands` 目录）传入适配器的默认 session key，正如今天的 mount
-probe 所做的那样。
+适配器按**用户**缓存；workspace 按 **Project** 缓存，这正是 Project 内文件共享得以成立
+的原因。自身不携带 session 的路由（`GET /commands` 目录）使用默认 Project 的环境。
 
 新增的 workspace 路由（JSON / 流式字节），由与 transport **同一个服务**提供：
 
 | 路由 | 返回 |
 | --- | --- |
-| `GET /api/workspace/entries?path=&session=` | `DirListing` |
-| `GET /api/workspace/stat?path=&session=` | `FileStat` |
-| `GET /api/workspace/file?path=&session=&download=1` | 字节流 + `Content-Type`、`Content-Disposition` |
+| `GET /api/workspace/entries?path=&project=` | `DirListing` |
+| `GET /api/workspace/stat?path=&project=` | `FileStat` |
+| `GET /api/workspace/file?path=&project=&download=1` | 字节流 + `Content-Type`、`Content-Disposition` |
 | `POST /api/workspace/upload`（阶段 2） | `AttachmentRef` |
 
 把文件服务放在 transport 服务里、而不是一个独立进程，是有意为之：文件服务需要与
@@ -728,10 +751,9 @@ Phase 0 已**落地**；实时状态与清单见 [`implementation-plan.md`](./im
 - **感知租户的 `RuntimeAdapter`。** 已在 §4.2 否决。
 - **企业代码进树，用 license flag 门控。** 否决：那会把企业代码放进开源仓库，并使
   开源发布与之耦合。树外模块让边界成为物理边界。
-- **单个 cell 之下按 session 划分子目录。** 推迟的策略：一个 cell 只暴露一个
-  `OPENCLAW_WORKSPACE_DIR`；session 是共享它还是各自获得 `sessions/<key>/` 子目录，
-  是 `WorkspaceProvider` 的决策，在接缝之上不可见。v1 默认：每个 sandbox 共享一个根；
-  待有真实用法后再重新审视。
+- **单个 cell 之下按 session 划分子目录。** v1 否决：分区单元是 **Project**，而不是
+  Session（docs/adr/0006、§14.3），因此同一 Project 下的 Session 有意共享一个扁平根。
+  若中间产物开始相撞，`sessions/<id>/` 约定可以回归。
 - **把文件作为 message part 上传。** 作为主模型否决：它拷贝了 agent 本来就能打开的
   字节，且破坏了与 runtime 无关的消息形状。上传改为对 workspace 的写入，随后成为
   普通引用。
@@ -788,30 +810,32 @@ Phase 0 已**落地**；实时状态与清单见 [`implementation-plan.md`](./im
 **后果。** 两次对账之间账本可能滞后于现实 —— 可接受，因为硬层才是真实上限。把用量
 暴露给 UI 计量条。删除租户 = drop schema + 移除 project + 清理 state 目录。
 
-### 14.3 Session → workspace 分区
+### 14.3 Project → workspace 分区（修订）
 
-**分析。** 一个 cell 只暴露一个 `OPENCLAW_WORKSPACE_DIR`，且 runtime 的 cwd 按 cell
+**分析（原）。** 一个 cell 只暴露一个 `OPENCLAW_WORKSPACE_DIR`，且 runtime 的 cwd 按 cell
 固定，因此同一用户 cell 下的多个 session 无法从 openclaw 获得各自的 cwd。完全共享根
 会让两个 study 在常见文件名上相撞，并让中间产物跨 session 泄漏。
 
-**决断。**
+**决断（修订）。** 分区单元是 **Project** —— 见 docs/adr/0006。原决定（以 Session 为
+分区单元、`<sandboxRoot>/sessions/<sessionKey>/`）已被**取代**：产品要求是「同一 Project
+的 Session 共享它们产出的东西」，所以它当初警告的那个扁平共享根，如今正是目的。
 
-- **以 Session 为分区单元。** 它的 workspace 是 `<sandboxRoot>/sessions/<sessionKey>/`，
-  `toAgentPath` 把 browser 的 `a.csv` 映射为 agent 的
-  `sessions/<sessionKey>/a.csv`。引用永远无歧义，文件浏览器以一个稳定的 session 目录
-  为根。
-- 分区键是**规范 `sessionKey`**（即 `resolveSessionKey` 的返回值），而不是浏览器的临时
-  `__LOCALID_*`，这样刷新页面与常驻 watch 会收敛到同一个目录。
-- **record 层拥有 Session 身份**，因此分区名与 `Session` 行共用一个 id，provenance 保持
-  完整。
-- agent *仍可能*写到子目录之外（它看到的是整个根），所以隔离是引用层面的约定，而非硬
-  牢笼。**dsh 不同**：适配器自己 spawn 子进程并设置 cwd，因此能原生强制真正的按 session
-  根（声明为 `capabilities.perSessionCwd`，§4.4）。该策略活在 provider 内，在接缝之上
-  不可见。
-- **否决：每个 session 一个 cell。** 供给成本与 fleet 变更频率都过高。
+- 每个 Project 一个 `Workspace`，位于 `<PROJECT_ROOT>/<projectId>/`；该 Project 的每个
+  Session 看到同样的文件，`toAgentPath` 把 browser 的 `a.csv` 映射为 agent 的
+  `<PROJECT_AGENT_ROOT>/<projectId>/a.csv`。
+- 目录名是 **project id**（服务端铸造的 slug），因此身份由 record 拥有，浏览器以一个
+  稳定的项目目录为根。
+- 每个 Session 仍 1:1 映射到一个规范 `sessionKey`；环境按 Project 获取，所以适配器/
+  连接按 Project 缓存。
+- agent *仍可能*写到根之外，所以对**两个**运行时而言隔离都是引用层面的约定：一个适配器
+  （因此一个子进程 cwd）服务整个用户，所以 agent 的 cwd 是部署的 agent root，不是项目根
+  （docs/adr/0006）。`capabilities.perSessionCwd`（§4.4）仍是「由宿主设置子进程 cwd」之意，
+  一个适配器一个 cwd。
+- **否决：每个 Project 一个 cell。** 供给成本与 fleet 变更频率都过高。
 
-**后果。** 一个 cell 服务多个 session；浏览器展示 session 子树。迁移：根级文件先以
-只读形式作为「sandbox home」暴露，直到被重新归位。
+**后果。** 一个 cell 服务多个 Project；浏览器以项目目录为根，该项目的每个 Session 共享
+它。迁移：既有的单一根迁到 `<PROJECT_ROOT>/project-default/` 之下；默认项目会被自动
+确保，因此配了根就仍能工作。
 
 ### 14.4 企业 web UI：包，还是 fork
 
@@ -865,11 +889,12 @@ merge 负担为由否决 fork。退路：若插槽增长到超出少量组件，
    的成色取决于私有模块是否符合契约。为 `PrincipalResolver`、`SandboxProvider`、
    `Workspace`、`QuotaPolicy`、`RuntimeFactory` 发布可复用的测试套件；企业仓库与
    第三方 runtime 仓库在 CI 中运行它们。这是对分层最有杠杆的单点补强。
-2. **从 record 层构建真实的 `SessionState`。** *已解决（Phase 2.5）。* 服务通过
-   `createSessionResolver`（`services/transport-service/src/sessions.ts`）解析出
-   `Session` —— 其 id 就是规范的 runtime session key —— 并在首次使用时铸造它及其
-   默认 Study，因此 `SessionState.studyId`/`agentId` 来自 record，且 `persistRun`
-   能正确归属 `Run.sessionId`/`agentId`/`taskId`。
+2. **从 record 层构建真实的 `SessionState`。** *已解决（Phase 2.5；由
+   docs/adr/0006/0007 修订）。* 服务从 record 解析出 `Session` —— 其 id 就是规范的
+   runtime session key —— 因此 `SessionState.projectId`/`agentId` 来自 record，且
+   `persistRun` 能正确归属 `Run.sessionId`/`projectId`/`agentId`。Session 现在是在
+   Project 下显式创建的（`POST /api/projects/:id/sessions`），而不再由 env 常量铸造；
+   `Study`/`Task` 退出 v1。
 3. **按 session 的运行并发控制。** *已解决（Phase 2）。* 同一 session 的第二次并发
    运行以 **409** 拒绝，因此 `Transcript.attachFlow` 绝不会覆盖正在运行的 flow。
 4. **运行控制接口面。** *已解决（Phase 2）。* `POST /api/transport/abort` 与
@@ -901,6 +926,7 @@ merge 负担为由否决 fork。退路：若插槽增长到超出少量组件，
 
 一旦被接受，拟提升为正式产物：关于 principal/environment 接缝的 ADR；关于开源核心
 分层的 ADR（开源接缝契约 + 树外企业模块）；关于「每租户 fleet cell + workspace 文件
-服务」的 ADR；关于「按 session 分区的 workspace + 两层配额」的 ADR；以及在
-`CONTEXT.md` 中增补术语（`Principal`、`Tenant`、`Sandbox`、`Cell`、`Attachment`、
-`FileReference`）。
+服务」的 ADR；关于「按 project 分区的 workspace」（docs/adr/0006）与两层配额的 ADR；
+以及在 `CONTEXT.md` 中增补术语（`Principal`、`Tenant`、`Sandbox`、`Cell`、
+`Attachment`、`FileReference`）。已接受：docs/adr/0006（Project 是工作区与共享单元）
+与 docs/adr/0007（v1 record 层为 Project/Session/Run，自带文件持久化）。

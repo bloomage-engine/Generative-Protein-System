@@ -55,4 +55,29 @@ conversation memory. The service also funnels assistant-ui's per-page
 `__LOCALID_*` thread ids (and absent ids) to the runtime's default session so
 the mount probe and sends converge on one canonical transcript.
 
+- **Superseded in part** by the 2026-09-14 amendment below: ids are now minted
+  inside the child's own generation, so the restart collision is designed away
+  rather than recovered from (the retry survives only as a net).
+
+## Amendment (2026-09-14): harness ids are scoped to the child generation
+
+Retrying on the collision made the FIRST turn of every restart pay for it: the
+adapter asked for the bare session key, the durable home rejected it, one
+error (with a JSON-RPC stack) was logged, and an orphan session was minted —
+observable in `<dsh_home>/sessions/<cwd-slug>/` as `default` plus one
+`default-<ts>-<rand>` per restart. The create-only constraint is the same, so
+the id is now chosen instead of repaired: every harness id is minted inside the
+generation of the child that will own it
+(`<sessionKey>-<ts>-<rand>`, one generation per adapter init), and turns within
+one child reuse that id through the adapter's `harnessSessions` map. The first
+prompt of a new child is therefore always creatable — no rejected prompt, no
+error log — while a restart still starts a fresh harness session (the SDK
+cannot resume the old one either way). Conversation continuity across restarts
+remains the adapter's transcript mirror (keyed by the Science Studio session);
+the agent's own memory still stops at the restart boundary.
+
+The `already exists` failure is still handled once, now as a net for the only
+remaining case — an id another process minted at the same instant. That failure
+lands BEFORE any agent work, so re-prompting a fresh id cannot double a reply.
+
 - **Status**: accepted
