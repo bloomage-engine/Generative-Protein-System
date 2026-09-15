@@ -160,17 +160,23 @@ export function toRecordStoreLike(store: RecordStore): RecordStoreLike {
  * complete single-user default. Returning here (and only here) is what makes
  * "single-user is unaffected by the absence of multi-user" true.
  */
-export async function createBackend(env: NodeJS.ProcessEnv = process.env): Promise<Backend> {
+export async function createBackend(
+  env: NodeJS.ProcessEnv = process.env,
+  plugins?: readonly RuntimePlugin[],
+): Promise<Backend> {
   const specifier = env.SS_ENTERPRISE_MODULE;
   if (specifier) {
     const mod = (await import(specifier)) as EnterpriseModule;
     return mod.createBackend(env);
   }
-  return localBackend(env);
+  return localBackend(env, plugins);
 }
 
-async function localBackend(env: NodeJS.ProcessEnv): Promise<Backend> {
-  const plugins = await resolveRuntimePlugins(env);
+async function localBackend(
+  env: NodeJS.ProcessEnv,
+  preloaded?: readonly RuntimePlugin[],
+): Promise<Backend> {
+  const plugins = preloaded && preloaded.length > 0 ? [...preloaded] : await resolveRuntimePlugins(env);
 
   const runtime = env.TRANSPORT_RUNTIME ?? DEFAULT_RUNTIME;
   const plugin = plugins.find((p) => p.runtime === runtime);
