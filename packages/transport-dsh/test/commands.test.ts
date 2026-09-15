@@ -44,6 +44,7 @@ test("the cold harness fallback mirrors the pinned profile's own commands", () =
       ["goal", "/goal"],
       ["permission", "/permission"],
       ["plan", "/plan"],
+      ["project", "/project"],
     ],
   );
   for (const descriptor of DSH_HARNESS_FALLBACK_DESCRIPTORS) {
@@ -55,7 +56,7 @@ test("the cold harness fallback mirrors the pinned profile's own commands", () =
 test("the menu is the local pair first, then the harness layer without its names", () => {
   assert.deepEqual(
     mergeCommandDescriptors(DSH_HARNESS_FALLBACK_DESCRIPTORS, DSH_COMMAND_DESCRIPTORS).map((d) => d.id),
-    ["status", "new", "compact", "feedback", "goal", "permission", "plan"],
+    ["status", "new", "compact", "feedback", "goal", "permission", "plan", "project"],
   );
   // A harness command claiming a local name is dropped, never duplicated: the
   // local one is what must work with no harness at all.

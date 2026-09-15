@@ -74,6 +74,24 @@ one — those are meant to share.
 _Avoid_: Workspace (unqualified — collides with the dsh runtime term), Sandbox,
 Project dir
 
+**Project Scaffold**:
+The conventional directory layout a Project Workspace starts with — `docs/`,
+`references/`, `data/{raw,interim,processed}`, `scripts/`, `notebooks/`,
+`experiments/`, `results/`, `models/`, `reports/`, `logs/`, `config/`,
+`scratch/` — laid down the first time an agent works in the Project, so a
+research project has a predictable shape from its first turn. A convention over
+the filesystem, not a record entity: it is never enforced, and laying it down
+only ever ADDS what is missing.
+_Avoid_: Template, Skeleton, Folder structure
+
+**Project Brief** (the `PROJECT.md` file):
+A Markdown document at a Project Workspace's root that narrates the project —
+background, objectives, methods, milestones, progress log, current status,
+results, open questions — kept current by the Agent as the work proceeds. A
+companion to the record, never its authority: the record owns Project metadata
+(`id`, `name`, `createdAt`); the Brief is prose a human reads.
+_Avoid_: Project doc, README, Log
+
 **Session**:
 A conversation between a Researcher and an Agent under a Project. Rendered as an
 assistant-ui thread. Each Researcher turn drives one Run.

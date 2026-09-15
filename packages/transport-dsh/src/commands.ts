@@ -111,7 +111,9 @@ const NEW: DshCommand = {
  * only ever a fallback — the moment the live catalog answers with anything, that
  * IS the menu, so a command this harness dropped disappears again (and a name
  * this list gets wrong answers with {@link harnessCommandReply}'s
- * `Unknown command` line rather than failing).
+ * `Unknown command` line rather than failing). One row is this package's OWN:
+ * the project plugin's `/project` (docs/adr/0012), listed here for the same
+ * reason the pinned profile's commands are.
  */
 export const DSH_HARNESS_FALLBACK_DESCRIPTORS: readonly CommandDescriptor[] = [
   {
@@ -143,6 +145,16 @@ export const DSH_HARNESS_FALLBACK_DESCRIPTORS: readonly CommandDescriptor[] = [
     label: "/plan",
     description: "Enter or leave plan mode",
     invocationText: "/plan",
+  },
+  // This package's OWN project plugin registers `/project` in the harness
+  // registry (docs/adr/0012), but a cold child cannot be asked for it, so its
+  // menu row is curated here too — the same reason the pinned profile's own
+  // commands are listed above.
+  {
+    id: "project",
+    label: "/project",
+    description: "确保项目目录结构与 PROJECT.md 简报就绪，并报告状态",
+    invocationText: "/project",
   },
 ];
 

@@ -83,6 +83,31 @@ test("every Project gets its own adapter, launched in that Project's directory",
   );
 });
 
+test("an adapter is initialized with the record-owned Project identity", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "ss-provisioning-identity-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const backend = await backendOver({
+    PROJECT_ROOT: join(root, "projects"),
+    PROJECT_AGENT_ROOT: join(root, "agent"),
+  });
+  const principal = await principalOf(backend);
+  const records = backend.records;
+  assert.ok(records, "the backend exposes its record store");
+  const project = await records.createProject({
+    id: "drought-screen",
+    name: "抗旱基因筛选",
+    createdAt: "2026-09-01T00:00:00.000Z",
+  });
+
+  const environment = await backend.environments.acquire(principal, project.id);
+  assert.deepEqual(
+    (environment.adapter as RecordingAdapter).inits.map((o) => o.project),
+    [{ id: "drought-screen", name: "抗旱基因筛选", createdAt: "2026-09-01T00:00:00.000Z" }],
+    "the adapter renders the record's own Project, not a fabricated one",
+  );
+});
+
 test("an unconfigured root stays a NullWorkspace for every Project", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "ss-provisioning-none-"));
   t.after(() => rm(root, { recursive: true, force: true }));

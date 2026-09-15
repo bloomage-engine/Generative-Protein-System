@@ -209,13 +209,26 @@ async function localBackend(env: NodeJS.ProcessEnv): Promise<Backend> {
     environmentFor: async (projectId) => {
       const workspace = localWorkspace(env, projectId);
       const adapter = plugin.factory.create(binding);
+      // The record owns Project identity; the adapter gets a read-only copy so a
+      // dsh child can render it into the Project Brief (docs/adr/0012). A
+      // Project with no row (an arbitrary session key's first use) simply has
+      // none. This lookup is cheap; the runtime launch below is not.
+      const project = await records.getProject(projectId).catch(() => null);
       // Init runs in the BACKGROUND, exactly like the pre-seam service: a slow
       // or unreachable runtime must not delay the request that first names the
       // Project. Every adapter's own entry points WAIT for it (openclaw on its
       // gateway handshake, dsh on the initialization it completes last — see
       // `awaitInit`), so a request arriving during init waits rather than fails.
       void adapter
-        .init({ binding, recordStore, workspace, env: { ...env } })
+        .init({
+          binding,
+          recordStore,
+          workspace,
+          env: { ...env },
+          ...(project === null
+            ? {}
+            : { project: { id: project.id, name: project.name, createdAt: project.createdAt } }),
+        })
         .catch((err) =>
           console.error(
             `[transport-service] adapter init failed for project "${projectId}"`,
