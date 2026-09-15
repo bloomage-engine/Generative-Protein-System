@@ -9,7 +9,7 @@ export interface NextServerHandle {
 
 export async function waitForHttp(
   url: string,
-  proc: { exitCode: number | null },
+  proc: { exitCode: number | null; signalCode?: NodeJS.Signals | null },
   opts: { timeoutMs?: number; intervalMs?: number } = {},
 ): Promise<void> {
   const timeoutMs = opts.timeoutMs ?? 60_000;
@@ -17,11 +17,14 @@ export async function waitForHttp(
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     if (proc.exitCode !== null) throw new Error(`next server exited (${proc.exitCode})`);
+    if (proc.signalCode != null) throw new Error(`next server exited (${proc.signalCode})`);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error(`next server did not answer ${url} in ${timeoutMs}ms`);
     try {
-      await fetch(url, { method: "GET" });
+      await fetch(url, { method: "GET", signal: AbortSignal.timeout(remaining) });
       return;
     } catch {
-      if (Date.now() > deadline) throw new Error(`next server did not answer ${url} in ${timeoutMs}ms`);
+      if (Date.now() >= deadline) throw new Error(`next server did not answer ${url} in ${timeoutMs}ms`);
       await new Promise((r) => setTimeout(r, intervalMs));
     }
   }
@@ -49,21 +52,43 @@ export async function startNextServer(input: {
   });
   child.stdout?.on("data", (d: Buffer) => input.log?.(d.toString()));
   child.stderr?.on("data", (d: Buffer) => input.log?.(d.toString()));
-  await waitForHttp(`http://127.0.0.1:${port}/`, child);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const onSpawn = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = (err: Error) => {
+        cleanup();
+        reject(err);
+      };
+      const cleanup = () => {
+        child.removeListener("spawn", onSpawn);
+        child.removeListener("error", onError);
+      };
+      child.once("spawn", onSpawn);
+      child.once("error", onError);
+    });
+    await waitForHttp(`http://127.0.0.1:${port}/`, child);
+  } catch (err) {
+    await stopChild(child);
+    throw err;
+  }
   return { port, close: () => stopChild(child) };
 }
 
 async function stopChild(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) return;
   await new Promise<void>((resolve) => {
-    const killTimer = setTimeout(() => {
+    let killTimer: NodeJS.Timeout | undefined;
+    const onExit = () => {
+      if (killTimer) clearTimeout(killTimer);
+      resolve();
+    };
+    child.once("exit", onExit);
+    killTimer = setTimeout(() => {
       child.kill("SIGKILL");
-      resolve();
     }, 5_000);
-    child.once("exit", () => {
-      clearTimeout(killTimer);
-      resolve();
-    });
     child.kill("SIGTERM");
   });
 }
