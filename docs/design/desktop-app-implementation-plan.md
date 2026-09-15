@@ -1496,6 +1496,8 @@ extraResources:
     to: host
   - from: ../web/.next/standalone
     to: next
+  - from: ../web/.next/standalone/node_modules
+    to: next/node_modules
   - from: ../web/.next/static
     to: next/apps/web/.next/static
   - from: ../web/public
@@ -1510,6 +1512,16 @@ linux:
     - deb
   category: Science
 ```
+
+**The trace `node_modules` needs its OWN `extraResources` entry — this is not
+optional.** `app-builder-lib`'s `createFilter` returns `false` for the copied
+dir's ROOT `node_modules` (`relative === "node_modules"`), so the
+`../web/.next/standalone` entry silently drops it and the packaged `server.js`
+dies with `Cannot find module 'next'`. The separate
+`from: ../web/.next/standalone/node_modules` entry copies its CONTENTS into
+`next/node_modules`, which the filter does not prune. `next dev` clears `.next`,
+so the standalone tree exists only right after `npm run build:web:standalone`
+(which `npm run pack` runs).
 
 - [ ] **Step 1b: Make the externalized SDK resolvable in the packaged app**
 
