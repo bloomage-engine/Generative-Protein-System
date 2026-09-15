@@ -7,6 +7,7 @@ import type { ChildProcess } from "node:child_process";
 import { resolveDesktopPaths, type DesktopPaths } from "../shared/paths.js";
 import { buildChildEnv, parseConfigEnv, serializeConfigEnv, type DesktopConfig } from "../shared/config.js";
 import { detectDsh } from "../shared/dsh.js";
+import { runtimeStatus } from "../shared/runtime-status.js";
 import { augmentPath } from "../shared/env-path.js";
 import { forkHost, type HostPorts } from "./host-child.js";
 import { resolveResourcePaths } from "./resource-paths.js";
@@ -232,6 +233,10 @@ function registerIpc(): void {
     return readConfig();
   });
   ipcMain.handle("desktop:detectDsh", () => detectDsh({ pathEnv: pathEnv() }));
+  ipcMain.handle("desktop:runtimeStatus", async () =>
+    runtimeStatus({ dshPath: detectDsh({ pathEnv: pathEnv() }), config: await readConfig() }),
+  );
+  ipcMain.handle("desktop:openWorkbench", () => openWorkbench());
   ipcMain.handle("desktop:openPath", async (_event, path: string) => {
     await shell.openPath(path);
   });

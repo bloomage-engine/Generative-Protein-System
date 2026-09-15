@@ -11,6 +11,7 @@ export function createWorkbenchWindow(): BrowserWindow {
     title: "Science Studio",
     backgroundColor: "#0b0b0b",
     webPreferences: {
+      preload: join(here, "..", "preload", "workbench.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

@@ -1,17 +1,35 @@
 "use client";
 
 import * as React from "react";
-import { Activity, Folder, FolderTree } from "lucide-react";
+import { Activity, Cpu, Folder, FolderTree } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useWorkspaceAvailability } from "@science-studio/transport-client";
 import { useStudioStore } from "@/store/studio-store";
+
+interface DesktopRuntimeStatus {
+  dshPath: string | null;
+  provider: string | null;
+  model: string | null;
+  ready: boolean;
+}
+
+interface DesktopBridge {
+  runtimeStatus?: () => Promise<DesktopRuntimeStatus>;
+}
+
+declare global {
+  interface Window {
+    scienceStudioDesktop?: DesktopBridge;
+  }
+}
 
 export function StatusBar() {
   return (
     <footer className="flex h-7 items-center justify-between border-t bg-background px-3 text-xs text-muted-foreground">
       <div className="flex flex-1 items-center justify-start">
         <WorkspaceChip />
+        <RuntimeChip />
       </div>
       <div className="flex flex-1 items-center justify-center">
         <SessionStatusChip />
@@ -46,6 +64,61 @@ function WorkspaceChip() {
         <div className="mt-2 text-xs text-muted-foreground">
           <span className="text-foreground">Project</span> · {projectId ?? "(default)"}
         </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function RuntimeChip() {
+  const [status, setStatus] = React.useState<DesktopRuntimeStatus | null>(null);
+  const [present, setPresent] = React.useState(false);
+
+  React.useEffect(() => {
+    const bridge = window.scienceStudioDesktop;
+    if (!bridge?.runtimeStatus) return;
+    setPresent(true);
+    let active = true;
+    void bridge
+      .runtimeStatus()
+      .then((next) => {
+        if (active) setStatus(next);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!present) return null;
+  const ready = status?.ready === true;
+  const label = status === null ? "runtime: …" : ready ? "runtime: ready" : "runtime: dsh missing";
+  const route = status?.provider && status.model ? `${status.provider} / ${status.model}` : "not set";
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-5 gap-1.5 px-1.5">
+          <Cpu className={ready ? "size-3.5 text-emerald-500" : "size-3.5 opacity-50"} />
+          <span className="max-w-[14rem] truncate">{label}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-3">
+        <div className="text-sm font-semibold">Runtime</div>
+        <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <dt className="text-muted-foreground">dsh</dt>
+            <dd className="break-all">{status?.dshPath ?? "missing"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">route</dt>
+            <dd className="break-all">{route}</dd>
+          </div>
+        </dl>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {ready
+            ? "The desktop app found dsh and a configured provider/model."
+            : "Set up dsh and the provider/model in Science Studio Settings, then restart the service. Sending is not blocked."}
+        </p>
       </PopoverContent>
     </Popover>
   );

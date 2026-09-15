@@ -1,4 +1,5 @@
 import type { ScienceStudioDesktopApi } from "../preload/index.mjs";
+import { runtimeStatus } from "../shared/runtime-status.js";
 
 declare global {
   interface Window {
@@ -21,14 +22,23 @@ async function render(): Promise<void> {
     return;
   }
   const [config, dshPath] = await Promise.all([bridge.getConfig(), bridge.detectDsh()]);
+  const status = runtimeStatus({ dshPath, config });
   const vars = Object.entries(config.vars ?? {})
     .map(([k, v]) => `${k}=${v}`)
     .join("\n");
   app.innerHTML = `
     <h1>Science Studio Settings</h1>
     <p>${
-      dshPath ? `Found dsh at <code>${dshPath}</code>.` : "The <code>dsh</code> CLI was not found on PATH. Install it before running the agent."
+      status.dshPath
+        ? `dsh: <code>${status.dshPath}</code>`
+        : "dsh: missing — install the <code>dsh</code> CLI before running the agent."
     }</p>
+    <p>${
+      status.ready
+        ? `runtime: ready · <code>${status.provider}</code> / <code>${status.model}</code>`
+        : "runtime: setup incomplete — set the provider and model below."
+    }</p>
+    <p><button type="button" id="openWorkbench">Open workbench anyway</button></p>
     <form id="form">
       ${field("Provider", "provider", config.provider ?? "", "e.g. ollama-local — must exist in ~/.dsh/settings.yaml")}
       ${field("Model", "model", config.model ?? "", "e.g. qwen3.8:latest")}
@@ -37,6 +47,9 @@ async function render(): Promise<void> {
     </form>
     <p id="status"></p>
   `;
+  document.getElementById("openWorkbench")!.addEventListener("click", () => {
+    void bridge.openWorkbench();
+  });
   document.getElementById("form")!.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.target as HTMLFormElement;
