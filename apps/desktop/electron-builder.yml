@@ -27,5 +27,5 @@ linux:
   category: Science
 deb:
   packageName: science-studio
-  maintainer: Science Studio
+  maintainer: zhonghua-wang <zhonghua.wang@outlook.com>
   artifactName: science-studio_${version}_${arch}.${ext}
