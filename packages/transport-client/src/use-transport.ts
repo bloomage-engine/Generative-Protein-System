@@ -124,14 +124,18 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
 
   // History probe (mount): fold one command-less request and import the
   // snapshot, unless a send (or a watch push) started while it was in flight.
+  // The request is aborted on unmount: the response is a stream, and a stream
+  // nobody is reading any more must not hold a connection (see the watch below).
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     void (async () => {
       const snapshot = await fetchSessionSnapshot(
         scopedApi,
         createInitialRuntimeState(),
         threadId,
         projectId,
+        controller.signal,
       );
       if (cancelled || snapshot === null) return;
       const busy = (() => {
@@ -150,6 +154,7 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
     })();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [scopedApi, threadId, projectId, runtime]);
 
@@ -157,6 +162,14 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
   // canonical snapshot when the interlock allows.
   useEffect(() => {
     let closed = false;
+    // The watch stream NEVER ends by itself, so unmounting must abort it — a
+    // connection left open here is never reused: the browser allows ~6 per
+    // origin over HTTP/1.1, and every scope change remounts this runtime (twice
+    // per mount under StrictMode). Once they are all orphaned, NO request to
+    // this origin can start any more — the session list, the file listing and
+    // the probe all queue forever, and the workbench looks frozen
+    // (docs/adr/0009). `handle.cancel()` alone only stops reconnecting.
+    const controller = new AbortController();
 
     const isBusy = (): boolean => {
       try {
@@ -186,6 +199,7 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
       try {
         const res = await fetch(`${base}/watch${watchQuery(projectId, threadId)}`, {
           headers: { accept: "application/x-ndjson" },
+          signal: controller.signal,
         });
         if (!res.ok || !res.body) throw new Error(`watch ${res.status}`);
         const reader = res.body.getReader();
@@ -227,6 +241,10 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
     return () => {
       closed = true;
       handle.cancel();
+      // Release the socket NOW: the reader above is parked on a stream that will
+      // never deliver another byte, so without this the connection outlives the
+      // runtime that owns it.
+      controller.abort();
     };
   }, [base, projectId, threadId, runtime]);
 

@@ -3,9 +3,7 @@
 import * as React from "react";
 import { Search, MessageSquare } from "lucide-react";
 import {
-  fetchWorkspaceEntries,
-  isWorkspaceUnavailable,
-  useWorkspaceApi,
+  useWorkspaceRoot,
   type Entry,
 } from "@science-studio/transport-client";
 import { Input } from "@/components/ui/input";
@@ -23,33 +21,17 @@ export function TopBarSearch() {
   const projectId = useStudioStore((s) => s.projectId);
   const openFile = useStudioStore((s) => s.openFile);
   const sessions = useStudioStore((s) => s.sessions);
-  const setActiveSessionId = useStudioStore((s) => s.setActiveSessionId);
+  const setScope = useStudioStore((s) => s.setScope);
   const setLeftView = useStudioStore((s) => s.setLeftView);
 
-  const { api: workspaceApi } = useWorkspaceApi();
-
-  const [rootEntries, setRootEntries] = React.useState<Entry[]>([]);
-
-  React.useEffect(() => {
-    if (!projectId) {
-      setRootEntries([]);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const listing = await fetchWorkspaceEntries(workspaceApi, "", projectId);
-        if (!cancelled) setRootEntries(listing.entries.filter((e) => e.kind === "file"));
-      } catch (err) {
-        if (!cancelled && !isWorkspaceUnavailable(err)) {
-          // other failure — leave the list empty; the panel will show its own copy
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, workspaceApi]);
+  // The file half of this search reads the SAME root listing the file tree
+  // shows, and the session half the ACTIVE Project's Sessions — both follow the
+  // committed scope, so a pick here never points at another Project's files.
+  const root = useWorkspaceRoot({ project: projectId });
+  const rootEntries: Entry[] = React.useMemo(
+    () => (root.listing?.entries ?? []).filter((entry) => entry.kind === "file"),
+    [root.listing],
+  );
 
   const q = query.trim().toLowerCase();
   const files = q ? rootEntries.filter((e) => e.name.toLowerCase().includes(q)) : [];
@@ -75,7 +57,7 @@ export function TopBarSearch() {
   const pickSession = (id: string) => {
     // The conversation and the Projects pane share the left slot: picking a
     // Session from the top bar has to bring the conversation back.
-    setActiveSessionId(id);
+    setScope({ projectId, sessionId: id });
     setLeftView("thread");
     setOpen(false);
     setQuery("");

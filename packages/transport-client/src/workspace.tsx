@@ -20,6 +20,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type FC,
   type PropsWithChildren,
 } from "react";
@@ -170,40 +171,172 @@ export function useWorkspaceBrowser(opts: {
   const api = scope.api;
   const project = opts.project ?? scope.project;
   const [path, setPath] = useState(opts.initialPath ?? "");
-  const [listing, setListing] = useState<DirListing | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [unavailable, setUnavailable] = useState(false);
+  const root = useWorkspaceRoot({ project });
+  const [sub, setSub] = useState<{
+    listing: DirListing | null;
+    isLoading: boolean;
+    error: string | null;
+    unavailable: boolean;
+  }>({ listing: null, isLoading: false, error: null, unavailable: false });
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
+    // The ROOT is the one directory several surfaces want at once, so it comes
+    // from the shared listing; only deeper paths are per-hook state.
+    if (path === "") return;
     let cancelled = false;
-    setIsLoading(true);
-    setError(null);
-    setUnavailable(false);
+    setSub({ listing: null, isLoading: true, error: null, unavailable: false });
     fetchWorkspaceEntries(api, path, project)
       .then((next) => {
-        if (!cancelled) setListing(next);
+        if (!cancelled) setSub({ listing: next, isLoading: false, error: null, unavailable: false });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         // A 503 is a deployment state, not a failure to retry: show friendly copy.
         const off = isWorkspaceUnavailable(err);
-        setUnavailable(off);
-        setError(
-          off ? WORKSPACE_UNAVAILABLE_REASON : err instanceof Error ? err.message : String(err),
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        setSub({
+          listing: null,
+          isLoading: false,
+          unavailable: off,
+          error: off ? WORKSPACE_UNAVAILABLE_REASON : err instanceof Error ? err.message : String(err),
+        });
       });
     return () => {
       cancelled = true;
     };
   }, [api, path, project, nonce]);
 
-  const refresh = useCallback(() => setNonce((n) => n + 1), []);
-  return { path, listing, isLoading, error, unavailable, navigate: setPath, refresh };
+  const refresh = useCallback(() => {
+    if (path === "") root.refresh();
+    else setNonce((n) => n + 1);
+  }, [path, root]);
+
+  return path === ""
+    ? {
+        path,
+        listing: root.listing,
+        isLoading: root.isLoading,
+        error: root.error,
+        unavailable: root.unavailable,
+        navigate: setPath,
+        refresh,
+      }
+    : { path, ...sub, navigate: setPath, refresh };
+}
+
+// -- The shared root listing -------------------------------------------------
+
+/**
+ * The root directory is what EVERY workspace surface wants: the file tree, the
+ * status bar's availability chip and the top-bar search all list it, and each
+ * used to fetch it on its own. Three requests (six under dev StrictMode) for one
+ * directory is not just waste — they queue behind the browser's ~6 connections
+ * per origin, and the tree sat empty for seconds after a Project switch while
+ * its duplicates drained.
+ *
+ * So one listing is kept per (api, Project): consumers SHARE the in-flight
+ * request, read the last answer immediately (no empty flash on remount) and
+ * revalidate in the background. A Project's listing is revalidated when the last
+ * consumer of it mounts again; `refresh()` forces one.
+ */
+interface RootSnapshot {
+  listing: DirListing | null;
+  isLoading: boolean;
+  error: string | null;
+  unavailable: boolean;
+}
+
+const ROOT_PENDING: RootSnapshot = { listing: null, isLoading: true, error: null, unavailable: false };
+const rootSnapshots = new Map<string, RootSnapshot>();
+const rootInflight = new Map<string, Promise<void>>();
+const rootWatchers = new Map<string, Set<() => void>>();
+
+function rootKey(api: string, project: string | null): string {
+  return `${api}|${project ?? ""}`;
+}
+
+function rootWatchersFor(key: string): Set<() => void> {
+  let watchers = rootWatchers.get(key);
+  if (!watchers) {
+    watchers = new Set();
+    rootWatchers.set(key, watchers);
+  }
+  return watchers;
+}
+
+function publishRoot(key: string, snapshot: RootSnapshot): void {
+  rootSnapshots.set(key, snapshot);
+  for (const notify of rootWatchersFor(key)) notify();
+}
+
+/** Fetch the root once, unless a request for it is already in flight. */
+function loadRoot(api: string, project: string | null): void {
+  const key = rootKey(api, project);
+  if (rootInflight.has(key)) return;
+
+  const cached = rootSnapshots.get(key);
+  publishRoot(key, {
+    listing: cached?.listing ?? null,
+    isLoading: cached?.listing == null,
+    error: null,
+    unavailable: false,
+  });
+
+  const pending = fetchWorkspaceEntries(api, "", project)
+    .then((listing) => publishRoot(key, { listing, isLoading: false, error: null, unavailable: false }))
+    .catch((err: unknown) => {
+      const off = isWorkspaceUnavailable(err);
+      publishRoot(key, {
+        // A failed revalidation keeps the last good listing on screen.
+        listing: rootSnapshots.get(key)?.listing ?? null,
+        isLoading: false,
+        unavailable: off,
+        error: off ? WORKSPACE_UNAVAILABLE_REASON : err instanceof Error ? err.message : String(err),
+      });
+    })
+    .finally(() => rootInflight.delete(key));
+  rootInflight.set(key, pending);
+}
+
+export interface WorkspaceRoot {
+  listing: DirListing | null;
+  isLoading: boolean;
+  error: string | null;
+  /** True when the server exposes no workspace at all (HTTP 503). */
+  unavailable: boolean;
+  /** Re-fetch the root now. */
+  refresh: () => void;
+}
+
+/** The shared root listing of one Project's workspace. */
+export function useWorkspaceRoot(opts: { project?: string | null } = {}): WorkspaceRoot {
+  const scope = useWorkspaceApi();
+  const api = scope.api;
+  const project = opts.project ?? scope.project;
+  const key = rootKey(api, project);
+
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const watchers = rootWatchersFor(key);
+      watchers.add(onChange);
+      return () => watchers.delete(onChange);
+    },
+    [key],
+  );
+  const getSnapshot = useCallback(() => rootSnapshots.get(key) ?? ROOT_PENDING, [key]);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, () => ROOT_PENDING);
+
+  useEffect(() => {
+    loadRoot(api, project);
+  }, [api, project]);
+
+  const refresh = useCallback(() => {
+    const cached = rootSnapshots.get(key);
+    publishRoot(key, { listing: cached?.listing ?? null, isLoading: true, error: null, unavailable: false });
+    loadRoot(api, project);
+  }, [api, key, project]);
+
+  return { ...snapshot, refresh };
 }
 
 // -- Availability ------------------------------------------------------------
@@ -223,41 +356,19 @@ export interface WorkspaceAvailability {
 /**
  * Probe whether this deployment exposes a workspace, so the UI can hide or
  * disable file affordances instead of letting the user open a panel that only
- * ever shows a 503. The probe is the cheapest workspace call (a root listing).
+ * ever shows a 503. The probe is the CHEAPEST workspace call (a root listing) —
+ * and the very one the file tree needs, so it reads the shared root listing
+ * rather than issuing a second request for the same directory.
  */
 export function useWorkspaceAvailability(opts: {
   project?: string | null;
 } = {}): WorkspaceAvailability {
-  const scope = useWorkspaceApi();
-  const api = scope.api;
-  const project = opts.project ?? scope.project;
-  const [state, setState] = useState<WorkspaceAvailability>({
-    available: null,
-    isLoading: true,
-    reason: null,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    setState({ available: null, isLoading: true, reason: null });
-    fetchWorkspaceEntries(api, "", project)
-      .then(() => {
-        if (!cancelled) setState({ available: true, isLoading: false, reason: null });
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setState(
-          isWorkspaceUnavailable(err)
-            ? { available: false, isLoading: false, reason: WORKSPACE_UNAVAILABLE_REASON }
-            : { available: null, isLoading: false, reason: null },
-        );
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [api, project]);
-
-  return state;
+  const root = useWorkspaceRoot(opts);
+  return {
+    available: root.unavailable ? false : root.listing ? true : null,
+    isLoading: root.isLoading,
+    reason: root.unavailable ? root.error : null,
+  };
 }
 
 // -- Preview -----------------------------------------------------------------

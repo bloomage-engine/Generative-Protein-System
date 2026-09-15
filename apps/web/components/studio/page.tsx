@@ -1,12 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  fetchProjects,
-  fetchProjectSessions,
-  type Project,
-  type Session,
-} from "@science-studio/transport-client";
+import { fetchProjects, fetchProjectSessions } from "@science-studio/transport-client";
+import { readScopeMemory, resolveProject, resolveSession } from "@/lib/scope-memory";
 import { StudioHost } from "./host";
 import { useStudioStore } from "@/store/studio-store";
 
@@ -16,18 +12,28 @@ const PROJECTS_API = process.env.NEXT_PUBLIC_PROJECTS_URL ?? "/api/projects";
  * Seeds the store's scope (Project/Session), then renders the workbench. Both
  * entry surfaces run through here:
  *
- *  - The session deep-link passes `routeProjectId`/`routeSessionId`; we write
- *    them to the store immediately (so the Host can show its `SessionView`),
- *    then hydrate the Project's sessions for the Projects pane.
+ *  - The session deep-link passes `routeProjectId`/`routeSessionId`.
+ *  - The SPA home passes nothing, and falls back to the scope this browser left
+ *    behind (`readScopeMemory` — docs/adr/0009).
  *
- *  - The SPA home passes nothing: on first open we adopt the first Project and
- *    its first Session if any exist, leaving the store alone otherwise. New
- *    Sessions are created via the Projects pane (not auto-created here).
+ * Either way the scope is a CLAIM until the record answers: the workbench opens
+ * the URL's Project when the record lists it, else the remembered one, else the
+ * first Project, with a Session from that Project's own list (else its newest).
+ * An id the record does not list is never opened, let alone remembered — the
+ * transport route MINTS a Project/Session row for an unknown key rather than
+ * refusing it, so the probe for a stale id would fabricate the very row it
+ * claims to resume (docs/adr/0009).
  *
- * Subsequent switches are pure store writes; the Host reacts and re-keys
- * `SessionView`, remounting `useTransport` for the new scope. A mount that ends
- * up with no Session lands on the Projects pane — the conversation pane has
- * nothing to converse with, and that pane is where a Session is created.
+ * That is also why the scope is resolved BEFORE the shell renders: `useTransport`
+ * must never mount on an unvalidated Session, since its mount probe is itself the
+ * minting request. A record that does not answer shows the error instead — it
+ * proves nothing, so the memory is left exactly as it was.
+ *
+ * Subsequent switches are store writes (`setScope`, which also moves the memory
+ * and the URL); the Host reacts and re-keys `SessionView`, remounting
+ * `useTransport` for the new scope. A scope that ends up with no Session lands on
+ * the Projects pane — the conversation pane has nothing to converse with, and
+ * that pane is where a Session is created.
  */
 export function StudioPage({
   routeProjectId = null,
@@ -44,46 +50,45 @@ export function StudioPage({
     let cancelled = false;
     const s = () => useStudioStore.getState();
 
-    // Route-scoped deep-link: seed scope synchronously and hydrate the list.
-    if (routeProjectId) {
-      s().setProjectId(routeProjectId);
-      if (routeSessionId) s().setActiveSessionId(routeSessionId);
-      else s().setLeftView("project");
-      setReady(true);
-      void (async () => {
-        try {
-          const list = await fetchProjectSessions(api, routeProjectId);
-          // The route is authoritative for this mount, but only while it still
-          // owns the scope — a Project switch from the pane wins.
-          if (!cancelled && s().projectId === routeProjectId) s().setSessions(list);
-        } catch {
-          /* the pane still shows the active Session and reloads on demand */
-        }
-      })();
-      return;
-    }
-
-    // SPA home: adopt the first Project; if it has sessions, use the first.
     void (async () => {
       try {
-        const projects: Project[] = await fetchProjects(api);
+        const projects = await fetchProjects(api);
         if (cancelled) return;
         s().setProjects(projects);
-        const first = projects[0];
-        if (first) s().setProjectId(first.id);
-        if (first) {
-          const list: Session[] = await fetchProjectSessions(api, first.id);
-          if (cancelled) return;
-          s().setSessions(list);
-          const firstSession = list[0];
-          if (firstSession) s().setActiveSessionId(firstSession.id);
-          else s().setLeftView("project");
-        } else {
+
+        const project = resolveProject({
+          claimedProjectId: routeProjectId,
+          claimedSessionId: routeSessionId,
+          memory: readScopeMemory(),
+          projects,
+        });
+
+        if (!project.projectId) {
+          // A fresh install: the Projects pane is where the first one is created.
+          s().setScope({ projectId: null, sessionId: null }, project.memory);
           s().setLeftView("project");
+          setReady(true);
+          return;
         }
+
+        const sessions = await fetchProjectSessions(api, project.projectId);
+        if (cancelled) return;
+
+        const session = resolveSession({
+          projectId: project.projectId,
+          hint: project.sessionHint,
+          sessions,
+          memory: project.memory,
+        });
+        s().setScope({ projectId: project.projectId, sessionId: session.sessionId }, session.memory);
+        // After the commit: `setSessions` is what the pane shows while it is
+        // expanded on the active Project.
+        s().setSessions(sessions);
+        if (!session.sessionId) s().setLeftView("project");
         setReady(true);
       } catch (err) {
         if (cancelled) return;
+        // The record did not answer: the remembered scope is not disproven.
         setError(err instanceof Error ? err.message : String(err));
         setReady(true);
       }

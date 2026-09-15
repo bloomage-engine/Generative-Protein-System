@@ -36,6 +36,8 @@ export {
   workspaceFileUrl,
   useWorkspaceBrowser,
   type WorkspaceBrowser,
+  useWorkspaceRoot,
+  type WorkspaceRoot,
   useWorkspaceAvailability,
   type WorkspaceAvailability,
   useWorkspaceFile,

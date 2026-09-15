@@ -29,27 +29,33 @@ export function createInitialRuntimeState(): RuntimeState {
  * POST a command-less probe to the transport endpoint and fold the streamed
  * operations into the claimed state, mirroring exactly how the transport
  * runtime itself consumes responses. Returns the folded snapshot, or `null`
- * when the request failed or nothing was streamed.
+ * when the request failed, was aborted, or nothing streamed.
+ *
+ * `signal` exists so the caller can release the connection on unmount: the
+ * response is a stream, so an abandoned one pins a connection until the server
+ * happens to end it (a scope change remounts the runtime; docs/adr/0009).
  */
 export async function fetchSessionSnapshot(
   api: string,
   claimed: RuntimeState,
   threadId: string | null,
   projectId?: string | null,
+  signal?: AbortSignal,
 ): Promise<RuntimeState | null> {
-  const res = await fetch(api, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      commands: [],
-      state: claimed,
-      threadId,
-      ...(projectId ? { projectId } : {}),
-    }),
-  });
-  if (!res.ok || !res.body) return null;
-
   try {
+    const res = await fetch(api, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commands: [],
+        state: claimed,
+        threadId,
+        ...(projectId ? { projectId } : {}),
+      }),
+      ...(signal ? { signal } : {}),
+    });
+    if (!res.ok || !res.body) return null;
+
     const decoder = new AssistantTransportDecoder({ strict: true });
     const accumulator = new AssistantMessageAccumulator({
       // The wire state is plain JSON; the domain types just don't say so.
@@ -65,7 +71,10 @@ export async function fetchSessionSnapshot(
     }
     return latest;
   } catch (error) {
-    console.error("[session-sync] failed to decode snapshot", error);
+    // An abort is the CALLER releasing the connection on unmount, not a failure.
+    if (!(error instanceof Error && error.name === "AbortError")) {
+      console.error("[session-sync] snapshot request failed", error);
+    }
     return null;
   }
 }

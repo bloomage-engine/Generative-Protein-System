@@ -8,10 +8,10 @@ Chinese.
 
 ```
 apps/web                          Next.js frontend (assistant-ui Thread UI, port 3000)
-  app/page.tsx                      the SPA home — seeds the Project/Session scope, then renders the workbench
+  app/page.tsx                      the SPA home — resolves the Project/Session scope (URL claim, else the remembered one, validated against the record), then renders the workbench
   app/projects/[projectId]/sessions/[sessionId]/page.tsx  the same workbench, scoped by the route
   app/api/{transport,workspace,projects}  proxies to the service (streaming ones MUST NOT be next.config rewrites — they buffer — nor `fetch`, whose 300 s body deadline kills an idle stream; see lib/stream-proxy.ts)
-  components/studio                 the workbench shell: top bar (its two switch buttons give the LEFT slot to the conversation or the Projects pane), Projects pane (create/switch Project + Session over `/api/projects*`), file tree/preview panes, tab strip, status bar
+  components/studio                 the workbench shell: top bar (its two switch buttons give the LEFT slot to the conversation or the Projects pane), Projects pane (create Project + Session over `/api/projects*`; a click EXPANDS a Project for browsing, a DOUBLE click on a Session opens it — expanding must not move the scope, so the conversation and the file tree stay put), file tree/preview panes, tab strip, status bar
   store/studio-store.ts             the shell's scope + chrome state (projects list, active Project/Session, left view + panel visibility, open tabs)
   components/session-view.tsx       providers + the memoized runtime owner; with no scope it renders the chrome alone
   components/assistant-ui/elements  Thread UI registered from the assistant-ui registry
@@ -31,7 +31,7 @@ examples/transport-dsh-example     minimal assistant-ui example app over the dsh
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/design/                      design specs (research-agent-framework EN/ZH + implementation-plan)
-docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project)
+docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope)
 CONTEXT.md                        domain glossary (authoritative vocabulary)
 ```
 
@@ -80,16 +80,23 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   access is `@science-studio/transport-client`'s `useWorkspaceBrowser` /
   `useWorkspaceFile` / `resolveFileReference` / `WorkspaceOpenProvider` — the
   provider is the seam that lets an agent file link in markdown open the viewer
-  instead of navigating. A 503 (no `PROJECT_ROOT`) is classified by
-  `isWorkspaceUnavailable`, and `useWorkspaceAvailability` probes once so the UI
-  disables its file affordance with friendly copy rather than opening into the
+  instead of navigating. **The ROOT listing is shared** (`useWorkspaceRoot`): the
+  file tree, the status bar's availability chip and the top-bar search all want
+  that one directory, so they share one request per (api, Project) instead of
+  firing three (six under dev StrictMode) that then queue behind the browser's
+  ~6 connections per origin — which left the tree empty for seconds after a
+  Project switch. Only deeper directories are per-hook. A 503 (no `PROJECT_ROOT`)
+  is classified by
+  `isWorkspaceUnavailable`, and `useWorkspaceAvailability` reads the same shared
+  listing rather than probing on its own, so the UI disables its file affordance
+  with friendly copy rather than opening into the
   raw 503. The composer `@` picker is `useWorkspaceMentions`; a pick
   inserts assistant-ui directive text (`:file[label]{name=id}` /
   `:directory[...]`) which the service lifts into a workspace `AttachmentRef`
   (`parseWorkspaceMentions`) — a directory stays a reference, never expanded.
 - `npm run dev -w @science-studio/transport-openclaw-example` — the example app: Vite (5173, proxies `/api`) + the openclaw adapter behind `@science-studio/transport-service` (3200). Needs `examples/transport-openclaw-example/.env` (see its `.env.example`) and a live gateway, and `npm run build` first (imports deps from dist). Dev-only — intentionally NOT in the root build gate; its `npm run test` drives the same wiring against a scripted gateway (no live gateway needed).
 - `npm run dev -w @science-studio/transport-dsh-example` — the same shape over the dsh adapter: Vite (5173) + `@science-studio/transport-service` (3300); the adapter spawns `dsh --profile sdk` locally (needs `examples/transport-dsh-example/.env` with `DEEPSEEK_API_KEY`, the model route `HARNESS_PROVIDER`/`HARNESS_MODEL`, and that route's `apiKeyEnv` name — `server.ts` promotes those two `HARNESS_*` names to the launch-only `DSH_PROVIDER`/`DSH_MODEL` before the adapter reads it, because the harness child runs with that folder as cwd and the dsh CLI reads that same `.env` and hard-refuses any `DSH_*` key in it; the route itself — endpoint/models — is declared harness-side in `<harness home>/settings.yaml`, and the default example route is the LAN ollama `ollama-local`/`qwen3.8:latest`; defaults when `HARNESS_*` is unset: profile `sdk`, home `~/.dsh`, workspace = the example dir, transcript mirror under the service tmp dir, adapter provider/model `deepseek-official`/`deepseek-v4-flash` — override `DSH_HOME`/`DSH_TRANSCRIPT_DIR`/`DSH_MODEL`… via exported env). Its `npm run test` drives the wiring against a scripted turn client (no dsh process needed).
-- `npm run test:e2e -w @science-studio/web` — the web app's browser regression test: mocks the transport + workspace HTTP surface, loads history, clicks the Files panel and asserts the history survives (the re-render invariant above). Needs a Chromium (auto-detected; the test SKIPS without one) and `npm run build -w @science-studio/transport-client` first. Dev-only — NOT part of the root `npm test`.
+- `npm run test:e2e -w @science-studio/web` — the web app's regression suite, all of it in one command: the panel/history tests mock the transport + record + workspace HTTP surface and assert the re-render invariants, `test/scope-restore.test.mjs` asserts that a load resumes the remembered scope and never probes an id the record does not list (docs/adr/0009), and `test/scope-memory.test.mjs` is the browserless resolution table (no Chromium needed; it imports `lib/scope-memory.ts` through Node's type stripping). The browser ones run their own `next dev` with a PRIVATE build dir (`NEXT_DIST_DIR=.next-test`, read by `next.config.mjs`) so the suite can run while a developer's own `npm run dev` is up — two dev servers on one `.next` corrupt it. Next rewrites `next-env.d.ts`/`tsconfig.json` to match whichever dist dir ran last, so a suite run may leave those generated lines dirty; the next `npm run dev`/`next build` flips them back. They need a Chromium (auto-detected; they SKIP without one) and `npm run build -w @science-studio/transport-client` first. Dev-only — NOT part of the root `npm test`.
 - `npm run build` — build record → transport → workspace → contract-tests → transport-client → transport-openclaw → transport-dsh → transport-service; this is the real type gate
 - `npm run typecheck` — **known-broken**: fails in transport-service with pre-existing TS6310 (composite refs + `--noEmit`). Other workspaces pass; use `npm run build` for the service.
 - `npm run smoke:adapter` — connect a real openclaw adapter to a live gateway and drive one `chat.send` (sends a real message to `OPENCLAW_DEFAULT_SESSION` unless `SMOKE_SESSION` overrides it). Needs `npm run build` first.
@@ -263,6 +270,19 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   view of the SAME `RecordStore` the service reads identity from (`records` on
   `Backend`; both `localBackend` and the `{ adapters }` compat path share one
   instance).
+- **The remembered scope is chrome state, and it is only trusted after the record
+  confirms it** (docs/adr/0009). `apps/web/lib/scope-memory.ts` keeps
+  `{lastProjectId, sessions}` per browser in one versioned `localStorage` blob;
+  `setScope` on `studio-store.ts` is the ONLY way the scope changes, moving the
+  store, the memory and the URL together. Resolution prefers the URL's claim when
+  the record lists it, else the remembered Project, else the first Project, and a
+  Session from that Project's list (else its newest). It runs BEFORE the shell
+  renders: an unvalidated Session must never mount, because the mount probe
+  (`resolveOrCreateSession`) MINTS the Project and Session rows for an unknown key
+  rather than refusing it. Only an authoritative "no" prunes — a fetch failure
+  leaves the memory alone. The URL is MIRRORED with `history.replaceState`, never
+  navigated: a router navigation across route segments remounts the runtime owner
+  (and a mid-run switch then hits the one-in-flight-run 409).
 - **Keep the transport package React-free.** The shared client package
   (`@science-studio/transport-client`) owns the assistant-ui boundary as ONE
   session module: `useTransport` mounts the mount-time history probe and the
@@ -277,7 +297,16 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   starts an empty one, wiping the transcript (recovered only by a reload). Keep
   the hook's host state-free and memoized, with all UI state in a child below it
   (`apps/web/app/page.tsx`); `apps/web/test/workspace-panel-history.test.mjs` is
-  the regression guard.
+  the regression guard. **Its two stream requests (the mount probe and the
+  standing watch) are aborted on unmount** — the watch is an NDJSON stream that
+  never ends by itself, and the runtime is remounted on EVERY scope change (twice
+  per mount under dev StrictMode), so an un-aborted one is never reused: ~6
+  orphans fill the browser's per-origin connection pool (HTTP/1.1) and from then
+  on NO request to this origin can even start — the session list, the file
+  listing and the probe all queue forever and the workbench looks frozen
+  (the symptom of docs/adr/0009's scope switching). `apps/web/test/scope-switch-sockets.test.mjs`
+  is the regression guard: it serves the watch over a real socket, switches
+  Projects repeatedly, and asserts a same-origin request still starts.
 - **Adapters compose one shared run lifecycle** in `@science-studio/transport`
   (docs/adr/0005): `SessionRuntime` owns the run loop (reconcile-first, probe
   termination, user echo, flow drain), the settle pipeline (project →

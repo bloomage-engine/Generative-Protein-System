@@ -32,7 +32,8 @@ export function ProjectPanel() {
   const projects = useStudioStore((s) => s.projects);
   const setProjects = useStudioStore((s) => s.setProjects);
   const activeProjectId = useStudioStore((s) => s.projectId);
-  const sessions = useStudioStore((s) => s.sessions);
+  const panelProjectId = useStudioStore((s) => s.panelProjectId);
+  const sessions = useStudioStore((s) => s.panelSessions);
   const activeSessionId = useStudioStore((s) => s.activeSessionId);
 
   const [busy, setBusy] = React.useState(false);
@@ -52,16 +53,21 @@ export function ProjectPanel() {
     }
   }, [setProjects]);
 
+  // List a Project's Sessions for the PANE. Expanding is browsing, not
+  // switching: the scope moves only when a Session is double-clicked, so the
+  // conversation and the file tree stay where the user left them.
   const loadSessions = React.useCallback(async (projectId: string) => {
     setBusy(true);
     setError(null);
     try {
       const list = await fetchProjectSessions(PROJECTS_API, projectId);
       const store = useStudioStore.getState();
-      // A later switch (or a deep-link mount) owns the store now — its list wins.
-      if (store.projectId !== projectId) return;
-      store.setSessions(list);
-      store.setActiveSessionId(list[0]?.id ?? null);
+      // A later expansion (or a scope change) owns the pane now.
+      if (store.panelProjectId !== projectId) return;
+      store.setPanelSessions(list);
+      // The ACTIVE Project's list is also what the status bar and the top-bar
+      // search read, so a load for it feeds both.
+      if (store.projectId === projectId) store.setSessions(list);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -73,18 +79,28 @@ export function ProjectPanel() {
     if (projects === null) void loadProjects();
   }, [projects, loadProjects]);
 
-  const switchProject = (project: Project) => {
-    if (project.id === activeProjectId) return;
+  // The pane re-lists whatever it is expanded on and has nothing to show for —
+  // after an expansion, and after a commit moved it to another Project. This is
+  // the ONE owner of that load, so expanding never fetches twice.
+  React.useEffect(() => {
+    if (!panelProjectId) return;
+    if (useStudioStore.getState().panelSessions.length > 0) return;
+    void loadSessions(panelProjectId);
+  }, [panelProjectId, loadSessions]);
+
+  /** Expand/collapse a Project — the conversation does NOT follow. */
+  const toggleProject = (project: Project) => {
     const store = useStudioStore.getState();
-    store.setProjectId(project.id);
-    store.setSessions([]);
-    store.setActiveSessionId(null);
-    void loadSessions(project.id);
+    const expanding = store.panelProjectId !== project.id;
+    // Collapsing stays here; expanding is listed by the effect above.
+    store.setPanelProject(expanding ? project.id : null);
   };
 
+  /** Double-clicking a Session is what commits the scope. */
   const switchSession = (sessionId: string) => {
     const store = useStudioStore.getState();
-    store.setActiveSessionId(sessionId);
+    if (!store.panelProjectId) return;
+    store.setScope({ projectId: store.panelProjectId, sessionId });
     store.setLeftView("thread");
   };
 
@@ -98,9 +114,8 @@ export function ProjectPanel() {
       const project = await createProject(PROJECTS_API, trimmed);
       const store = useStudioStore.getState();
       store.setProjects([...(store.projects ?? []), project]);
-      store.setProjectId(project.id);
+      store.setScope({ projectId: project.id, sessionId: null });
       store.setSessions([]);
-      store.setActiveSessionId(null);
       setName("");
       setCreating(false);
     } catch (err) {
@@ -111,15 +126,17 @@ export function ProjectPanel() {
   };
 
   const addSession = async () => {
-    if (!activeProjectId) return;
+    // The pane creates into the Project it is expanded on — the one the user is
+    // looking at — and then commits to the new Session.
+    if (!panelProjectId) return;
     setBusy(true);
     setError(null);
     try {
-      const session = await createSession(PROJECTS_API, activeProjectId);
+      const session = await createSession(PROJECTS_API, panelProjectId);
       const store = useStudioStore.getState();
-      if (store.projectId !== activeProjectId) return;
-      store.setSessions([...store.sessions, session]);
-      store.setActiveSessionId(session.id);
+      if (store.panelProjectId !== panelProjectId) return;
+      store.setPanelSessions([...store.panelSessions, session]);
+      store.setScope({ projectId: panelProjectId, sessionId: session.id });
       store.setLeftView("thread");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -179,9 +196,9 @@ export function ProjectPanel() {
               type="button"
               className="text-primary mt-1 underline-offset-2 hover:underline"
               onClick={() =>
-                void (projects === null || !activeProjectId
+                void (projects === null || !panelProjectId
                   ? loadProjects()
-                  : loadSessions(activeProjectId))
+                  : loadSessions(panelProjectId))
               }
             >
               Retry
@@ -197,12 +214,14 @@ export function ProjectPanel() {
         <ul className="flex flex-col gap-0.5">
           {list.map((project) => {
             const active = project.id === activeProjectId;
+            const expanded = project.id === panelProjectId;
             return (
               <li key={project.id}>
                 <button
                   type="button"
-                  onClick={() => switchProject(project)}
+                  onClick={() => toggleProject(project)}
                   aria-current={active ? "true" : undefined}
+                  aria-expanded={expanded}
                   className={cn(
                     "hover:bg-muted flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-start text-sm",
                     active && "bg-muted font-medium",
@@ -211,12 +230,12 @@ export function ProjectPanel() {
                   <ChevronRight
                     className={cn(
                       "text-muted-foreground size-3.5 shrink-0 transition-transform",
-                      active && "rotate-90",
+                      expanded && "rotate-90",
                     )}
                   />
                   <span className="min-w-0 flex-1 truncate">{project.name}</span>
                 </button>
-                {active && (
+                {expanded && (
                   <SessionList
                     sessions={sessions}
                     activeSessionId={activeSessionId}
@@ -234,7 +253,7 @@ export function ProjectPanel() {
   );
 }
 
-/** The active Project's Sessions, indented under it, with its "new Session" row. */
+/** The expanded Project's Sessions, indented under it, with its "new Session" row. */
 function SessionList({
   sessions,
   activeSessionId,
@@ -245,6 +264,7 @@ function SessionList({
   sessions: Session[];
   activeSessionId: string | null;
   busy: boolean;
+  /** Commit the scope to this Session — bound to the DOUBLE click (see below). */
   onPick: (id: string) => void;
   onCreate: () => void;
 }) {
@@ -252,9 +272,22 @@ function SessionList({
     <ul className="border-border/70 ms-3 mb-1 flex flex-col gap-0.5 border-s ps-1">
       {sessions.map((session) => (
         <li key={session.id}>
+          {/*
+            A double click opens the Session: a single click only happens on the
+            way there, and would otherwise steal the scope while the user is
+            still choosing — which is exactly the Project-row bug this mirrors.
+            Keyboard activation (Enter/Space) keeps the row operable without a
+            pointer, since a button's own click is deliberately inert here.
+          */}
           <button
             type="button"
-            onClick={() => onPick(session.id)}
+            title="Double-click to open this Session"
+            onDoubleClick={() => onPick(session.id)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              onPick(session.id);
+            }}
             className={cn(
               "hover:bg-muted flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-start text-xs",
               session.id === activeSessionId && "bg-accent text-accent-foreground",
