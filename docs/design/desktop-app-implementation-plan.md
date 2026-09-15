@@ -1263,16 +1263,26 @@ app.on("window-all-closed", () => {
 Add these scripts to `apps/desktop/package.json`:
 
 ```json
-"build:host": "esbuild src/server/host-main.ts --bundle --platform=node --format=esm --target=node20 --outfile=build/host/host.mjs --external:electron && cp ../../packages/transport-dsh/dist/bridge-plugin.js build/host/ && cp ../../packages/transport-dsh/dist/project-plugin.js build/host/",
+"build:host": "esbuild src/server/host-main.ts --bundle --platform=node --format=esm --target=node20 --outfile=build/host/host.mjs --external:electron --external:@deepseek-ai/dsh-sdk-client --external:@deepseek-ai/dsh --external:@deepseek-ai/dsh-llm --external:@deepseek-ai/dsh-session --external:dotenv --banner:js=\"import { createRequire } from 'module'; process.argv[1]=''; const require = createRequire(import.meta.url);\" && cp ../../packages/transport-dsh/dist/bridge-plugin.js build/host/ && cp ../../packages/transport-dsh/dist/project-plugin.js build/host/",
 "build:web": "npm --prefix ../.. run build:web:standalone",
 "build:desktop": "npm run build:host && npm run build:web"
 ```
 
-`host.mjs` bundles the transport-service (with the dsh plugins injected in
-Task 1) and Node builtins stay external. The two dsh child plugins are copied
-next to the bundle because the adapter locates them via
-`new URL("./bridge-plugin.js", import.meta.url)` — which, bundled, resolves to
-the bundle's own directory.
+Bundling rules learned while building this (do not "simplify" them away):
+
+- **The `@deepseek-ai/*` SDK and `dotenv` MUST stay external.** The SDK resolves
+  its own `package.json` via `new URL("../package.json", import.meta.url)`; inlined
+  into the bundle that path is `build/package.json` and the host dies with ENOENT.
+  Keeping them external makes Node resolve them from `node_modules` (dev: the
+  hoisted repo root; packaged: see Task 12's `NODE_PATH`).
+- **The banner is load-bearing.** `process.argv[1]=''` stops the bundled
+  transport-service's `isMain` guard from self-starting a SECOND service on the
+  default runtime; `createRequire` is required because bundled `fastify`/`avvio`
+  contain dynamic `require` calls that fail with `Dynamic require of "node:events"`
+  under esbuild's ESM output.
+- **The two dsh child plugins are copied next to the bundle** because the adapter
+  locates them via `new URL("./bridge-plugin.js", import.meta.url)` — which,
+  bundled, resolves to the bundle's own directory.
 
 - [ ] **Step 5: Manual dev smoke (no packaging yet)**
 
@@ -1495,6 +1505,34 @@ linux:
     - deb
   category: Science
 ```
+
+- [ ] **Step 1b: Make the externalized SDK resolvable in the packaged app**
+
+`build:host` leaves `@deepseek-ai/*` and `dotenv` external (Task 10), so the host
+must find them at runtime. In dev, Node walks up to the hoisted repo
+`node_modules`; packaged, they live in the app's `node_modules` inside
+`app.asar`. Electron-as-node reads asar, so point `NODE_PATH` at it when packaged.
+
+In `apps/desktop/src/main/index.ts`, in `boot()`, after `buildChildEnv(...)`, add:
+
+```ts
+if (app.isPackaged) {
+  env.NODE_PATH = join(app.getAppPath(), "node_modules");
+}
+```
+
+(`app.getAppPath()` is the `app.asar` path; `join` and `app` are already imported
+in that file.)
+
+Then verify the packaged tree actually contains those packages after Step 4:
+`ls apps/desktop/release/linux-unpacked/resources/app.asar.unpacked 2>/dev/null`;
+electron-builder ships production dependencies of the workspace's
+`@science-studio/transport-dsh` into the asar. If `@deepseek-ai/dsh-sdk-client`
+is absent from the packaged app, add it (and `@deepseek-ai/dsh`) to
+`apps/desktop/package.json` `dependencies` so electron-builder collects them, and
+re-pack. Confirm by unpacking the asar (`npx asar list
+release/linux-unpacked/resources/app.asar | grep dsh-sdk-client`) — do NOT mark
+the task done until the SDK is present in the artifact.
 
 - [ ] **Step 2: Write the failing test**
 
