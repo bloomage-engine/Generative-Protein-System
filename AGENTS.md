@@ -63,7 +63,12 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   only loads `DESKTOP_DEV_URL`, so a real turn depends on the already-running dev
   pair's own `.env` route — the Settings page and `<userData>/config.env` are a
   packaged-app path only. The packaged app needs `dsh` on PATH and a route
-  configured in Settings.
+  configured in Settings. On a host whose setuid `chrome-sandbox` helper is not
+  root-owned (containers, most CI/dev boxes), Electron aborts with
+  "The SUID sandbox helper binary ... is not configured correctly"; the `dev`/
+  `start` scripts default to `--no-sandbox` for this (`DESKTOP_ELECTRON_FLAGS=`
+  opts out, and the secure alternative is
+  `sudo chown root:root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 ...`).
 - Record layer: the v1 record is `Project` → `Session` → `Run` (docs/adr/0007).
   Project/Session/Run routes live on the same service (`/api/projects*`), and the
   store is persistent by default — `RECORD_STORE_PATH` (default
