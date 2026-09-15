@@ -1,0 +1,31 @@
+appId: ss.hx-engine.com
+productName: Science Studio
+executableName: science-studio
+npmRebuild: false
+directories:
+  output: release
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  - from: build/host
+    to: host
+  - from: ../web/.next/standalone
+    to: next
+  - from: ../web/.next/static
+    to: next/apps/web/.next/static
+  - from: ../web/public
+    to: next/apps/web/public
+mac:
+  target:
+    - dmg
+  category: public.app-category.productivity
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Science
+deb:
+  packageName: science-studio
+  maintainer: Science Studio
+  artifactName: science-studio_${version}_${arch}.${ext}

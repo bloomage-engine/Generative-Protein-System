@@ -46,6 +46,9 @@ async function boot(): Promise<HostPorts> {
   const p = paths();
   await mkdir(p.userDataDir, { recursive: true });
   const env = buildChildEnv({ base: process.env, config: await readConfig(), paths: p });
+  if (app.isPackaged) {
+    env.NODE_PATH = join(app.getAppPath(), "node_modules");
+  }
   const { ports, child } = await forkHost({
     hostEntry: hostEntryPath(appRoot),
     nextDir: nextDir(),
