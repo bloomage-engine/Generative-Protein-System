@@ -8,6 +8,7 @@ import { resolveDesktopPaths, type DesktopPaths } from "../shared/paths.js";
 import { buildChildEnv, parseConfigEnv, serializeConfigEnv, type DesktopConfig } from "../shared/config.js";
 import { detectDsh } from "../shared/dsh.js";
 import { runtimeStatus } from "../shared/runtime-status.js";
+import { singleFlight } from "../shared/single-flight.js";
 import { augmentPath } from "../shared/env-path.js";
 import { forkHost, type HostPorts } from "./host-child.js";
 import { resolveResourcePaths } from "./resource-paths.js";
@@ -177,15 +178,29 @@ function restart(): Promise<HostPorts | null> {
   return inFlight;
 }
 
-async function openWorkbench(): Promise<void> {
+async function doOpenWorkbench(): Promise<void> {
   const dev = devUrl();
   if (dev) {
     showWorkbench(dev, { retry: true });
     return;
   }
+  const pendingRestart = restartInFlight;
+  if (pendingRestart) {
+    const ports = await pendingRestart;
+    if (ports) {
+      showWorkbench(localUrl(ports));
+      return;
+    }
+  }
+  if (host && hostPorts) {
+    showWorkbench(localUrl(hostPorts));
+    return;
+  }
   const ports = await boot();
   showWorkbench(localUrl(ports));
 }
+
+const openWorkbench = singleFlight(doOpenWorkbench);
 
 function openSettings(): void {
   if (settings) {
@@ -236,7 +251,13 @@ function registerIpc(): void {
   ipcMain.handle("desktop:runtimeStatus", async () =>
     runtimeStatus({ dshPath: detectDsh({ pathEnv: pathEnv() }), config: await readConfig() }),
   );
-  ipcMain.handle("desktop:openWorkbench", () => openWorkbench());
+  ipcMain.handle("desktop:openWorkbench", async () => {
+    try {
+      await openWorkbench();
+    } catch (err) {
+      console.error("[desktop] openWorkbench failed", err);
+    }
+  });
   ipcMain.handle("desktop:openPath", async (_event, path: string) => {
     await shell.openPath(path);
   });
@@ -260,7 +281,7 @@ void app
         showWorkbench(localUrl(hostPorts));
         return;
       }
-      void openWorkbench();
+      void openWorkbench().catch((err) => console.error("[desktop] openWorkbench failed", err));
     });
   })
   .catch((err) => {
