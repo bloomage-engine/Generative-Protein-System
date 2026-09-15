@@ -36,9 +36,11 @@ model route the Researcher configures in an in-app Settings page.
   - **One forked child hosts both servers.** Electron main `fork`s a small
     entrypoint that starts the transport-service (`createTransportService`) and
     the Next standalone server; the two keep talking over loopback exactly as in
-    dev, so no transport or proxy code changes. Main supervises (restart on
-    crash, kill on quit) and owns the window. Two single-purpose children were
-    rejected as more lifecycle for no isolation we need.
+    dev, so no transport or proxy code changes. Main kills the child on quit,
+    reaps it on restart, owns the window, and logs an unexpected child exit — it
+    does NOT auto-restart; the menu's "Restart Service" is the recovery. Two
+    single-purpose children were rejected as more lifecycle for no isolation we
+    need.
   - **Loopback ephemeral ports, never 3000/3001.** Both servers bind `127.0.0.1`
     port `0`; the child reports the assigned ports to main over IPC and the
     window loads the reported Next URL. A developer's own `npm run dev` pair can

@@ -10,4 +10,6 @@ test("builder config ships the host bundle and the next standalone tree", async 
   assert.match(text, /from: \.\.\/web\/\.next\/standalone\s*\n\s*to: next/);
   assert.match(text, /to: next\/apps\/web\/\.next\/static/);
   assert.match(text, /to: next\/apps\/web\/public/);
+  assert.match(text, /mac:\s*\n\s*target:\s*\n\s*- dmg/);
+  assert.match(text, /linux:\s*\n\s*target:\s*\n\s*- AppImage\s*\n\s*- deb/);
 });

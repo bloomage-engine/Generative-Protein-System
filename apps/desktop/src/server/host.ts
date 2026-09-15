@@ -28,8 +28,18 @@ export async function startHost(options: {
     webPort: web.port,
     apiPort: api.port,
     async close() {
-      await web.close();
-      await api.close();
+      let firstError: unknown;
+      try {
+        await web.close();
+      } catch (err) {
+        firstError = err;
+      }
+      try {
+        await api.close();
+      } catch (err) {
+        if (firstError === undefined) firstError = err;
+      }
+      if (firstError !== undefined) throw firstError;
     },
   };
 }

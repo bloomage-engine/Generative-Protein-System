@@ -15,7 +15,7 @@
     "test": "node --import tsx --test test/*.test.ts test/*.test.mjs",
     "dev": "npm run build && DESKTOP_DEV_URL=${DESKTOP_DEV_URL:-http://localhost:3000} electron .",
     "start": "npm run build && electron .",
-    "pack": "npm run build && npm run build:desktop && electron-builder"
+    "pack": "npm --prefix ../.. run build && npm run build && npm run build:desktop && electron-builder"
   },
   "dependencies": {
     "@science-studio/transport": "*",

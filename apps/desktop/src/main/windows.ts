@@ -11,10 +11,9 @@ export function createWorkbenchWindow(url: string): BrowserWindow {
     title: "Science Studio",
     backgroundColor: "#0b0b0b",
     webPreferences: {
-      preload: join(here, "..", "preload", "index.mjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   });
   void win.loadURL(url);

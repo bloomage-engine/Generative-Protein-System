@@ -1,5 +1,4 @@
 import { fork, type ChildProcess } from "node:child_process";
-import { join } from "node:path";
 
 export interface HostPorts {
   webPort: number;
@@ -22,29 +21,36 @@ export function forkHost(input: {
   child.stdout?.on("data", (d: Buffer) => input.onLine?.(d.toString()));
   child.stderr?.on("data", (d: Buffer) => input.onLine?.(d.toString()));
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(new Error("desktop host did not become ready within 60s"));
-    }, 60_000);
-    child.on("message", (message) => {
+    let timer: NodeJS.Timeout | undefined;
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      child.off("message", onMessage);
+      child.off("error", onError);
+      child.off("exit", onExit);
+    };
+    const onMessage = (message: unknown) => {
       const m = message as { type?: string; webPort?: number; apiPort?: number };
       if (m?.type === "ready" && typeof m.webPort === "number" && typeof m.apiPort === "number") {
-        clearTimeout(timer);
+        cleanup();
         resolve({ ports: { webPort: m.webPort, apiPort: m.apiPort }, child });
       }
-    });
-    child.on("error", (err) => {
-      clearTimeout(timer);
+    };
+    const onError = (err: Error) => {
+      cleanup();
       if (child.pid !== undefined) child.kill("SIGTERM");
       reject(err);
-    });
-    child.on("exit", (code) => {
-      clearTimeout(timer);
+    };
+    const onExit = (code: number | null) => {
+      cleanup();
       reject(new Error(`desktop host exited (${code ?? "signal"})`));
-    });
+    };
+    timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      cleanup();
+      reject(new Error("desktop host did not become ready within 60s"));
+    }, 60_000);
+    child.once("message", onMessage);
+    child.once("error", onError);
+    child.once("exit", onExit);
   });
-}
-
-export function hostEntryPath(appRoot: string): string {
-  return join(appRoot, "build", "host", "host.mjs");
 }

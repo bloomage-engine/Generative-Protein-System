@@ -45,3 +45,25 @@ test("startHost wires the web server to the api port and closes both", async () 
 test("readyMessage has the shape the fork parent listens for", () => {
   assert.deepEqual(readyMessage({ webPort: 1, apiPort: 2 }), { type: "ready", webPort: 1, apiPort: 2 });
 });
+
+test("close still closes the api when the web close rejects, preserving the first error", async () => {
+  let apiClosed = false;
+  const host = await startHost({
+    nextDir: "/unused",
+    env: {},
+    startApi: async () => ({
+      port: 1234,
+      close: async () => {
+        apiClosed = true;
+      },
+    }),
+    startWeb: async () => ({
+      port: 45678,
+      close: async () => {
+        throw new Error("web boom");
+      },
+    }),
+  });
+  await assert.rejects(() => host.close(), /web boom/);
+  assert.equal(apiClosed, true);
+});

@@ -7,7 +7,9 @@ import type { ChildProcess } from "node:child_process";
 import { resolveDesktopPaths, type DesktopPaths } from "../shared/paths.js";
 import { buildChildEnv, parseConfigEnv, serializeConfigEnv, type DesktopConfig } from "../shared/config.js";
 import { detectDsh } from "../shared/dsh.js";
-import { forkHost, hostEntryPath, type HostPorts } from "./host-child.js";
+import { augmentPath } from "../shared/env-path.js";
+import { forkHost, type HostPorts } from "./host-child.js";
+import { resolveResourcePaths } from "./resource-paths.js";
 import { createConfigWindow, createWorkbenchWindow } from "./windows.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -17,9 +19,15 @@ let workbench: BrowserWindow | null = null;
 let settings: BrowserWindow | null = null;
 let host: ChildProcess | null = null;
 let hostPorts: HostPorts | null = null;
+let quitting = false;
+let restartInFlight: Promise<HostPorts | null> | null = null;
 
 function paths(): DesktopPaths {
   return resolveDesktopPaths({ userDataDir: app.getPath("userData"), homeDir: homedir() });
+}
+
+function pathEnv(): string {
+  return augmentPath(process.env.PATH, homedir());
 }
 
 async function readConfig(): Promise<DesktopConfig> {
@@ -36,32 +44,31 @@ async function writeConfig(config: DesktopConfig): Promise<void> {
   await writeFile(p.configPath, serializeConfigEnv(config), "utf8");
 }
 
-function nextDir(): string {
-  if (process.env.DESKTOP_NEXT_DIR) return process.env.DESKTOP_NEXT_DIR;
-  if (app.isPackaged) return join(process.resourcesPath, "next", "apps", "web");
-  return join(appRoot, "..", "web", ".next", "standalone", "apps", "web");
-}
-
 async function boot(): Promise<HostPorts> {
   const p = paths();
   await mkdir(p.userDataDir, { recursive: true });
   const env = buildChildEnv({ base: process.env, config: await readConfig(), paths: p });
+  env.PATH = pathEnv();
   if (app.isPackaged) {
     env.NODE_PATH = join(app.getAppPath(), "node_modules");
   }
+  const resources = resolveResourcePaths({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appRoot });
   const { ports, child } = await forkHost({
-    hostEntry: hostEntryPath(appRoot),
-    nextDir: nextDir(),
+    hostEntry: resources.hostEntry,
+    nextDir: process.env.DESKTOP_NEXT_DIR ?? resources.nextDir,
     cwd: p.userDataDir,
     env,
     onLine: (line) => process.stderr.write(`[desktop-host] ${line}`),
   });
   host = child;
   hostPorts = ports;
-  child.on("exit", () => {
+  child.on("exit", (code) => {
     if (host === child) {
       host = null;
       hostPorts = null;
+    }
+    if (!quitting && restartInFlight === null) {
+      console.error("[desktop] host exited unexpectedly", code);
     }
   });
   return ports;
@@ -107,7 +114,7 @@ function showWorkbench(url: string): void {
   });
 }
 
-async function restart(): Promise<HostPorts | null> {
+async function doRestart(): Promise<HostPorts | null> {
   const dev = devUrl();
   if (dev) {
     showWorkbench(dev);
@@ -117,6 +124,20 @@ async function restart(): Promise<HostPorts | null> {
   const ports = await boot();
   showWorkbench(localUrl(ports));
   return ports;
+}
+
+function restart(): Promise<HostPorts | null> {
+  if (restartInFlight) return restartInFlight;
+  const inFlight = doRestart()
+    .catch((err) => {
+      console.error("[desktop] restart failed", err);
+      return null;
+    })
+    .finally(() => {
+      restartInFlight = null;
+    });
+  restartInFlight = inFlight;
+  return inFlight;
 }
 
 async function openWorkbench(): Promise<void> {
@@ -174,7 +195,7 @@ function registerIpc(): void {
     await writeConfig(config);
     return readConfig();
   });
-  ipcMain.handle("desktop:detectDsh", () => detectDsh());
+  ipcMain.handle("desktop:detectDsh", () => detectDsh({ pathEnv: pathEnv() }));
   ipcMain.handle("desktop:openPath", async (_event, path: string) => {
     await shell.openPath(path);
   });
@@ -187,7 +208,7 @@ void app
     registerIpc();
     installMenu();
     const missingConfig = (await readFile(paths().configPath, "utf8").catch(() => "")).length === 0;
-    if (!devUrl() && (missingConfig || !detectDsh())) {
+    if (!devUrl() && (missingConfig || !detectDsh({ pathEnv: pathEnv() }))) {
       openSettings();
     } else {
       await openWorkbench();
@@ -209,7 +230,6 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-let quitting = false;
 app.on("before-quit", (event) => {
   if (quitting) return;
   event.preventDefault();

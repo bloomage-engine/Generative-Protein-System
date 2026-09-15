@@ -59,8 +59,11 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   (`DESKTOP_DEV_URL`, default http://localhost:3000). The packaged app instead
   builds `apps/web` with `NEXT_OUTPUT=standalone` (`npm run build:web:standalone`)
   and hosts both servers itself. Packaging: `npm run pack -w @science-studio/desktop`
-  (electron-builder; `dmg` on macOS, `AppImage`/`deb` on Linux). Dev-only claim:
-  `dsh` must be on PATH and a route configured in Settings for a real turn.
+  (electron-builder; `dmg` on macOS, `AppImage`/`deb` on Linux). In dev the shell
+  only loads `DESKTOP_DEV_URL`, so a real turn depends on the already-running dev
+  pair's own `.env` route — the Settings page and `<userData>/config.env` are a
+  packaged-app path only. The packaged app needs `dsh` on PATH and a route
+  configured in Settings.
 - Record layer: the v1 record is `Project` → `Session` → `Run` (docs/adr/0007).
   Project/Session/Run routes live on the same service (`/api/projects*`), and the
   store is persistent by default — `RECORD_STORE_PATH` (default
