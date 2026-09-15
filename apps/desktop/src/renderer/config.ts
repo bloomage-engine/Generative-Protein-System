@@ -1,5 +1,5 @@
 import type { ScienceStudioDesktopApi } from "../preload/index.mjs";
-import type { DesktopConfig } from "../shared/config.js";
+import { parseConfigEnv, type DesktopConfig } from "../shared/config.js";
 import { runtimeStatus } from "../shared/runtime-status.js";
 
 declare global {
@@ -130,14 +130,7 @@ async function render(): Promise<void> {
     event.preventDefault();
     statusLine.textContent = "";
     const data = new FormData(form);
-    const parsedVars: Record<string, string> = {};
-    for (const line of String(data.get("vars") ?? "").split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eq = trimmed.indexOf("=");
-      if (eq <= 0) continue;
-      parsedVars[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim();
-    }
+    const parsedVars = parseConfigEnv(String(data.get("vars") ?? "")).vars ?? {};
     const nextConfig = {
       ...(String(data.get("provider") ?? "").trim() ? { provider: String(data.get("provider")).trim() } : {}),
       ...(String(data.get("model") ?? "").trim() ? { model: String(data.get("model")).trim() } : {}),

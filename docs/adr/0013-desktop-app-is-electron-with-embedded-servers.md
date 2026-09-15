@@ -50,14 +50,18 @@ model route the Researcher configures in an in-app Settings page.
     Electron `extraResources`. This preserves the streaming `/api` proxies, the
     query-first Project/Session scope, and the one-relay policy untouched.
   - **dsh is the desktop runtime, with a user-configured route.** No model
-    weights and no `dsh` binary are bundled. A Settings page writes the route
-    (provider, model, baseURL, credential) to `<userData>/config.env`, which the
+    weights and no `dsh` binary are bundled. A Settings page writes the provider,
+    the model and credential/extra env vars to `<userData>/config.env`, which the
     child reads and re-exports as the launch-only `DSH_*` names (the harness
     child hard-refuses those keys in a project `.env`, so they must come from the
-    launcher env). `openclaw` remains configurable, not defaulted.
+    launcher env). The provider ROUTE — its endpoint and models — stays
+    harness-side in `settings.yaml`; there is no `baseURL` field. `openclaw`
+    remains configurable, not defaulted.
   - **Detect `dsh`, degrade friendly.** At startup the app probes `dsh` on PATH;
-    when it is missing or the route is unreachable, the workbench shows a setup
-    screen and disables sending rather than failing a run.
+    when it is missing or `config.env` is empty, the app opens the Settings
+    window instead of the workbench. Reachability is not probed and sending is
+    not blocked — both are explicit deferrals, signalled by the workbench's
+    runtime chip.
   - **Data directories are the app's, with Projects user-visible.** Project Root
     defaults to `~/Documents/Science Studio/projects/<projectId>/` so research
     files are findable and backable-up; app-internal state (the JSONL record

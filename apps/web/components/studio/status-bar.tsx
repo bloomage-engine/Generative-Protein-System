@@ -91,7 +91,14 @@ function RuntimeChip() {
 
   if (!present) return null;
   const ready = status?.ready === true;
-  const label = status === null ? "runtime: …" : ready ? "runtime: ready" : "runtime: dsh missing";
+  const label =
+    status === null
+      ? "runtime: …"
+      : ready
+        ? "runtime: ready"
+        : status.dshPath === null
+          ? "runtime: dsh missing"
+          : "runtime: route not configured";
   const route = status?.provider && status.model ? `${status.provider} / ${status.model}` : "not set";
 
   return (

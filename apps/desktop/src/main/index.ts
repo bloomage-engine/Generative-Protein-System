@@ -25,7 +25,7 @@ let quitting = false;
 let restartInFlight: Promise<HostPorts | null> | null = null;
 
 function paths(): DesktopPaths {
-  return resolveDesktopPaths({ userDataDir: app.getPath("userData"), homeDir: homedir() });
+  return resolveDesktopPaths({ userDataDir: app.getPath("userData"), homeDir: homedir(), env: process.env });
 }
 
 function pathEnv(): string {
