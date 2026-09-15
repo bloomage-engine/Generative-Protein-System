@@ -56,6 +56,7 @@ export class FsWorkspace implements Workspace {
 
   async list(relPath = "", _opts: { depth?: number } = {}): Promise<DirListing> {
     const rel = normalizeWorkspacePath(relPath);
+    if (rel === "") await this.ensureRoot();
     const { abs } = await this.resolveExisting(rel);
     const dirents = await readdir(abs, { withFileTypes: true });
 
@@ -154,6 +155,27 @@ export class FsWorkspace implements Workspace {
       throw err;
     }
     return this.stat(rel);
+  }
+
+  /**
+   * Ensure the workspace root directory exists. Called on `list("")` so a
+   * Project whose `<PROJECT_ROOT>/<projectId>/` has never been touched —
+   * e.g. freshly created via the record layer, agent-side not yet — still
+   * yields an EMPTY listing, not a 404. `mkdir -p` is idempotent so a
+   * subsequent call is a no-op. Sub-paths are intentionally NOT created here:
+   * they remain 404 until a `write` (which does their own `prepareParent`)
+   * materializes them.
+   */
+  private async ensureRoot(): Promise<void> {
+    try {
+      await mkdir(this.root, { recursive: true });
+    } catch (err) {
+      // If the root can't be created (permissions, read-only fs, invalid
+      // parent), surface it as the same WorkspaceNotFoundError that
+      // `resolveExisting` would emit, so the caller's error handling stays
+      // the single code path.
+      throw new WorkspaceNotFoundError("");
+    }
   }
 
   /** realpath the root (it may itself be a symlink, e.g. a macOS tmp dir). */

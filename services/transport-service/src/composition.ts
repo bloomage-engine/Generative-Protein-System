@@ -197,30 +197,37 @@ async function localBackend(env: NodeJS.ProcessEnv): Promise<Backend> {
     });
   }
 
-  // One adapter serves every Project (see the Phase 2.6 note in
-  // docs/design/implementation-plan.md: per-Project provisioning — a distinct
-  // harness child/cwd per Project — is the follow-up).
-  const adapter = plugin.factory.create(binding);
-  // Init runs in the BACKGROUND, exactly like the pre-seam service: a slow or
-  // unreachable runtime must not delay startup. The adapter's own `run()` awaits
-  // its readiness, so requests arriving during init wait rather than fail.
-  void adapter
-    .init({
-      binding,
-      recordStore: toRecordStoreLike(records),
-      workspace: localWorkspace(env, recordDefaults.projectId),
-      env: { ...env },
-    })
-    .catch((err) => console.error("[transport-service] adapter init failed", err));
+  // One environment per Project, built lazily by the provider below: an
+  // adapter's workspace-derived launch surface is fixed at `init` (for dsh the
+  // harness child's cwd IS `workspace.toAgentPath("")`, and both runtimes map a
+  // workspace attachment through the same object), so a shared adapter could
+  // only ever serve ONE Project's directory — the default Project's — and every
+  // other Project would run in the wrong place. A Project's Sessions share the
+  // adapter built for it (and, for dsh, one harness child with that cwd).
+  const recordStore = toRecordStoreLike(records);
+  const environments = new LocalEnvironmentProvider({
+    environmentFor: async (projectId) => {
+      const workspace = localWorkspace(env, projectId);
+      const adapter = plugin.factory.create(binding);
+      // Init runs in the BACKGROUND, exactly like the pre-seam service: a slow
+      // or unreachable runtime must not delay the request that first names the
+      // Project. The adapter's own `run()` awaits its readiness, so a request
+      // arriving during init waits rather than fails.
+      void adapter
+        .init({ binding, recordStore, workspace, env: { ...env } })
+        .catch((err) =>
+          console.error(
+            `[transport-service] adapter init failed for project "${projectId}"`,
+            err,
+          ),
+        );
+      return { adapter, workspace };
+    },
+  });
 
   return {
     principal: new LocalPrincipalResolver(),
-    environments: new LocalEnvironmentProvider({
-      environmentFor: async (projectId) => ({
-        adapter,
-        workspace: localWorkspace(env, projectId),
-      }),
-    }),
+    environments,
     cors: { origin: true },
     records,
     recordDefaults,

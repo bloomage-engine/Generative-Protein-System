@@ -1,8 +1,8 @@
 # Research Agent Framework — Implementation Plan
 
-Status: active — **Phases 0–2.5 implemented** (`npm run build` green; 191 tests
-across 9 suites green); **Phase 2.6 (docs/adr/0006, 0007) is the next OSS phase,
-not yet built**. Companion to [`research-agent-framework.md`](./research-agent-framework.md)
+Status: active — **Phases 0–2.6 implemented** (`npm run build` green; 235 tests
+across the workspace suites green); the startup `PROJECT_ROOT` scan is the one
+remaining 2.6 item. Companion to [`research-agent-framework.md`](./research-agent-framework.md)
 (design rev 4) and [`research-agent-framework.zh.md`](./research-agent-framework.zh.md).
 
 Strategy: **single-user first, end to end.** Multi-user is never built now; it
@@ -211,7 +211,9 @@ env-constant identity.
     and carry `projectId` through `SessionState` (`resolveSessionKey` stays on the
     adapter). **One adapter serves the user, not the Project** — the child cwd is
     the deployment's agent root — so no adapter file changed beyond the shared
-    `Run`/`SessionState` types.
+    `Run`/`SessionState` types. *(Revised by docs/adr/0008: an adapter's
+    workspace-derived launch surface is fixed at `init`, so a shared adapter can
+    only serve the default Project — provisioning is per Project.)*
 19. ✅ Service composition + directory. `composition.ts`: `PROJECT_ROOT` /
     `PROJECT_AGENT_ROOT`; `RECORD_STORE_PATH` (default
     `$XDG_DATA_HOME/science-studio/record.jsonl`) / `RECORD_STORE=memory`;
@@ -219,10 +221,12 @@ env-constant identity.
     the `project-default` project; on startup, a read-only scan of `PROJECT_ROOT`
     that warns about unregistered directories (record is truth — never
     auto-import). The local environment provider takes an `environmentFor`
-    builder and caches one `{ adapter, workspace }` per Project — **one shared
-    adapter**, a per-Project workspace. `createSessionResolver` is replaced by
-    `directory.ts` (explicit `createProject`/`createSession`, plus
-    `resolveOrCreateSession` for first use). *Not yet done:* the startup scan.
+    builder and caches one `{ adapter, workspace }` per Project — one workspace
+    per Project and (docs/adr/0008) **one adapter per Project**, each initialized
+    with its own Project's workspace, built lazily on first use and initialized
+    in the background. `createSessionResolver` is replaced by `directory.ts`
+    (explicit `createProject`/`createSession`, plus `resolveOrCreateSession` for
+    first use). *Not yet done:* the startup scan.
 20. ✅ Service routes: `POST /api/projects`, `GET /api/projects`,
     `POST /api/projects/:id/sessions`, `GET /api/projects/:id/sessions`,
     `GET /api/projects/:id/runs` (the Run rollup). `POST /api/transport` acquires
@@ -247,17 +251,20 @@ env-constant identity.
     and the watch proxy forwards `projectId` (not just `project`).
 23. ✅ `.env.example` (service) updated for the renamed env: `WORKSPACE_ROOT` /
     `WORKSPACE_AGENT_ROOT` → `PROJECT_ROOT` / `PROJECT_AGENT_ROOT`, documenting
-    the per-Project layout (`<PROJECT_ROOT>/<projectId>/`) and the alignment
-    caveat with `DSH_WORKSPACE` (one adapter serves every Project, so the agent
-    cwd is the deployment root; see docs/adr/0006). The examples need no change:
-    they omit `projectId` and land on the default Project.
+    the per-Project layout (`<PROJECT_ROOT>/<projectId>/`). The examples need no
+    change: they omit `projectId` and land on the default Project. *(The
+    `DSH_WORKSPACE` alignment caveat this item shipped is gone: with one adapter
+    per Project (docs/adr/0008) the dsh child's cwd is the Project's own agent
+    directory.)*
 
 **Done so far:** `npm run build` is green; every workspace suite passes
-(record 4, transport 48, workspace 15, contract-tests 15, transport-client 27,
-openclaw 50, dsh 24, service 30, examples 3 + 2) except a known FLAKY
+(record 4, transport 48, workspace 18, contract-tests 15, transport-client 27,
+openclaw 50, dsh 27, service 41, examples 3 + 2) except a known FLAKY
 `transport-openclaw` subscribe test under full-suite load; `POST /api/projects` +
 `POST /api/projects/:id/sessions` yields a session whose workspace is
-`<PROJECT_ROOT>/<projectId>/`; two sessions in one project see each other's files;
+`<PROJECT_ROOT>/<projectId>/`, and its agent's cwd is the SAME directory (one
+adapter per Project, built lazily — docs/adr/0008); two sessions in one project
+see each other's files;
 the JSONL store restores the project/session lists and their Runs across a
 restart; no `Study`/`Task`/`Artifact` symbol remains in the tree.
 

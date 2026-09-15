@@ -100,7 +100,26 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     const env = (key: string): string | undefined => process.env[key];
     const profile = binding.profile ?? env("DSH_PROFILE") ?? DEFAULT_PROFILE;
     const dshHome = binding.home ?? env("DSH_HOME");
-    const cwd = binding.workspace ?? env("DSH_WORKSPACE") ?? process.cwd();
+    // The agent's working directory MUST be the active Project's workspace —
+    // the SAME place the Files browser lists (composition's
+    // `localWorkspace` → `FsWorkspace` rooted at `<PROJECT_ROOT>/<projectId>`).
+    // Deriving it from the workspace seam (`toAgentPath("")`) is what keeps
+    // "where the agent writes" == "where the browser lists" per Project.
+    // `binding.workspace`/`DSH_WORKSPACE` is a standalone override for callers
+    // who pass no workspace (the dsh example app), and `process.cwd()` the
+    // last resort. Using the raw env var here was the foot-gun: it pointed at
+    // the Project PARENT, so the agent wrote into `<PROJECT_ROOT>` while the
+    // browser listed the (empty) `<PROJECT_ROOT>/<projectId>` subdir.
+    //
+    // A `NullWorkspace` (no `PROJECT_ROOT` configured) has no agent view — it
+    // answers `""` — and an empty answer is NOT a launchable cwd, so it falls
+    // through to the standalone chain rather than winning it.
+    const agentCwd = opts.workspace?.toAgentPath("");
+    const cwd =
+      (agentCwd ? agentCwd : undefined) ??
+      binding.workspace ??
+      env("DSH_WORKSPACE") ??
+      process.cwd();
     const provider = binding.provider ?? env("DSH_PROVIDER") ?? DEFAULT_PROVIDER;
     const model = binding.model ?? env("DSH_MODEL") ?? DEFAULT_MODEL;
     const maxTokens = binding.maxTokens;

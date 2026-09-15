@@ -1,12 +1,11 @@
-import { SessionView } from "@/components/session-view";
+import { StudioPage } from "@/components/studio/page";
 
 /**
- * The conversation route: `/projects/<projectId>/sessions/<sessionId>`.
+ * The conversation deep-link: `/projects/<projectId>/sessions/<sessionId>`.
  *
- * The URL is the session's identity source (refresh- and share-safe): the route
- * params scope every transport request and the workspace panel. A server
- * component so the params unwrap server-side; the interactive tree is the
- * client `SessionView`.
+ * The URL scopes the session (refresh/share-safe): route params seed the
+ * store, then the same `StudioPage`/`SessionView` workbench renders — identical
+ * to the SPA home but with the route's Project/Session pre-selected.
  */
 export default async function SessionPage({
   params,
@@ -14,5 +13,5 @@ export default async function SessionPage({
   params: Promise<{ projectId: string; sessionId: string }>;
 }) {
   const { projectId, sessionId } = await params;
-  return <SessionView projectId={projectId} sessionId={sessionId} />;
+  return <StudioPage routeProjectId={projectId} routeSessionId={sessionId} />;
 }

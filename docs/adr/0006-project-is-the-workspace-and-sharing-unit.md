@@ -33,22 +33,38 @@ and the dsh child's single cwd now have the same status.)
 `capabilities.perSessionCwd` keeps its meaning as "the host, not the runtime, sets
 the child's cwd" — one cwd per adapter — and is no longer read as per-Project.
 
+> **Superseded by docs/adr/0008.** Everything in the paragraph above about the
+> adapter being shared across Projects — "the adapter stays one per user", the
+> agent cwd being the deployment's agent root, and the "one cwd per adapter"
+> reading of `perSessionCwd` — was wrong in practice: an adapter's
+> workspace-derived launch surface is fixed at `init`, so one shared adapter can
+> only serve the default Project, and every other Project's agent kept working in
+> `project-default`. Provisioning is now **per Project**: one adapter (and, for
+> dsh, one harness child) per Project, each initialized with that Project's
+> workspace. `perSessionCwd` keeps its meaning; it just no longer implies one cwd
+> per deployment.
+
 **Explicit no-s.** No per-Session partition in v1 (a later convention may add one
 if intermediates start colliding). No adapter (and so no child cwd) per Project —
 one adapter serves the user; project isolation for the AGENT is a convention for
-every runtime. No hard jail for **openclaw**: its gateway cell exposes one fixed
+every runtime. *(Superseded by docs/adr/0008: the provider builds one adapter per
+Project.)* No hard jail for **openclaw**: its gateway cell exposes one fixed
 `OPENCLAW_WORKSPACE_DIR`, so the agent can reach outside a project directory — the
 same openclaw/dsh symmetry the revised §14.3 records. No workspace
 root *inside* the record; the directory is a deployment artifact and the record
 is its authority.
 
-- **Status**: accepted (supersedes research-agent-framework.md §14.3)
+- **Status**: accepted (supersedes research-agent-framework.md §14.3); the
+  one-adapter-per-user clause is superseded by docs/adr/0008
 - **Considered options**:
   - *One adapter + binding per Project* (a real per-project cwd: one dsh harness
     child per Project) — rejected for v1: it needs a project-aware launch surface
     the `RuntimeBinding` seam does not expose, and it multiplies harness children
     and gateway connections per Project for an isolation the file surface already
-    gives by convention.
+    gives by convention. *(Adopted in docs/adr/0008: the launch surface needed no
+    widening — the cwd already comes from the `Workspace` the adapter is
+    initialized with — and one adapter per Project is the price of the agent
+    working in the Project that asked.)*
   - *Keep Session as the partition unit and share upward* (`sessions/<key>/` with
     a browsable project root above it) — preserves §14.3's isolation and needs no
     provisioning change, but makes "share across Sessions" a derived view over

@@ -145,10 +145,11 @@ export interface EnvironmentProvider {
 
 环境的作用域在**工作区**这一层是 **Project**，而不是 principal、也不是 Session：一个
 Project 拥有一个 workspace（CONTEXT.md、docs/adr/0006），它的各个 Session 共享之。
-但 **adapter 仍是「一个用户一个」** —— v1 不为每个 Project 建一个运行时实例 —— 所以请求
-自带 `projectId`（可选；省略则落到默认 Project），调用方先获取环境，再把客户端声明的
-`threadId` 经适配器自己的 `resolveSessionKey` 映射，并解析（或首次使用时登记）Session。
-不需要 factory 级别的 session 解析器。
+但 **adapter 的作用域同样是 Project**：provider 每个 Project 构造一个适配器，并用该
+Project 自己的 workspace 初始化它 —— 一个共享的适配器实例只能服务一个目录
+（docs/adr/0008）。请求自带 `projectId`（可选；省略则落到默认 Project），调用方先获取
+环境，再把客户端声明的 `threadId` 经适配器自己的 `resolveSessionKey` 映射，并解析（或
+首次使用时登记）Session。不需要 factory 级别的 session 解析器。
 
 这两个方法背后是：tenant→沙盒查找、sandbox 供给、经由 runtime 工厂（§4.3）构造
 适配器、按 Project 的连接缓存与空闲回收、按租户隔离的 record store
@@ -160,9 +161,9 @@ Project 拥有一个 workspace（CONTEXT.md、docs/adr/0006），它的各个 Se
 
 | 适配器 | 模式 | 仓库 | 背后是什么 |
 | --- | --- | --- | --- |
-| `LocalEnvironmentProvider` | 单用户 / 示例 | 开源 | 共享一个适配器 + 每个 Project 一个 workspace，由 `process.env` 构建 |
+| `LocalEnvironmentProvider` | 单用户 / 示例 | 开源 | 每个 Project 一个适配器 + 一个 workspace，由 `process.env` 构建（docs/adr/0008） |
 | `FleetEnvironmentProvider` | 托管，openclaw | **私有** | 每个租户一个适配器，每个 Project 一个 workspace |
-| `DshEnvironmentProvider` | 托管/本地，dsh | 开源 provider，私有接线 | 每个 principal 一个适配器；harness 子进程 cwd 是 agent 根，不是项目根 |
+| `DshEnvironmentProvider` | 托管/本地，dsh | 开源 provider，私有接线 | 每个 principal 每个 Project 一个适配器；harness 子进程 cwd 即该 Project 的 workspace |
 
 **已否决的替代方案：** 让 `RuntimeAdapter` 感知租户（把 `Principal` 传进
 `init`/`run`）。那会把 provisioning、连接池和身份塞进每一个适配器，与「按适配器
@@ -341,11 +342,12 @@ Session A 写的那些文件（docs/adr/0006）。agent 的 cwd 是项目根，�
 但 v1 靠约定而非目录契约来应对。
 
 `PROJECT_ROOT`（所有项目目录的宿主父目录）取代 `WORKSPACE_ROOT`；`PROJECT_AGENT_ROOT`
-是 agent 侧对应物，项目根映射为 `<PROJECT_AGENT_ROOT>/<projectId>/`。**两个运行时都不
-强制它**：一个适配器服务整个用户，因此 agent 的 cwd 是部署的 agent 根，而不是项目根 ——
-openclaw 固定的 cell cwd 与 dsh 单一子进程 cwd 在这一点上没有区别，项目隔离都是路径
-映射 + 引用约定（docs/adr/0006）。`capabilities.perSessionCwd` 仍是「由宿主设置子进程
-cwd」之意，且是一个适配器一个 cwd（§4.4）。
+是 agent 侧对应物，项目根映射为 `<PROJECT_AGENT_ROOT>/<projectId>/`。供给按 **Project**
+进行：每个 Project 的适配器用它自己的 workspace 初始化，所以 agent 的 cwd 正是文件浏览器
+列出的那个项目目录（dsh 每个 Project 一个 harness 子进程；openclaw 的 cell cwd 由宿主
+固定，对它而言项目隔离仍是路径映射 + 引用约定 —— docs/adr/0006，经 docs/adr/0008 修订）。
+`capabilities.perSessionCwd` 仍是「由宿主设置子进程 cwd」之意，且是一个适配器一个 cwd
+（§4.4），不再是一个部署一个 cwd。
 
 ### 实现
 
@@ -827,10 +829,12 @@ Phase 0 已**落地**；实时状态与清单见 [`implementation-plan.md`](./im
   稳定的项目目录为根。
 - 每个 Session 仍 1:1 映射到一个规范 `sessionKey`；环境按 Project 获取，所以适配器/
   连接按 Project 缓存。
-- agent *仍可能*写到根之外，所以对**两个**运行时而言隔离都是引用层面的约定：一个适配器
-  （因此一个子进程 cwd）服务整个用户，所以 agent 的 cwd 是部署的 agent root，不是项目根
-  （docs/adr/0006）。`capabilities.perSessionCwd`（§4.4）仍是「由宿主设置子进程 cwd」之意，
-  一个适配器一个 cwd。
+- agent *仍可能*写到根之外，所以对**两个**运行时而言隔离都是引用层面的约定。供给按
+  Project 进行（docs/adr/0008）：每个 Project 的适配器用其自身 workspace 初始化，因此 dsh
+  的 harness 子进程 cwd 为 `<PROJECT_AGENT_ROOT>/<projectId>/` —— 与浏览器列出的目录一致
+  —— 而 openclaw 的 gateway cell cwd 仍由宿主固定（docs/adr/0006）。
+  `capabilities.perSessionCwd`（§4.4）仍是「由宿主设置子进程 cwd」之意，一个适配器一个
+  cwd。
 - **否决：每个 Project 一个 cell。** 供给成本与 fleet 变更频率都过高。
 
 **后果。** 一个 cell 服务多个 Project；浏览器以项目目录为根，该项目的每个 Session 共享

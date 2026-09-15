@@ -157,12 +157,13 @@ export interface EnvironmentProvider {
 
 The environment is scoped to a **Project** for its workspace, not a principal and
 not a Session: a Project owns one workspace (CONTEXT.md, docs/adr/0006) and its
-Sessions share it. The **adapter stays one per user** — v1 does not build a
-runtime instance per Project — so the request carries the `projectId` (optional;
-omitted → the default Project) and the caller acquires the environment first, then
-maps the claimed `threadId` through the adapter's own `resolveSessionKey` and
-resolves (or first-use records) the Session. No factory-level session resolver is
-needed.
+Sessions share it. So is the **adapter**: the provider builds one per Project,
+initialized with that Project's workspace — one adapter instance could only ever
+serve one directory (docs/adr/0008) — so the request carries the `projectId`
+(optional; omitted → the default Project) and the caller acquires the environment
+first, then maps the claimed `threadId` through the adapter's own
+`resolveSessionKey` and resolves (or first-use records) the Session. No
+factory-level session resolver is needed.
 
 Behind those two methods sit: tenant→sandbox lookup, sandbox provisioning, adapter
 construction via the runtime factory (§4.3), per-Project connection caching and
@@ -174,9 +175,9 @@ sandbox provider is injected. Adapters:
 
 | Adapter | Mode | Repo | Behind it |
 | --- | --- | --- | --- |
-| `LocalEnvironmentProvider` | single-user / examples | OSS | one shared adapter + one workspace per Project, built from `process.env` |
+| `LocalEnvironmentProvider` | single-user / examples | OSS | one adapter + one workspace per Project, built from `process.env` (docs/adr/0008) |
 | `FleetEnvironmentProvider` | hosted, openclaw | **private** | one adapter per tenant, one workspace per Project |
-| `DshEnvironmentProvider` | hosted/local, dsh | OSS provider, private wiring | one adapter per principal; the harness child's cwd is the agent root, not the project root |
+| `DshEnvironmentProvider` | hosted/local, dsh | OSS provider, private wiring | one adapter per principal *per Project* — the harness child's cwd is that Project's workspace |
 
 **Alternative rejected:** make `RuntimeAdapter` tenant-aware (pass `Principal`
 into `init`/`run`). That pushes provisioning, pooling, and identity into every
@@ -373,12 +374,13 @@ convention, not by a directory contract.
 
 `PROJECT_ROOT` (the host-side parent of all project directories) replaces
 `WORKSPACE_ROOT`; `PROJECT_AGENT_ROOT` is the agent-side counterpart, so a project
-root maps to `<PROJECT_AGENT_ROOT>/<projectId>/`. **Neither** runtime enforces it:
-one adapter serves the user, so the agent's cwd is the deployment's agent root,
-not the project root — project isolation is a path-mapping + reference convention
-for openclaw's fixed cell cwd and dsh's single child cwd alike (docs/adr/0006).
+root maps to `<PROJECT_AGENT_ROOT>/<projectId>/`. The provider builds one adapter
+**per Project**, initialized with that Project's workspace, so the agent's cwd IS
+the project directory the Files browser lists (dsh launches a harness child per
+Project; openclaw's cell cwd stays host-fixed, so for it project isolation remains
+a path-mapping + reference convention — docs/adr/0006, revised by docs/adr/0008).
 `capabilities.perSessionCwd` still means "the host sets the child's cwd", one cwd
-per adapter (§4.4).
+per adapter (§4.4), no longer one per deployment.
 
 ### Implementations
 
@@ -577,9 +579,11 @@ RequestContext → PrincipalResolver.resolve → (401 | Principal)
              → adapter.resolveSessionKey(threadId) → Session (found or first-use)
 ```
 
-The adapter is cached **per user**; the workspace is cached **per Project**, which
-is what makes a Project's shared files real. Routes with no session of their own
-(the `GET /commands` catalog) use the default Project's environment.
+The adapter is cached **per Project** — one per Project, initialized with that
+Project's workspace (docs/adr/0008) — and so is the workspace, which is what makes
+a Project's shared files real *and* what puts the agent in the Project's own
+directory. Routes with no session of their own (the `GET /commands` catalog) use
+the default Project's environment.
 
 New workspace routes (JSON / streamed bytes), served from the **same service**
 as transport:
@@ -921,10 +925,12 @@ it warned about is now the point.
 - Each Session still maps 1:1 to a canonical `sessionKey`; the environment is
   acquired per Project, so the adapter/connection is cached per Project.
 - The agent *can* still write outside its root, so isolation is a reference
-  convention for **both** runtimes: one adapter (and so one child cwd) serves the
-  user, so the agent's cwd is the deployment's agent root, not the project root
-  (docs/adr/0006). `capabilities.perSessionCwd` (§4.4) keeps its meaning as "the
-  host sets the child's cwd" — one cwd per adapter.
+  convention for **both** runtimes. Provisioning is per Project
+  (docs/adr/0008): each Project's adapter is initialized with its own workspace, so
+  dsh's harness child is cwd'd at `<PROJECT_AGENT_ROOT>/<projectId>/` — the same
+  directory the browser lists — while openclaw's gateway cell cwd stays
+  host-fixed (docs/adr/0006). `capabilities.perSessionCwd` (§4.4) keeps its
+  meaning as "the host sets the child's cwd" — one cwd per adapter.
 - **Rejected: a cell per Project.** Provisioning cost and fleet churn are far too
   high.
 

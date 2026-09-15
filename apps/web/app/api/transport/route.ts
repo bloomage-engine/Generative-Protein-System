@@ -6,8 +6,13 @@
  * transport-service response body through directly (both dev and prod). The
  * transport-service already sends CORS headers and ends the stream with
  * `data: [DONE]`.
+ *
+ * The hop runs on `lib/stream-proxy.ts`, not `fetch`: a run can also be silent
+ * for minutes (a long tool step, a step-granular runtime), and undici's 300 s
+ * body deadline would abort the relay mid-run.
  */
 import { NextResponse } from "next/server";
+import { requestStream } from "@/lib/stream-proxy";
 
 const TRANSPORT_SERVICE_URL =
   process.env.TRANSPORT_SERVICE_URL ?? "http://localhost:3001";
@@ -32,31 +37,28 @@ export async function POST(request: Request): Promise<NextResponse> {
   // reads it as a fallback.
   const search = new URL(request.url).search;
 
-  const upstream = await fetch(
-    `${TRANSPORT_SERVICE_URL}/api/transport${search}`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "text/event-stream",
-        ...forwardedAuth(request),
-      },
-      body,
+  const upstream = await requestStream(`${TRANSPORT_SERVICE_URL}/api/transport${search}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "text/event-stream",
+      ...forwardedAuth(request),
     },
-  );
+    body,
+    forward: ["content-type"],
+  });
 
-  if (!upstream.ok) {
+  if (!upstream.body) {
     return NextResponse.json(
-      { error: `transport-service error: ${upstream.status}` },
-      { status: upstream.status },
+      { error: `transport-service error: ${upstream.status}${upstream.errorText ? ` ${upstream.errorText}` : ""}` },
+      { status: upstream.status || 502 },
     );
   }
 
   return new NextResponse(upstream.body, {
     status: 200,
     headers: {
-      "content-type":
-        upstream.headers.get("content-type") ?? "text/event-stream",
+      "content-type": upstream.headers["content-type"] ?? "text/event-stream",
       "cache-control": "no-cache",
       connection: "keep-alive",
     },

@@ -89,6 +89,12 @@ async function backendFromAdapters(options: TransportServiceOptions): Promise<Ba
 
   return {
     principal: new LocalPrincipalResolver(),
+    // The compat path is single-Project by construction: the caller brought ONE
+    // pre-built adapter, which was initialized with the default Project's
+    // workspace, so every Project id resolves to it (the examples and the
+    // service tests, which never switch Projects). It is the ONLY place that
+    // shares one adapter across Project ids — `localBackend` builds one per
+    // Project (docs/adr/0008).
     environments: new LocalEnvironmentProvider({
       environmentFor: async () => ({ adapter: first, workspace }),
     }),

@@ -6,8 +6,13 @@
  * buffer it (fatal for the file stream). The catch-all forwards
  * `/api/workspace/<entries|stat|file>` to the transport-service, preserving
  * status and the headers a browser needs.
+ *
+ * Browsing/stat answers are small JSON, but `file` is a byte stream that can
+ * outlive any `fetch` body deadline (a large inline file on a slow link), so the
+ * hop runs on `lib/stream-proxy.ts` — the same reason the watch does.
  */
 import { NextResponse } from "next/server";
+import { requestStream } from "@/lib/stream-proxy";
 
 const TRANSPORT_SERVICE_URL =
   process.env.TRANSPORT_SERVICE_URL ?? "http://localhost:3001";
@@ -38,21 +43,25 @@ export async function GET(
 ): Promise<NextResponse> {
   const { path } = await ctx.params;
   const search = new URL(request.url).search;
-  const upstream = await fetch(
+  const upstream = await requestStream(
     `${TRANSPORT_SERVICE_URL}/api/workspace/${path.map(encodeURIComponent).join("/")}${search}`,
     {
       headers: {
         accept: request.headers.get("accept") ?? "*/*",
         ...forwardedAuth(request),
       },
+      forward: FORWARDED_HEADERS,
     },
   );
 
-  const headers = new Headers();
-  for (const name of FORWARDED_HEADERS) {
-    const value = upstream.headers.get(name);
-    if (value) headers.set(name, value);
+  // An error answer (404/400/413/503 …) is a small JSON body: pass it through
+  // with the upstream status, exactly like the previous non-streaming path.
+  if (!upstream.body) {
+    return new NextResponse(upstream.errorText, {
+      status: upstream.status,
+      headers: upstream.headers,
+    });
   }
 
-  return new NextResponse(upstream.body, { status: upstream.status, headers });
+  return new NextResponse(upstream.body, { status: upstream.status, headers: upstream.headers });
 }

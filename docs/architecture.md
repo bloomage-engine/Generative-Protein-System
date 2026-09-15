@@ -102,6 +102,12 @@ The frontend only ever speaks assistant-ui's assistant-transport protocol; the
 converter maps Science Studio's normalized state to assistant-ui messages. The
 UI is never rewritten when the runtime swaps.
 
+All three streaming hops above are relayed by `apps/web/lib/stream-proxy.ts`,
+never by `fetch`: a relay must impose no idle deadline (undici's `fetch` aborts a
+body after 300 s of silence, and the watch is silent by design between settles),
+and cancelling the relayed stream — a closed tab, a `useTransport` re-render —
+must destroy the upstream socket. The short JSON proxies keep using `fetch`.
+
 ## 4. The transport seam
 
 ### RuntimeAdapter
@@ -144,7 +150,9 @@ interface RuntimeAdapter {
   (`POST /api/projects/:id/sessions`), and the adapter persists `Run`s through a
   narrowed view (`RecordStoreLike`) of the SAME `RecordStore` the service reads
   identity from. `EnvironmentProvider.acquire` is project-scoped, so the adapter
-  and workspace are cached per Project (`docs/adr/0006`).
+  and workspace are cached per Project (`docs/adr/0006`, `docs/adr/0008`) — the
+  adapter is initialized with that Project's workspace, which is where its agent
+  works (the dsh child's cwd, and the root every attachment path maps through).
 
 ### Runtime plurality
 
@@ -279,7 +287,9 @@ the converter runtime-agnostic and the record authoritative.
 A **Project** owns one workspace — an `FsWorkspace` (`packages/workspace`) rooted
 at `<PROJECT_ROOT>/<projectId>/` and shared flatly by every Session of that Project
 (`docs/adr/0006`). The agent's cwd and the browser's root are both the project
-root, so paths map 1:1; the directory name is the project id. Workspace access is
+root, so paths map 1:1 — the service provisions one runtime adapter per Project,
+initialized with that Project's workspace, which is what puts the agent there
+(`docs/adr/0008`); the directory name is the project id. Workspace access is
 **opt-in**: unset `PROJECT_ROOT` means `NullWorkspace` and no file surface (every
 request answers 503). `PROJECT_AGENT_ROOT` is the agent-side counterpart of the
 host-side `PROJECT_ROOT`.

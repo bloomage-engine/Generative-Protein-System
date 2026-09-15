@@ -8,9 +8,12 @@ Chinese.
 
 ```
 apps/web                          Next.js frontend (assistant-ui Thread UI, port 3000)
-  app/page.tsx                      Project/Session picker (lists + creates via `/api/projects*`)
-  app/projects/[projectId]/sessions/[sessionId]/page.tsx  the conversation: Thread + the Project workspace panel
-  app/api/{transport,workspace,projects}  proxies to the service (streaming ones MUST NOT be next.config rewrites — they buffer)
+  app/page.tsx                      the SPA home — seeds the Project/Session scope, then renders the workbench
+  app/projects/[projectId]/sessions/[sessionId]/page.tsx  the same workbench, scoped by the route
+  app/api/{transport,workspace,projects}  proxies to the service (streaming ones MUST NOT be next.config rewrites — they buffer — nor `fetch`, whose 300 s body deadline kills an idle stream; see lib/stream-proxy.ts)
+  components/studio                 the workbench shell: top bar (its two switch buttons give the LEFT slot to the conversation or the Projects pane), Projects pane (create/switch Project + Session over `/api/projects*`), file tree/preview panes, tab strip, status bar
+  store/studio-store.ts             the shell's scope + chrome state (projects list, active Project/Session, left view + panel visibility, open tabs)
+  components/session-view.tsx       providers + the memoized runtime owner; with no scope it renders the chrome alone
   components/assistant-ui/elements  Thread UI registered from the assistant-ui registry
   components/workspace              workspace browser/viewer panel
   components/ui + hooks + lib       shadcn/ui base, registry helpers
@@ -28,7 +31,7 @@ examples/transport-dsh-example     minimal assistant-ui example app over the dsh
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/design/                      design specs (research-agent-framework EN/ZH + implementation-plan)
-docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store)
+docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project)
 CONTEXT.md                        domain glossary (authoritative vocabulary)
 ```
 
@@ -166,7 +169,18 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 - **dsh differs from openclaw in wire-relevant ways**: (1) the dsh
   adapter spawns a LOCAL harness (`dsh --profile sdk` via
   `@deepseek-ai/dsh-sdk-client@0.1.5-alpha.1`, pinned exactly) instead of
-  connecting to a gateway; (2) events arrive per COMMITTED log event, not per
+  connecting to a gateway — and the agent's working directory is the ACTIVE
+  PROJECT's workspace, derived at init from the workspace seam
+  (`Workspace.toAgentPath("")`, i.e. the same directory the Files panel lists).
+  That holds because the service provisions one adapter — and so one harness
+  child — per Project, each initialized with its own Project's workspace
+  (docs/adr/0008); one shared adapter could only ever serve the default
+  Project. Only a `NullWorkspace` deployment (no `PROJECT_ROOT`) falls back to
+  `DSH_WORKSPACE`/`process.cwd()`, because its empty answer is not a
+  launchable cwd. Reading the raw `DSH_WORKSPACE` env var here is a foot-gun:
+  the dev script points it at the Project PARENT, so the agent worked beside
+  `<PROJECT_ROOT>/<projectId>/` while the panel listed that (empty) subdir;
+  (2) events arrive per COMMITTED log event, not per
   token — each step's `assistant/message` becomes a whole-message `set`, so
   replies render step-granular and the adapter never fabricates
   `stream-text`/`append-text` token fragments; (3) the SDK wire has no
@@ -240,9 +254,11 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   claimed key under the request's Project (optional `projectId`; omitted → the
   auto-ensured `project-default`) — building `SessionState`
   (`sessionId`/`projectId`/`agentId`) from the record, never from fabricated
-  constants. The **workspace** is project-scoped: the service acquires the
-  Project's `Environment` (one workspace per Project, one shared adapter per user
-  — docs/adr/0006) and only then maps the claimed `threadId` through the
+  constants. The **workspace is project-scoped and so is the runtime**: the
+  service acquires the Project's `Environment` — one workspace AND one adapter per
+  Project, the adapter initialized with that Project's workspace (docs/adr/0008),
+  which is what makes the dsh child's cwd the Project's own directory — and only
+  then maps the claimed `threadId` through the
   adapter's `resolveSessionKey`. The adapter persists `Run`s through a narrowed
   view of the SAME `RecordStore` the service reads identity from (`records` on
   `Backend`; both `localBackend` and the `{ adapters }` compat path share one
@@ -314,6 +330,21 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   token stream (symptom: the whole reply — user message included — appears only
   when the run finishes). When debugging a UI-side issue, test through port 3000
   too; the route handler can behave differently from the direct service.
+- **A streaming proxy hop MUST NOT use `fetch`.** Every long-lived `/api` proxy
+  (`transport`, `transport/watch`, `workspace/[...path]` — the three streaming
+  ones) relays through `apps/web/lib/stream-proxy.ts`, which issues the upstream
+  request with `node:http`/`node:https`. undici (Node's `fetch`) aborts a
+  response body after **300 s of silence** (`UND_ERR_BODY_TIMEOUT`), and the watch
+  is silent BY DESIGN until a run settles — so every idle watch died at the
+  5-minute mark with `failed to pipe response` and a 500 (`GET
+  /api/transport/watch … 500 in 302671ms` was the tell). `node:http` has no idle
+  deadline; the response is handed over as a `ReadableStream`, and cancelling it
+  (tab closed, `useTransport` re-render) destroys the upstream socket. The JSON
+  proxies (`transport/commands`, `projects/[[...path]]`) are short requests and
+  keep using `fetch`.
+  Note the response HEAD is only flushed with the first body chunk (Next's
+  Response plumbing, both before and after this change): a watch that has nothing
+  to push shows no TTFB until it does.
 - The web UI is the **assistant-ui registry `Thread`** (`shadcn add
   @assistant-ui/thread`, Radix flavor) on Tailwind v4 + shadcn/ui, not
   hand-written chat markup. To refresh/upgrade the components, run `npx
@@ -338,5 +369,5 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   login); in hosted mode the enterprise `PrincipalResolver` authenticates the
   bearer, so a proxy that swallows the header breaks auth silently. The
   `projects` one is the only JSON (non-streaming) proxy — it is the record
-  surface (`/api/projects*`) the picker reads, and it is what keeps the browser
-  same-origin on port 3000.
+  surface (`/api/projects*`) the Projects pane reads, and it is what keeps the
+  browser same-origin on port 3000.

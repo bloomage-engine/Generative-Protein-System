@@ -3,11 +3,14 @@
  *
  * The transport-service pushes the session's canonical snapshot here whenever a
  * remote assistant reply settles, so an open browser can adopt it via
- * `importExternalState`. Same streaming-passthrough pattern as
- * `../route.ts` (a Next.js rewrite buffers the upstream body and would destroy
- * the long-lived frame stream) — pipe the body straight through.
+ * `importExternalState`. Same streaming-passthrough pattern as `../route.ts` (a
+ * Next.js rewrite buffers the upstream body and would destroy the long-lived
+ * frame stream), and the same rule about idle time: the watch is SILENT until a
+ * run settles, so the hop carries no body deadline at all — an undici default
+ * (300 s) used to kill every idle watch with a 500 (`lib/stream-proxy.ts`).
  */
 import { NextResponse } from "next/server";
+import { requestStream } from "@/lib/stream-proxy";
 
 const TRANSPORT_SERVICE_URL =
   process.env.TRANSPORT_SERVICE_URL ?? "http://localhost:3001";
@@ -36,14 +39,16 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
   const qs = query.toString() ? `?${query}` : "";
 
-  const upstream = await fetch(`${TRANSPORT_SERVICE_URL}/api/transport/watch${qs}`, {
+  const upstream = await requestStream(`${TRANSPORT_SERVICE_URL}/api/transport/watch${qs}`, {
     headers: { accept: "application/x-ndjson", ...forwardedAuth(request) },
+    forward: ["content-type"],
   });
 
-  if (!upstream.ok || !upstream.body) {
-    const text = await upstream.text().catch(() => "");
+  if (!upstream.body) {
     return NextResponse.json(
-      { error: `watch service error: ${upstream.status}${text ? ` ${text}` : ""}` },
+      {
+        error: `watch service error: ${upstream.status}${upstream.errorText ? ` ${upstream.errorText}` : ""}`,
+      },
       { status: upstream.status || 502 },
     );
   }
@@ -51,8 +56,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   return new NextResponse(upstream.body, {
     status: 200,
     headers: {
-      "content-type":
-        upstream.headers.get("content-type") ?? "application/x-ndjson",
+      "content-type": upstream.headers["content-type"] ?? "application/x-ndjson",
       "cache-control": "no-cache",
       connection: "keep-alive",
     },
