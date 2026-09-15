@@ -6,7 +6,7 @@ const api = {
   setConfig: (config: DesktopConfig): Promise<DesktopConfig> => ipcRenderer.invoke("desktop:setConfig", config),
   detectDsh: (): Promise<string | null> => ipcRenderer.invoke("desktop:detectDsh"),
   openPath: (path: string): Promise<void> => ipcRenderer.invoke("desktop:openPath", path),
-  restartHost: (): Promise<{ webPort: number; apiPort: number }> => ipcRenderer.invoke("desktop:restartHost"),
+  restartHost: (): Promise<{ webPort: number; apiPort: number } | null> => ipcRenderer.invoke("desktop:restartHost"),
 };
 
 contextBridge.exposeInMainWorld("scienceStudioDesktop", api);

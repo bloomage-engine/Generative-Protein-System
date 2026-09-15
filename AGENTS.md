@@ -18,6 +18,7 @@ apps/web                          Next.js frontend (assistant-ui Thread UI, port
   components/workspace              workspace browser/viewer panel
   components/ui + hooks + lib       shadcn/ui base, registry helpers
   (Tailwind v4 + shadcn/ui styling stack: postcss.config.mjs, components.json)
+apps/desktop                      Electron desktop app (docs/adr/0013). Main owns window/menu/lifecycle and forks `build/host/host.mjs` — one Node child that runs the transport-service (dsh runtime, plugins INJECTED into createBackend so the esbuild bundle needs no dynamic import) and spawns the Next standalone server as a grandchild, both loopback/ephemeral, reporting ports over IPC. The config window writes `<userData>/config.env` (DSH_PROVIDER/DSH_MODEL + credential vars), which main turns into the child env. Outside the root build gate; `apps/desktop` has its own build/test/pack scripts.
 packages/record                   RECORD SEAM PACKAGE: v1 vocabulary is Project/Session/Run only (Study/Task/Artifact/Evidence/Conclusion/AgentBlueprint deferred — docs/adr/0007) + the RecordStore contract + implementations (in-memory for tests; dependency-free JSONL used by default via RECORD_STORE_PATH). transport depends on it for Id/Run/RunStatus
 packages/transport                SEAM PACKAGE, two entries. `./seams` = the contract only: every RUNTIME seam interface (RuntimeAdapter/StateDelta, RuntimeBinding/RuntimeFactory/RuntimePlugin/RuntimeCapabilities, Principal/PrincipalResolver, Environment/EnvironmentProvider, Workspace + limits + QuotaPolicy) plus their error classes and limit constants. `.` = that contract + the shared adapter kit (`SessionRuntime` + its `SessionBehavior` / `RunFlow` queue / `foldState` / attachment helpers / `createApplyContext`, the constructor for the transcript primitives so a behavior test drives the SAME merge rules the runtime does) + pure single-user defaults (LocalPrincipalResolver, LocalEnvironmentProvider, NullWorkspace, NoopQuotaPolicy). Exports are explicit (no `export *`); pinned by test/seams.test.ts
 packages/workspace                Workspace implementations (FsWorkspace + containment/symlink/size invariants); depends on transport
@@ -54,6 +55,12 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `deepseek-official`/`deepseek-v4-flash` and the agent's cwd becomes this
   package's source directory. The route's credential NAME (`apiKeyEnv`, e.g.
   `OLLAMA_LOCAL_API_KEY`) is a legal `.env` line and is inherited by the child.
+- `npm run dev:desktop` — the Electron shell against the already-running dev pair
+  (`DESKTOP_DEV_URL`, default http://localhost:3000). The packaged app instead
+  builds `apps/web` with `NEXT_OUTPUT=standalone` (`npm run build:web:standalone`)
+  and hosts both servers itself. Packaging: `npm run pack -w @science-studio/desktop`
+  (electron-builder; `dmg` on macOS, `AppImage`/`deb` on Linux). Dev-only claim:
+  `dsh` must be on PATH and a route configured in Settings for a real turn.
 - Record layer: the v1 record is `Project` → `Session` → `Run` (docs/adr/0007).
   Project/Session/Run routes live on the same service (`/api/projects*`), and the
   store is persistent by default — `RECORD_STORE_PATH` (default

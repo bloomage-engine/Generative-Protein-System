@@ -86,8 +86,15 @@ async function stopHost(): Promise<void> {
   });
 }
 
-function showWorkbench(ports: HostPorts): void {
-  const url = `http://127.0.0.1:${ports.webPort}/`;
+function devUrl(): string | undefined {
+  return process.env.DESKTOP_DEV_URL;
+}
+
+function localUrl(ports: HostPorts): string {
+  return `http://127.0.0.1:${ports.webPort}/`;
+}
+
+function showWorkbench(url: string): void {
   if (workbench && !workbench.isDestroyed()) {
     void workbench.loadURL(url);
     workbench.focus();
@@ -100,16 +107,26 @@ function showWorkbench(ports: HostPorts): void {
   });
 }
 
-async function restart(): Promise<HostPorts> {
+async function restart(): Promise<HostPorts | null> {
+  const dev = devUrl();
+  if (dev) {
+    showWorkbench(dev);
+    return null;
+  }
   await stopHost();
   const ports = await boot();
-  showWorkbench(ports);
+  showWorkbench(localUrl(ports));
   return ports;
 }
 
 async function openWorkbench(): Promise<void> {
+  const dev = devUrl();
+  if (dev) {
+    showWorkbench(dev);
+    return;
+  }
   const ports = await boot();
-  showWorkbench(ports);
+  showWorkbench(localUrl(ports));
 }
 
 function openSettings(): void {
@@ -170,7 +187,7 @@ void app
     registerIpc();
     installMenu();
     const missingConfig = (await readFile(paths().configPath, "utf8").catch(() => "")).length === 0;
-    if (missingConfig || !detectDsh()) {
+    if (!devUrl() && (missingConfig || !detectDsh())) {
       openSettings();
     } else {
       await openWorkbench();
@@ -178,7 +195,7 @@ void app
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length > 0) return;
       if (host && hostPorts) {
-        showWorkbench(hostPorts);
+        showWorkbench(localUrl(hostPorts));
         return;
       }
       void openWorkbench();
