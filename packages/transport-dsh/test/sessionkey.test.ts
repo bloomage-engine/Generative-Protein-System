@@ -14,17 +14,22 @@ function withDefaultSession(value: string | undefined, fn: () => void): void {
   }
 }
 
-test("resolveSessionKey passes stable client ids through and defaults local-mint/absent ones", () => {
+/**
+ * dsh's own session-key POLICY, not the seam's convergence rule: the conver-
+ * gence of an unclaimed session with `__LOCALID_*` is asserted by the shared
+ * `testResolveSessionKey` suite in conformance.test.ts. What only dsh can pin
+ * is what a real client id does, and the exact default it resolves to.
+ */
+test("resolveSessionKey passes stable client ids through and uses the configured default", () => {
   withDefaultSession("dshtest-default", () => {
     const adapter = new DshRuntimeAdapter();
     assert.equal(adapter.resolveSessionKey("sess-real-1"), "sess-real-1");
-    assert.equal(adapter.resolveSessionKey("__LOCALID_abc123"), "dshtest-default", "assistant-ui local-mint ids must converge on the default session");
-    assert.equal(adapter.resolveSessionKey(null), "dshtest-default", "the mount probe claims no session");
+    assert.equal(adapter.resolveSessionKey("__LOCALID_abc123"), "dshtest-default", "a configured default session applies to local-mint ids");
   });
 });
 
-test("resolveSessionKey defaults to 'default' when unconfigured", () => {
+test("resolveSessionKey resolves an absent session to 'default' when unconfigured", () => {
   withDefaultSession(undefined, () => {
-    assert.equal(new DshRuntimeAdapter().resolveSessionKey("__LOCALID_x"), "default");
+    assert.equal(new DshRuntimeAdapter().resolveSessionKey(null), "default");
   });
 });

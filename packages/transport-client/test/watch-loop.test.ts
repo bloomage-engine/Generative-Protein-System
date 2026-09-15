@@ -37,7 +37,10 @@ test("reconnects are paced: never more than one in-flight attempt, attempts spac
     `reconnect attempts must never overlap (saw ${maxInFlight} concurrent attempts after ${attempts} attempts)`,
   );
   for (let i = 1; i < startedAt.length; i++) {
-    const gap = startedAt[i] - startedAt[i - 1];
+    const previous = startedAt[i - 1];
+    const start = startedAt[i];
+    assert.ok(previous !== undefined && start !== undefined, `attempt ${i} start must be recorded`);
+    const gap = start - previous;
     assert.ok(
       gap >= retryDelayMs,
       `attempt ${i} started only ${gap}ms after the previous one (expected >= ${retryDelayMs}ms backoff)`,

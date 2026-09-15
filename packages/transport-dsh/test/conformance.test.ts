@@ -1,5 +1,9 @@
-import { testAdapterLifecycle, testRuntimeFactory } from "@science-studio/contract-tests";
-import { createDshRuntimeFactory, dshBinding } from "../src/index.js";
+import {
+  testAdapterLifecycle,
+  testResolveSessionKey,
+  testRuntimeFactory,
+} from "@science-studio/contract-tests";
+import { createDshRuntimeFactory, dshBinding, DshRuntimeAdapter } from "../src/index.js";
 import { dshLifecycleCase } from "./lifecycle-case.js";
 
 /**
@@ -17,3 +21,12 @@ testRuntimeFactory("dsh runtime factory", () => ({
  * `RuntimeAdapter` surface with a scripted turn client (docs/adr/0005).
  */
 testAdapterLifecycle("dsh adapter lifecycle", dshLifecycleCase);
+
+/**
+ * …and the SHARED session-key contract: an unclaimed session (the mount probe)
+ * and assistant-ui's `__LOCALID_*` ids must converge on ONE stable canonical
+ * key, so a probe and a send reconcile the same transcript. The adapter is
+ * built exactly as sessionkey.test.ts builds one (no env override), and dsh's
+ * own policy values live there.
+ */
+testResolveSessionKey("dsh adapter session key", () => ({ adapter: new DshRuntimeAdapter() }));

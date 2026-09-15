@@ -1,7 +1,7 @@
 import type { EventFrame } from "@openclaw/gateway-client/browser";
-import type { RecordStoreLike, SessionState, StateDelta } from "@science-studio/transport/seams";
+import type { RecordStoreLike, StateDelta } from "@science-studio/transport/seams";
 import type { Run } from "@science-studio/record";
-import type { AdapterLifecycleCase } from "@science-studio/contract-tests";
+import { sessionState, type AdapterLifecycleCase } from "@science-studio/contract-tests";
 import type { BackendGateway } from "../src/connection.js";
 import { OpenClawRuntimeAdapter } from "../src/index.js";
 
@@ -17,7 +17,6 @@ export async function openClawLifecycleCase(): Promise<AdapterLifecycleCase> {
   const runs: Run[] = [];
   const store: RecordStoreLike = {
     addRun: async (run) => void runs.push(run),
-    addArtifact: async () => {},
   };
   let emit: (frame: EventFrame) => void = () => {};
 
@@ -25,15 +24,17 @@ export async function openClawLifecycleCase(): Promise<AdapterLifecycleCase> {
     createGateway: (): BackendGateway => {
       const readyListeners = new Set<() => void>();
       let eventCb: ((frame: EventFrame) => void) | null = null;
-      const gateway = {
+      const gateway: BackendGateway = {
         connected: true,
         start: () => {
           for (const listener of readyListeners) listener();
         },
         stop: () => {},
-        request: async (method: string) => {
-          if (method === "chat.history") return { sessionKey: SESSION, messages: [] };
-          if (method === "chat.send") return { runId: "run-1", status: "started" };
+        // The real `request` is generic over the payload the caller expects; a
+        // scripted double cannot know that per method, so it casts its own reply.
+        request: async <T,>(method: string): Promise<T> => {
+          if (method === "chat.history") return { sessionKey: SESSION, messages: [] } as T;
+          if (method === "chat.send") return { runId: "run-1", status: "started" } as T;
           throw new Error(`unexpected request: ${method}`);
         },
         onEvent: (cb: (frame: EventFrame) => void) => {
@@ -46,7 +47,7 @@ export async function openClawLifecycleCase(): Promise<AdapterLifecycleCase> {
           readyListeners.add(listener);
           return () => readyListeners.delete(listener);
         },
-      } as unknown as BackendGateway;
+      };
       emit = (frame) => eventCb?.(frame);
       return gateway;
     },
@@ -57,22 +58,16 @@ export async function openClawLifecycleCase(): Promise<AdapterLifecycleCase> {
     recordStore: store,
   });
 
-  const session = (): SessionState => ({
-    sessionId: SESSION,
-    studyId: "study-1",
-    agentId: "main",
-    status: "idle",
-    messages: [],
-  });
-
   return {
     adapter,
     runs,
-    session,
     async runTurn(text: string): Promise<StateDelta[]> {
       const deltas: StateDelta[] = [];
       const running = (async () => {
-        for await (const delta of adapter.run(session(), [
+        // Drive with the key the scripted gateway namespaces its frames by
+        // (`SESSION`): `run()` keys its SessionRuntime on the raw `sessionId`,
+        // and `onEvent` routes frames by their `sessionKey` — they must agree.
+        for await (const delta of adapter.run(sessionState({ sessionId: SESSION }), [
           { type: "add-message", message: { id: "u1", role: "user", content: text } },
         ])) {
           deltas.push(delta);

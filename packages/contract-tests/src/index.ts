@@ -27,3 +27,8 @@ export {
   type AdapterLifecycleCase,
 } from "./adapter-lifecycle.js";
 export { testQuotaPolicy, type QuotaPolicyCase } from "./quota-policy.js";
+export { sessionState } from "./session-state.js";
+export {
+  testResolveSessionKey,
+  type ResolveSessionKeyCase,
+} from "./resolve-session-key.js";

@@ -4,7 +4,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
-import type { ArtifactInput, RecordStoreLike, SessionState, StateDelta } from "@science-studio/transport";
+import type { RecordStoreLike, SessionState, StateDelta } from "@science-studio/transport";
+import { sessionState } from "@science-studio/contract-tests";
 import type { Run } from "@science-studio/record";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
 import { TranscriptMirror } from "../src/mirror.js";
@@ -91,12 +92,8 @@ class CollidingHomeClient implements DshTurnClient {
 
 class FakeRecordStore implements RecordStoreLike {
   readonly runs: Run[] = [];
-  readonly artifacts: ArtifactInput[] = [];
   async addRun(run: Run): Promise<void> {
     this.runs.push(run);
-  }
-  async addArtifact(artifact: ArtifactInput): Promise<void> {
-    this.artifacts.push(artifact);
   }
 }
 
@@ -113,7 +110,7 @@ function completedReply(assistantId: string, text: string): SessionEvent[] {
 }
 
 function session(): SessionState {
-  return { sessionId: "sess-1", studyId: "study-1", agentId: "main", status: "idle", messages: [] };
+  return sessionState({ sessionId: "sess-1" });
 }
 
 async function collect(iter: AsyncIterable<StateDelta>): Promise<StateDelta[]> {

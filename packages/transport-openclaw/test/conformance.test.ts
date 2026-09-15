@@ -1,5 +1,9 @@
-import { testAdapterLifecycle, testRuntimeFactory } from "@science-studio/contract-tests";
-import { createOpenClawRuntimeFactory, openClawBinding } from "../src/index.js";
+import {
+  testAdapterLifecycle,
+  testResolveSessionKey,
+  testRuntimeFactory,
+} from "@science-studio/contract-tests";
+import { OpenClawRuntimeAdapter, createOpenClawRuntimeFactory, openClawBinding } from "../src/index.js";
 import { openClawLifecycleCase } from "./lifecycle-case.js";
 
 /**
@@ -17,3 +21,12 @@ testRuntimeFactory("openclaw runtime factory", () => ({
  * `RuntimeAdapter` surface with a scripted gateway (docs/adr/0005).
  */
 testAdapterLifecycle("openclaw adapter lifecycle", openClawLifecycleCase);
+
+/**
+ * …and the SHARED session-key contract: openclaw collapses anything the gateway
+ * does not namespace — the mount probe AND assistant-ui's local-mint ids — onto
+ * ONE canonical session, so a probe and a send reconcile the same transcript.
+ */
+testResolveSessionKey("openclaw adapter session key", () => ({
+  adapter: new OpenClawRuntimeAdapter(),
+}));

@@ -67,6 +67,8 @@ export type { DeltaEffect, FoldState } from "./fold.js";
 // replays the fold-and-fan-out pipeline with it (unlike `Transcript`, retired
 // in docs/adr/0005).
 export { RunFlow } from "./run-flow.js";
+export { createApplyContext } from "./apply-context.js";
+export type { ApplyContextOptions } from "./apply-context.js";
 export { SessionRuntime, textOutput, mergeToolResult } from "./session-runtime.js";
 export type {
   ApplyContext,

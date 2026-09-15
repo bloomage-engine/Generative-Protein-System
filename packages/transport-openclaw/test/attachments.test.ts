@@ -6,11 +6,12 @@ import type {
   TransportCommand,
   Workspace,
 } from "@science-studio/transport";
+import { sessionState } from "@science-studio/contract-tests";
 import { OpenClawRuntimeAdapter } from "../src/index.js";
 import type { BackendGateway, BackendGatewayOptions } from "../src/connection.js";
 
 const AGENT_ROOT = "/home/node/.openclaw/workspace";
-const noopRecordStore = { addRun: async () => {}, addArtifact: async () => {} };
+const noopRecordStore = { addRun: async () => {} };
 
 const stubWorkspace: Workspace = {
   list: async () => ({ path: "", entries: [] }),
@@ -37,14 +38,16 @@ function recordingGateway(
 ): (opts: BackendGatewayOptions) => BackendGateway {
   return () => {
     const readyListeners = new Set<() => void>();
-    return {
+    const gateway: BackendGateway = {
       connected: true,
       start: () => {
         for (const listener of readyListeners) listener();
       },
       stop: () => {},
-      request: async (method: string, params?: unknown) => {
-        if (method === "chat.history") return { sessionKey: "s", messages: [] };
+      // The real `request` is generic over the payload the caller expects; a
+      // scripted double cannot know that per method, so it casts its own reply.
+      request: async <T,>(method: string, params?: unknown): Promise<T> => {
+        if (method === "chat.history") return { sessionKey: "s", messages: [] } as T;
         if (method === "chat.send") {
           sent.push((params ?? {}) as Record<string, unknown>);
           throw new Error("scripted stop");
@@ -57,17 +60,12 @@ function recordingGateway(
         return () => readyListeners.delete(listener);
       },
     };
+    return gateway;
   };
 }
 
 function freshSession(): SessionState {
-  return {
-    sessionId: "agent:main:main",
-    studyId: "study-1",
-    agentId: "main",
-    status: "idle",
-    messages: [],
-  };
+  return sessionState({ sessionId: "agent:main:main" });
 }
 
 test("workspace attachments render into chat.send and become a file part on the user message", async () => {

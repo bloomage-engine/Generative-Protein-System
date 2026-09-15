@@ -10,7 +10,7 @@ Chinese.
 apps/web                          Next.js frontend (assistant-ui Thread UI, port 3000)
   app/page.tsx                      the SPA home — resolves the Project/Session scope (URL claim, else the remembered one, validated against the record), then renders the workbench
   app/projects/[projectId]/sessions/[sessionId]/page.tsx  the same workbench, scoped by the route
-  app/api/{transport,workspace,projects}  proxies to the service (streaming ones MUST NOT be next.config rewrites — they buffer — nor `fetch`, whose 300 s body deadline kills an idle stream; see lib/stream-proxy.ts)
+  app/api/{transport,workspace,projects}  proxies to the service — every hop relays through ONE policy module (lib/service-proxy.ts: base URL, forwarded auth, verbatim status/body) which never uses next.config rewrites (they buffer) nor `fetch` (its 300 s body deadline kills an idle stream; the relay is lib/stream-proxy.ts)
   components/studio                 the workbench shell: top bar (its two switch buttons give the LEFT slot to the conversation or the Projects pane), Projects pane (create Project + Session over `/api/projects*`; a click EXPANDS a Project for browsing, a DOUBLE click on a Session opens it — expanding must not move the scope, so the conversation and the file tree stay put), file tree/preview panes, tab strip, status bar
   store/studio-store.ts             the shell's scope + chrome state (projects list, active Project/Session, left view + panel visibility, open tabs)
   components/session-view.tsx       providers + the memoized runtime owner; with no scope it renders the chrome alone
@@ -19,9 +19,9 @@ apps/web                          Next.js frontend (assistant-ui Thread UI, port
   components/ui + hooks + lib       shadcn/ui base, registry helpers
   (Tailwind v4 + shadcn/ui styling stack: postcss.config.mjs, components.json)
 packages/record                   RECORD SEAM PACKAGE: v1 vocabulary is Project/Session/Run only (Study/Task/Artifact/Evidence/Conclusion/AgentBlueprint deferred — docs/adr/0007) + the RecordStore contract + implementations (in-memory for tests; dependency-free JSONL used by default via RECORD_STORE_PATH). transport depends on it for Id/Run/RunStatus
-packages/transport                SEAM PACKAGE, two entries. `./seams` = the contract only: every RUNTIME seam interface (RuntimeAdapter/StateDelta, RuntimeBinding/RuntimeFactory/RuntimePlugin/RuntimeCapabilities, Principal/PrincipalResolver, Environment/EnvironmentProvider, Workspace + limits + QuotaPolicy) plus their error classes and limit constants. `.` = that contract + the shared adapter kit (`SessionRuntime` + its `SessionBehavior` / `RunFlow` queue / `foldState` / attachment helpers) + pure single-user defaults (LocalPrincipalResolver, LocalEnvironmentProvider, NullWorkspace, NoopQuotaPolicy). Exports are explicit (no `export *`); pinned by test/seams.test.ts
+packages/transport                SEAM PACKAGE, two entries. `./seams` = the contract only: every RUNTIME seam interface (RuntimeAdapter/StateDelta, RuntimeBinding/RuntimeFactory/RuntimePlugin/RuntimeCapabilities, Principal/PrincipalResolver, Environment/EnvironmentProvider, Workspace + limits + QuotaPolicy) plus their error classes and limit constants. `.` = that contract + the shared adapter kit (`SessionRuntime` + its `SessionBehavior` / `RunFlow` queue / `foldState` / attachment helpers / `createApplyContext`, the constructor for the transcript primitives so a behavior test drives the SAME merge rules the runtime does) + pure single-user defaults (LocalPrincipalResolver, LocalEnvironmentProvider, NullWorkspace, NoopQuotaPolicy). Exports are explicit (no `export *`); pinned by test/seams.test.ts
 packages/workspace                Workspace implementations (FsWorkspace + containment/symlink/size invariants); depends on transport
-packages/contract-tests          the SHARED seam conformance suites (testPrincipalResolver/testWorkspace/testRuntimeFactory/testAdapterLifecycle/testQuotaPolicy) every implementation runs; the OSS reference impls self-test here, the private module and third-party runtimes run the same suites in their CI. Imports the contract from `@science-studio/transport/seams` (never the kit)
+packages/contract-tests          the SHARED seam conformance suites (testPrincipalResolver/testWorkspace/testRuntimeFactory/testAdapterLifecycle/testQuotaPolicy/testResolveSessionKey) every implementation runs, plus the published `sessionState()` fixture a runtime's tests drive (fixtures drift silently otherwise — no test file was type-checked); the OSS reference impls self-test here, the private module and third-party runtimes run the same suites in their CI. Imports the contract from `@science-studio/transport/seams` (never the kit)
 packages/transport-client         assistant-ui client boundary (single `useTransport` session hook = history probe + standing watch + guarded import; state converter; command catalog + slash-menu / reasoning-trace helpers)
 packages/transport-openclaw       openclaw runtime adapter — owns its OWN launch surface (`GatewayBinding`), factory, capabilities and `runtimePlugins`; ports gateway WS
 packages/transport-dsh            dsh runtime adapter — owns `DshBinding` + factory + `runtimePlugins` (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC)
@@ -65,12 +65,16 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `<PROJECT_ROOT>/<projectId>/`, shared flatly by all its Sessions — docs/adr/0006),
   `PROJECT_AGENT_ROOT` is the agent-side counterpart, and
   `WORKSPACE_MAX_INLINE_BYTES` is the inline cap; unset `PROJECT_ROOT` means
-  `NullWorkspace` and no file surface. Routes live on the SAME service behind the
-  same principal/environment preamble and take `?project=`: `GET
+  `NullWorkspace` and no file surface. Routes live on the SAME service and ask
+  `ProjectScopes` (`services/transport-service/src/project-scope.ts`) for the
+  request's scope — the Principal, the Project (the query's `projectId`, else the
+  query's `project` (the older spelling), else the body's, else `project-default`)
+  and that Project's `Environment` — so no route spells the Project claim its own
+  way and no route body repeats the preamble: `GET
   /api/workspace/{entries,stat,file}`. `file` streams inline up to the cap (413
   over it) and `?download=1` streams any size; a missing path is 404, a
   traversal/absolute path 400, no workspace 503. Uploads are `POST
-  /api/workspace/upload?path=&project=` with a **raw** body
+  /api/workspace/upload?path=` with a **raw** body
   (`application/octet-stream`, one file per request — no multipart parser);
   `maxUploadBytes` (`WORKSPACE_MAX_UPLOAD_BYTES`, default 100 MB) answers 413 and
   `QuotaPolicy` answers 507 on the declared size. Upload caps: also
@@ -97,7 +101,13 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 - `npm run dev -w @science-studio/transport-openclaw-example` — the example app: Vite (5173, proxies `/api`) + the openclaw adapter behind `@science-studio/transport-service` (3200). Needs `examples/transport-openclaw-example/.env` (see its `.env.example`) and a live gateway, and `npm run build` first (imports deps from dist). Dev-only — intentionally NOT in the root build gate; its `npm run test` drives the same wiring against a scripted gateway (no live gateway needed).
 - `npm run dev -w @science-studio/transport-dsh-example` — the same shape over the dsh adapter: Vite (5173) + `@science-studio/transport-service` (3300); the adapter spawns `dsh --profile sdk` locally (needs `examples/transport-dsh-example/.env` with `DEEPSEEK_API_KEY`, the model route `HARNESS_PROVIDER`/`HARNESS_MODEL`, and that route's `apiKeyEnv` name — `server.ts` promotes those two `HARNESS_*` names to the launch-only `DSH_PROVIDER`/`DSH_MODEL` before the adapter reads it, because the harness child runs with that folder as cwd and the dsh CLI reads that same `.env` and hard-refuses any `DSH_*` key in it; the route itself — endpoint/models — is declared harness-side in `<harness home>/settings.yaml`, and the default example route is the LAN ollama `ollama-local`/`qwen3.8:latest`; defaults when `HARNESS_*` is unset: profile `sdk`, home `~/.dsh`, workspace = the example dir, transcript mirror under the service tmp dir, adapter provider/model `deepseek-official`/`deepseek-v4-flash` — override `DSH_HOME`/`DSH_TRANSCRIPT_DIR`/`DSH_MODEL`… via exported env). Its `npm run test` drives the wiring against a scripted turn client (no dsh process needed).
 - `npm run test:e2e -w @science-studio/web` — the web app's regression suite, all of it in one command: the panel/history tests mock the transport + record + workspace HTTP surface and assert the re-render invariants, `test/scope-restore.test.mjs` asserts that a load resumes the remembered scope and never probes an id the record does not list (docs/adr/0009), and `test/scope-memory.test.mjs` is the browserless resolution table (no Chromium needed; it imports `lib/scope-memory.ts` through Node's type stripping). The browser ones run their own `next dev` with a PRIVATE build dir (`NEXT_DIST_DIR=.next-test`, read by `next.config.mjs`) so the suite can run while a developer's own `npm run dev` is up — two dev servers on one `.next` corrupt it. Next rewrites `next-env.d.ts`/`tsconfig.json` to match whichever dist dir ran last, so a suite run may leave those generated lines dirty; the next `npm run dev`/`next build` flips them back. They need a Chromium (auto-detected; they SKIP without one) and `npm run build -w @science-studio/transport-client` first. Dev-only — NOT part of the root `npm test`.
-- `npm run build` — build record → transport → workspace → contract-tests → transport-client → transport-openclaw → transport-dsh → transport-service; this is the real type gate
+- `npm run build` — build record → transport → workspace → contract-tests → transport-client → transport-openclaw → transport-dsh → transport-service, then
+  `npm run typecheck:tests`; this is the real type gate. Each package's own
+  `tsconfig.json` includes only `src/**` (so `tsc -b` emits just the package), so
+  the TESTS are checked by one separate program, `tsconfig.tests.json` over
+  `packages/*/test` + `services/*/test`. It runs LAST because
+  `@science-studio/*` resolves to the built `dist` types. Outside the gate:
+  `apps/web/test/*.mjs` (plain JS) and the dev-only `examples/*`.
 - `npm run typecheck` — **known-broken**: fails in transport-service with pre-existing TS6310 (composite refs + `--noEmit`). Other workspaces pass; use `npm run build` for the service.
 - `npm run smoke:adapter` — connect a real openclaw adapter to a live gateway and drive one `chat.send` (sends a real message to `OPENCLAW_DEFAULT_SESSION` unless `SMOKE_SESSION` overrides it). Needs `npm run build` first.
 - `npm run smoke:replay -- <file>` — fold recorded SSE frames through the client decoder/accumulator (verifies a stream terminates with `[DONE]` and only uses `set` ops).
@@ -115,10 +125,12 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   clients that scope nothing in the URL (our mount probe puts the scope in both;
   the examples put it nowhere and land on the default Project). An omitted
   `projectId` falls back to the auto-ensured `project-default`, and an unknown
-  session key is first-use recorded under that Project (docs/adr/0007). The
-  workspace routes take `?project=` (omitted → the default Project), and the
-  watch takes `?projectId=&threadId=` (`?project=` is accepted for older
-  callers).
+  session key is first-use recorded under that Project (docs/adr/0007). Every
+  route that needs a runtime or a workspace reads the claim the same way — the
+  query's `projectId`, else the query's `project` (the older spelling), else the
+  body's, else `project-default`; `project-scope.ts` is that rule's one home — and
+  the watch additionally takes `threadId`. The command catalog follows the same
+  claim, so it is the Project's own adapter's catalog.
 - Frontend is assistant-ui's `useAssistantTransportRuntime`. It sends user
   messages as **`message.parts`** (array of `{type:"text",text}`), NOT
   `message.content`; `normalizeCommands` reads `msg.content ?? msg.parts`.
@@ -318,7 +330,14 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `history-sync.ts` + `chat.send` + 250 ms coalescing; dsh: `runTurn` + mirror
   restore/save + async cold baseline). Per-adapter code never re-implements the
   loop. The `RunFlow` queue (enqueue-time snapshot clones) is what keeps the
-  wire mirror and the client safe from deltas referencing live objects.
+  wire mirror and the client safe from delta referencing live objects.
+  **The transcript primitives are constructible**: `createApplyContext(state)`
+  builds an `ApplyContext` over a transcript the caller owns, from the same code
+  `SessionRuntime` runs — so an adapter's `apply` mapping is tested against the
+  real merge rules instead of a copy. A copy inside `transport-dsh` had drifted
+  (it merged a tool result but not the later `args` that openclaw sends), and
+  nothing caught it because no test drove the rule itself; a behavior test must
+  never re-implement `emit`/`ensureMessage`/`mergeToolCall`.
 - **Don't hand-roll the gateway WS state machine.** Use
   `@openclaw/gateway-client` / `@openclaw/gateway-protocol` primitives, pinned
   EXACTLY (calendar release train, not semver; `2026.8.1`). Reference
@@ -359,18 +378,27 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   token stream (symptom: the whole reply — user message included — appears only
   when the run finishes). When debugging a UI-side issue, test through port 3000
   too; the route handler can behave differently from the direct service.
-- **A streaming proxy hop MUST NOT use `fetch`.** Every long-lived `/api` proxy
-  (`transport`, `transport/watch`, `workspace/[...path]` — the three streaming
-  ones) relays through `apps/web/lib/stream-proxy.ts`, which issues the upstream
-  request with `node:http`/`node:https`. undici (Node's `fetch`) aborts a
-  response body after **300 s of silence** (`UND_ERR_BODY_TIMEOUT`), and the watch
-  is silent BY DESIGN until a run settles — so every idle watch died at the
-  5-minute mark with `failed to pipe response` and a 500 (`GET
-  /api/transport/watch … 500 in 302671ms` was the tell). `node:http` has no idle
-  deadline; the response is handed over as a `ReadableStream`, and cancelling it
-  (tab closed, `useTransport` re-render) destroys the upstream socket. The JSON
-  proxies (`transport/commands`, `projects/[[...path]]`) are short requests and
-  keep using `fetch`.
+- **Every `/api` proxy hop relays through ONE module — never `fetch`.**
+  `apps/web/lib/service-proxy.ts` (`proxyToService(request, { path, method,
+  body, headers, forward })`) owns the policy all of them share: the
+  `TRANSPORT_SERVICE_URL` base, the caller's `Authorization` forwarded upstream,
+  and the upstream's status and body relayed VERBATIM (a proxy that re-shapes an
+  error only hides the service's own diagnosis). Under it,
+  `apps/web/lib/stream-proxy.ts` issues the request with `node:http`/`node:https`
+  — undici (Node's `fetch`) aborts a response body after **300 s of silence**
+  (`UND_ERR_BODY_TIMEOUT`), and the watch is silent BY DESIGN until a run
+  settles, so every idle watch died at the 5-minute mark with `failed to pipe
+  response` and a 500 (`GET /api/transport/watch … 500 in 302671ms` was the
+  tell). `node:http` has no idle deadline; the response is handed over as a
+  `ReadableStream`, and cancelling it (tab closed, `useTransport` re-render)
+  destroys the upstream socket. Short JSON hops pay nothing for the same relay —
+  one policy, no "which one does this route use?".
+  `runtime`/`dynamic` stay literal in each route file (Next must statically
+  analyze route segment config, so it cannot be re-exported). Each route keeps
+  only what is genuinely per-hop: the upstream path + query (the watch is the one
+  hop that WHITELISTS its query instead of relaying it), the request body, and —
+  for `transport/commands` — the one failure policy: an empty catalog on a
+  failed upstream, so the composer degrades to plain chat.
   Note the response HEAD is only flushed with the first body chunk (Next's
   Response plumbing, both before and after this change): a watch that has nothing
   to push shows no TTFB until it does.
@@ -394,9 +422,10 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `records`/project-session directory, so Runs and Sessions land together.
 - All five `apps/web` proxies (`app/api/transport/route.ts`, `transport/commands`,
   `transport/watch`, `workspace/[...path]`, `projects/[[...path]]`) forward the
-  caller's `Authorization` header upstream. Single-user installs send none (no
-  login); in hosted mode the enterprise `PrincipalResolver` authenticates the
-  bearer, so a proxy that swallows the header breaks auth silently. The
-  `projects` one is the only JSON (non-streaming) proxy — it is the record
-  surface (`/api/projects*`) the Projects pane reads, and it is what keeps the
-  browser same-origin on port 3000.
+  caller's `Authorization` header upstream — one line in
+  `lib/service-proxy.ts` (`forwardedAuth`), so a new hop cannot forget it.
+  Single-user installs send none (no login); in hosted mode the enterprise
+  `PrincipalResolver` authenticates the bearer, so a proxy that swallows the
+  header breaks auth silently. `projects` is the record surface
+  (`/api/projects*`) the Projects pane reads, and it is what keeps the browser
+  same-origin on port 3000.

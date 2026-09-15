@@ -1,0 +1,30 @@
+{
+  // Test files are outside every package's own program (each tsconfig includes
+  // only `src/**`, so `tsc -b` emits just the package). That left them
+  // unchecked, and the drift was real: ten adapter fixtures passed `studyId`
+  // where the seam demands `SessionState.projectId`, and several doubles
+  // implemented an `addArtifact` that v1's `RecordStoreLike` does not have.
+  //
+  // This is the one program that type-checks them. It runs at the END of
+  // `npm run build`, after each package's `dist` exists, because
+  // `@science-studio/*` resolves through node_modules to those built types.
+  //
+  // `jsx` is the one monorepo-wide concession: transport-client is the only
+  // package with `.tsx`, and its tests reach into that source. `lib` stays
+  // Node-only (ES2022) — the tests run under `node --test`, and adding DOM would
+  // hand them globals that do not exist at runtime and tighten Node's own
+  // `BodyInit` acceptance for no benefit.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "incremental": false,
+    "jsx": "react-jsx",
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  "include": ["packages/*/test/**/*.ts", "services/*/test/**/*.ts"]
+}

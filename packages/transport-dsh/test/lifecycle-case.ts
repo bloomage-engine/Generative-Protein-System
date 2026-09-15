@@ -2,9 +2,9 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
-import type { RecordStoreLike, SessionState, StateDelta } from "@science-studio/transport/seams";
+import type { RecordStoreLike, StateDelta } from "@science-studio/transport/seams";
 import type { Run } from "@science-studio/record";
-import type { AdapterLifecycleCase } from "@science-studio/contract-tests";
+import { type AdapterLifecycleCase, sessionState } from "@science-studio/contract-tests";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
 
 function ev(type: string, data: unknown, seq: number): SessionEvent {
@@ -51,27 +51,17 @@ export async function dshLifecycleCase(): Promise<AdapterLifecycleCase> {
   const runs: Run[] = [];
   const store: RecordStoreLike = {
     addRun: async (run) => void runs.push(run),
-    addArtifact: async () => {},
   };
   const client = new ScriptedClient();
   const adapter = new DshRuntimeAdapter({ createClient: () => client, transcriptDir: dir });
   await adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
 
-  const session = (): SessionState => ({
-    sessionId: "sess-1",
-    studyId: "study-1",
-    agentId: "main",
-    status: "idle",
-    messages: [],
-  });
-
   return {
     adapter,
     runs,
-    session,
     async runTurn(text: string): Promise<StateDelta[]> {
       const deltas: StateDelta[] = [];
-      for await (const delta of adapter.run(session(), [
+      for await (const delta of adapter.run(sessionState(), [
         { type: "add-message", message: { id: "u1", role: "user", content: text } },
       ])) {
         deltas.push(delta);

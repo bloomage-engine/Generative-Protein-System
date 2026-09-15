@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
 import type { SessionState, StateDelta, WatchSnapshot } from "@science-studio/transport";
+import { sessionState } from "@science-studio/contract-tests";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
 
 function ev(type: string, data: unknown, seq = 1): SessionEvent {
@@ -39,7 +40,7 @@ function reply(assistantId: string, text: string): SessionEvent[] {
 }
 
 function session(): SessionState {
-  return { sessionId: "sess-1", studyId: "study-1", agentId: "main", status: "idle", messages: [] };
+  return sessionState({ sessionId: "sess-1" });
 }
 
 async function collect(iter: AsyncIterable<StateDelta>): Promise<void> {
@@ -51,7 +52,7 @@ async function collect(iter: AsyncIterable<StateDelta>): Promise<void> {
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 10));
 
 /** A no-op record store: these tests observe the watch seam, not persistence. */
-const noRecordStore = { addRun: async () => {}, addArtifact: async () => {} };
+const noRecordStore = { addRun: async () => {} };
 
 test("a warm attach pushes a baseline, then one push per settled run", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-watch-warm-"));

@@ -5,6 +5,7 @@ import type { BackendGateway, BackendGatewayOptions } from "../src/connection.js
 import type { EventFrame } from "@openclaw/gateway-client/browser";
 import type { Run } from "@science-studio/record";
 import type { RecordStoreLike, SessionState, StateDelta, TransportCommand, WatchSnapshot } from "@science-studio/transport";
+import { sessionState } from "@science-studio/contract-tests";
 import type { GatewayCommandEntry } from "../src/commands.js";
 
 const SESSION = "agent:main:main";
@@ -67,7 +68,7 @@ function scriptedGateway(opts: {
 }
 
 function freshSession(): SessionState {
-  return { sessionId: SESSION, studyId: "study-1", agentId: "main", status: "idle", messages: [] };
+  return sessionState({ sessionId: SESSION });
 }
 
 /** Poll until `cond` holds (remote persistence runs after the history sync). */
@@ -99,7 +100,6 @@ function recordingStore(): { store: RecordStoreLike; runs: Run[] } {
       addRun: async (run: Run) => {
         runs.push(run);
       },
-      addArtifact: async () => {},
     },
   };
 }

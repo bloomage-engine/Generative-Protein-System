@@ -93,7 +93,8 @@ pinned by `packages/transport/test/seams.test.ts`.
      transport-client adopts it via importExternalState (same guarded interlock)
 
 ③ Workspace path (opt-in; one workspace per Project, read + raw upload)
-     GET  /api/workspace/{entries,stat,file}?project=   POST /api/workspace/upload?project=
+     GET  /api/workspace/{entries,stat,file}          POST /api/workspace/upload?path=
+       (Project claim: query projectId | project, else body, else project-default)
        ▼
      app/api/workspace/[...path] proxy → transport-service → FsWorkspace(project) | NullWorkspace
 ```
@@ -294,9 +295,12 @@ initialized with that Project's workspace, which is what puts the agent there
 request answers 503). `PROJECT_AGENT_ROOT` is the agent-side counterpart of the
 host-side `PROJECT_ROOT`.
 
-- Routes: `GET /api/workspace/{entries,stat,file}?project=` and
-  `POST /api/workspace/upload?path=&project=` (a **raw** body, one file per
-  request — no multipart parser). `file` streams inline up to
+- Routes: `GET /api/workspace/{entries,stat,file}` and
+  `POST /api/workspace/upload?path=` (a **raw** body, one file per
+  request — no multipart parser). The Project is read by the ONE shared claim
+  rule (`services/transport-service/src/project-scope.ts`): the query's
+  `projectId`, else the query's `project`, else the body's, else
+  `project-default`. `file` streams inline up to
   `WORKSPACE_MAX_INLINE_BYTES` (413 over it) and `?download=1` streams any size; a
   missing path is 404, a traversal/absolute path 400. Upload answers 413 over
   `WORKSPACE_MAX_UPLOAD_BYTES` and 507 from `QuotaPolicy` on the declared size

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { sessionState } from "@science-studio/contract-tests";
 import { OpenClawRuntimeAdapter } from "../src/index.js";
 import type { BackendGateway, BackendGatewayOptions } from "../src/connection.js";
 import type { EventFrame } from "@openclaw/gateway-client/browser";
@@ -23,9 +24,11 @@ function scriptedGateway(history: () => unknown[]): (opts: BackendGatewayOptions
         for (const l of readyListeners) l();
       },
       stop: () => {},
-      request: async (method: string) => {
-        if (method === "chat.history") return { sessionKey: "s", messages: history() };
-        if (method === "chat.send") return { runId: "run-1", status: "started" };
+      // The real `request` is generic over the payload the caller expects; a
+      // scripted double cannot know that per method, so it casts its own reply.
+      request: async <T,>(method: string): Promise<T> => {
+        if (method === "chat.history") return { sessionKey: "s", messages: history() } as T;
+        if (method === "chat.send") return { runId: "run-1", status: "started" } as T;
         throw new Error(`unexpected request: ${method}`);
       },
       onEvent: (cb) => {
@@ -45,13 +48,7 @@ function scriptedGateway(history: () => unknown[]): (opts: BackendGatewayOptions
 }
 
 function freshSession(): SessionState {
-  return {
-    sessionId: "agent:main:main",
-    studyId: "study-1",
-    agentId: "main",
-    status: "idle",
-    messages: [],
-  };
+  return sessionState({ sessionId: "agent:main:main" });
 }
 
 async function collect(adapter: OpenClawRuntimeAdapter, commands: TransportCommand[]): Promise<StateDelta[]> {
@@ -64,7 +61,7 @@ function reconcileOf(deltas: StateDelta[]): Extract<StateDelta, { type: "reconci
   return deltas.find((d): d is Extract<StateDelta, { type: "reconcile" }> => d.type === "reconcile");
 }
 
-const noopRecordStore = { addRun: async () => {}, addArtifact: async () => {} };
+const noopRecordStore = { addRun: async () => {} };
 
 async function makeAdapter(
   history: () => unknown[],

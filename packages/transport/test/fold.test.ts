@@ -26,7 +26,7 @@ test("session-status sets status and reports a status effect", () => {
 
 test("reconcile replaces the whole ordered message list and status", () => {
   const s = state([fresh([])], "running");
-  const canonical = [
+  const canonical: Message[] = [
     { id: "a", role: "user", parts: [{ type: "text", text: "hi" }] },
     { id: "b", role: "assistant", parts: [{ type: "text", text: "yo" }] },
   ];
@@ -39,7 +39,7 @@ test("reconcile replaces the whole ordered message list and status", () => {
 
 test("add-message appends and reports message-added", () => {
   const s = state([fresh([])]);
-  const msg = { id: "m2", role: "user", parts: [{ type: "text", text: "hi" }] };
+  const msg: Message = { id: "m2", role: "user", parts: [{ type: "text", text: "hi" }] };
   const effects = foldState(s, { type: "add-message", message: msg });
   assert.deepEqual(effects, [{ type: "message-added", messageId: "m2" }]);
   assert.equal(s.messages.length, 2);

@@ -19,6 +19,7 @@ import type {
   SessionState,
   StateDelta,
 } from "@science-studio/transport/seams";
+import { sessionState } from "./session-state.js";
 
 type PersistedRun = Parameters<RecordStoreLike["addRun"]>[0];
 
@@ -27,8 +28,12 @@ export interface AdapterLifecycleCase {
   adapter: RuntimeAdapter;
   /** Runs the case's capturing record store collected (assertions read this). */
   runs: PersistedRun[];
-  /** A clean SessionState to drive. */
-  session(): SessionState;
+  /**
+   * A clean SessionState to drive. Optional: the suite falls back to the
+   * published `sessionState()` fixture, so an implementer never hand-writes one
+   * (docs/design/implementation-plan.md §5).
+   */
+  session?(): SessionState;
   /** Drive ONE research turn to completion against the scripted runtime. */
   runTurn(text: string): Promise<StateDelta[]>;
 }
@@ -48,8 +53,8 @@ export function testAdapterLifecycle(
   make: () => AdapterLifecycleCase | Promise<AdapterLifecycleCase>,
 ): void {
   test(`${name}: a mount probe reconciles first and terminates`, async () => {
-    const { adapter, session } = await make();
-    const deltas = await collect(adapter.run(session(), []));
+    const lifecycle = await make();
+    const deltas = await collect(lifecycle.adapter.run((lifecycle.session ?? sessionState)(), []));
     assert.ok(deltas.length >= 1, "a probe must yield at least the reconcile snapshot");
     assert.equal(deltas[0]!.type, "reconcile", "every run starts with a reconcile delta");
   });

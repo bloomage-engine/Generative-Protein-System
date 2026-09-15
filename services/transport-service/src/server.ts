@@ -1,17 +1,19 @@
 /**
  * Fastify server: the assistant-transport wire.
  *
- * Every route runs the same preamble — resolve the `Principal`, then resolve the
- * request's Project and acquire ITS `Environment` (runtime + workspace, one per
- * Project — docs/adr/0006) — so deployment mode and tenancy never reach a route
- * body. The transport/watch routes stream by hijacking the Node response;
- * Fastify's buffering must never sit in that path.
+ * Every route that needs a runtime or a workspace asks `ProjectScopes` for the
+ * request's Project scope (Principal + Project + that Project's `Environment`,
+ * one per Project — docs/adr/0008) instead of resolving it itself, so deployment
+ * mode, tenancy and the Project claim's spelling never reach a route body. The
+ * transport/watch routes stream by hijacking the Node response; Fastify's
+ * buffering must never sit in that path.
  *
  * Project and Session identity are record-owned (docs/adr/0002, 0007): the
- * Project/Session routes write the record, and the transport route resolves a
- * claimed session key to an existing Session rather than minting one.
+ * Project/Session routes write the record, and the transport route resolves its
+ * claimed session key through the record — first-use recording a Session for a
+ * key it does not know — rather than fabricating identity.
  */
-import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import { posix } from "node:path";
 import { Readable } from "node:stream";
@@ -26,15 +28,12 @@ import type {
 } from "@science-studio/transport";
 import {
   DEFAULT_MAX_UPLOAD_BYTES,
-  FileTooLargeError,
-  WorkspaceNotFoundError,
-  WorkspacePathError,
-  WorkspaceUnavailableError,
   attachmentsFromMentions,
   parseWorkspaceMentions,
 } from "@science-studio/transport";
 import type { Backend, CorsConfig } from "./composition.js";
 import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS } from "./directory.js";
+import { canonicalSessionKey, createProjectScopes } from "./project-scope.js";
 import { encodeOp, parseClaimedState, WireOpsBuilder } from "./wire.js";
 
 declare module "fastify" {
@@ -79,32 +78,13 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     ...(backend.recordDefaults ? { defaults: backend.recordDefaults } : {}),
   });
   const defaultProjectId = backend.recordDefaults?.projectId ?? DEFAULT_RECORD_DEFAULTS.projectId;
+  /** Which Project each request is serving — and its adapter + Project Workspace. */
+  const scope = createProjectScopes({
+    environments: backend.environments,
+    directory,
+    defaultProjectId,
+  });
   const activeRuns = new Set<string>();
-
-  const projectOf = (value: unknown): string =>
-    typeof value === "string" && value.length > 0 ? value : defaultProjectId;
-
-  /**
-   * Resolve the request's Session inside a Project: acquire the Project's
-   * environment, map the claimed threadId to the runtime's canonical session key,
-   * then find — or lazily mint — the matching record. `projectId` is optional and
-   * falls back to the default Project, so a client that names no Project (the
-   * mount probe, the examples) keeps converging instead of 404ing.
-   */
-  const resolveSession = async (
-    principal: Principal,
-    projectId: string,
-    threadId: string | null,
-  ): Promise<{ environment: Awaited<ReturnType<Backend["environments"]["acquire"]>>; session: Awaited<ReturnType<typeof directory.resolveOrCreateSession>> }> => {
-    const environment = await backend.environments.acquire(principal, projectId);
-    const adapter = environment.adapter;
-    const sessionKey =
-      typeof adapter.resolveSessionKey === "function"
-        ? adapter.resolveSessionKey(threadId)
-        : (threadId ?? "default");
-    const session = await directory.resolveOrCreateSession(projectId, sessionKey);
-    return { environment, session };
-  };
 
   // -- Project / Session / Run record surface --------------------------------
   app.post("/api/projects", async (request, reply) => {
@@ -156,29 +136,15 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
 
   // -- Conversation path -----------------------------------------------------
   app.post("/api/transport", async (request, reply) => {
-    const principal = request.principal!;
-    const body = (request.body ?? {}) as {
-      commands?: unknown[];
-      state?: unknown;
-      threadId?: string | null;
-      projectId?: string | null;
-    };
+    const body = (request.body ?? {}) as { commands?: unknown[]; state?: unknown };
     const commands = normalizeCommands(body.commands ?? []);
-    // The scope may ride in the body (our own probe) or in the query. The query
-    // is AUTHORITATIVE because assistant-ui builds its OWN send body: it always
-    // puts a per-page local `__LOCALID_*` threadId there, which must not shadow
-    // the Session the app selected in the URL (that would resolve the send to
-    // the adapter's default session, so the reply would reconcile against a
-    // DIFFERENT transcript — the app would appear to switch sessions). The body
-    // stays the fallback for clients that scope nothing in the URL (the mount
-    // probe and the examples).
-    const query = request.query as { projectId?: string; threadId?: string };
-    const projectId = projectOf(query.projectId ?? body.projectId);
-    const claimedThread = query.threadId ?? body.threadId ?? null;
-    const claimed = typeof claimedThread === "string" && claimedThread.length > 0 ? claimedThread : null;
 
-    // Resolve identity BEFORE taking the lock, so a failure here cannot leak it.
-    const { environment, session: sessionRecord } = await resolveSession(principal, projectId, claimed);
+    // The request's scope — Principal, Project, and the Project's own adapter +
+    // workspace — then the record's Session for the claimed threadId (resolved,
+    // or first-use recorded; docs/adr/0007). Resolve identity BEFORE taking the
+    // lock, so a failure here cannot leak it.
+    const { principal, environment, projectId, session: sessionRecord } =
+      await scope.sessionOf(request);
 
     const runKey = `${principal.tenant}:${sessionRecord.id}`;
     if (activeRuns.has(runKey)) {
@@ -215,15 +181,14 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
 
   // -- Run control -----------------------------------------------------------
   app.post("/api/transport/abort", async (request) => {
-    const body = (request.body ?? {}) as { projectId?: string; reason?: string };
-    const environment = await backend.environments.acquire(request.principal!, projectOf(body.projectId));
+    const body = (request.body ?? {}) as { reason?: string };
+    const { environment } = await scope.acquire(request);
     environment.adapter.abort(body.reason);
     return { ok: true };
   });
 
   app.post("/api/transport/approve", async (request, reply) => {
     const body = (request.body ?? {}) as {
-      projectId?: string;
       approvalId?: string;
       decision?: "approve" | "reject";
     };
@@ -232,7 +197,7 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
         .code(400)
         .send({ error: "approvalId and decision (approve|reject) are required" });
     }
-    const environment = await backend.environments.acquire(request.principal!, projectOf(body.projectId));
+    const { environment } = await scope.acquire(request);
     const adapter = environment.adapter;
     // The adapter's method IS the capability; the conformance suite pins that it
     // agrees with the declared `capabilities.approvals`.
@@ -247,7 +212,9 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
 
   // -- Runtime command catalog (slash menu, docs/adr/0003) -------------------
   app.get("/api/transport/commands", async (request) => {
-    const environment = await backend.environments.acquire(request.principal!, defaultProjectId);
+    // The catalog belongs to the Project's OWN adapter (one per Project,
+    // docs/adr/0008), so it follows the request's Project like every other route.
+    const { environment } = await scope.acquire(request);
     let commands: CommandDescriptor[] = [];
     if (typeof environment.adapter.listCommands === "function") {
       try {
@@ -261,25 +228,14 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
 
   // -- Standing watch (NDJSON, long-lived, NOT [DONE]-terminated) ------------
   app.get("/api/transport/watch", async (request, reply) => {
-    // `projectId` is what the client sends (matching the transport route);
-    // `project` is accepted for older callers.
-    const { projectId, project, threadId = null } = request.query as {
-      projectId?: string;
-      project?: string;
-      threadId?: string | null;
-    };
-    const environment = await backend.environments.acquire(
-      request.principal!,
-      projectOf(projectId ?? project),
-    );
+    const { environment, threadId } = await scope.acquire(request);
     if (typeof environment.adapter.subscribe !== "function") {
       return reply.code(400).send("adapter does not support watch");
     }
     const adapter = environment.adapter;
-    const sessionId =
-      typeof adapter.resolveSessionKey === "function"
-        ? adapter.resolveSessionKey(threadId)
-        : (threadId ?? "default");
+    // The watch needs only the canonical key: attaching must not mint a Session
+    // row — the mount probe is what records the Session (docs/adr/0007).
+    const sessionId = canonicalSessionKey(adapter, threadId);
 
     reply.hijack();
     reply.raw.writeHead(200, { ...ndjsonHeaders(), ...corsHeaders(backend.cors) });
@@ -304,35 +260,20 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
 
   // -- Workspace file service: one workspace per Project (docs/adr/0006) ------
   app.get("/api/workspace/entries", async (request, reply) => {
-    const { path = "", project } = request.query as { path?: string; project?: string };
-    try {
-      const environment = await backend.environments.acquire(request.principal!, projectOf(project));
-      return await environment.workspace.list(path);
-    } catch (err) {
-      return sendWorkspaceError(reply, err);
-    }
+    const { path = "" } = request.query as { path?: string };
+    return scope.withWorkspace(request, reply, ({ environment }) => environment.workspace.list(path));
   });
 
   app.get("/api/workspace/stat", async (request, reply) => {
-    const { path, project } = request.query as { path?: string; project?: string };
+    const { path } = request.query as { path?: string };
     if (!path) return reply.code(400).send({ error: "path is required" });
-    try {
-      const environment = await backend.environments.acquire(request.principal!, projectOf(project));
-      return await environment.workspace.stat(path);
-    } catch (err) {
-      return sendWorkspaceError(reply, err);
-    }
+    return scope.withWorkspace(request, reply, ({ environment }) => environment.workspace.stat(path));
   });
 
   app.get("/api/workspace/file", async (request, reply) => {
-    const { path, project, download } = request.query as {
-      path?: string;
-      project?: string;
-      download?: string;
-    };
+    const { path, download } = request.query as { path?: string; download?: string };
     if (!path) return reply.code(400).send({ error: "path is required" });
-    try {
-      const environment = await backend.environments.acquire(request.principal!, projectOf(project));
+    return scope.withWorkspace(request, reply, async ({ environment }) => {
       // Inline reads are capped by the workspace (413 when over); an explicit
       // download streams any size instead of failing.
       const content = download
@@ -347,44 +288,37 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       );
       reply.header("cache-control", "no-store");
       return reply.send(Readable.fromWeb(content.body as Parameters<typeof Readable.fromWeb>[0]));
-    } catch (err) {
-      return sendWorkspaceError(reply, err);
-    }
+    });
   });
 
   app.post("/api/workspace/upload", async (request, reply) => {
-    const { path, project } = request.query as { path?: string; project?: string };
+    const { path } = request.query as { path?: string };
     if (!path) return reply.code(400).send({ error: "path is required" });
-
-    let environment;
-    try {
-      environment = await backend.environments.acquire(request.principal!, projectOf(project));
-    } catch (err) {
-      return sendWorkspaceError(reply, err);
-    }
-
     const maxBytes = backend.workspaceLimits?.maxUploadBytes ?? DEFAULT_MAX_UPLOAD_BYTES;
     const declared = Number(request.headers["content-length"]);
-    if (Number.isFinite(declared)) {
-      if (declared > maxBytes) {
-        return reply
-          .code(413)
-          .send({ error: `upload is ${declared} bytes, over the ${maxBytes}-byte cap` });
-      }
-      // Quota is checked up front when the client declared a size; a streamed
-      // upload without Content-Length is bounded by `maxBytes` instead.
-      if (backend.quota) {
-        try {
-          await backend.quota.check(request.principal!, declared);
-        } catch (err) {
+
+    return scope.withWorkspace(request, reply, async ({ principal, environment }) => {
+      // The caps are checked only once the Project has a workspace, so a
+      // deployment with none answers 503 rather than 413.
+      if (Number.isFinite(declared)) {
+        if (declared > maxBytes) {
           return reply
-            .code(507)
-            .send({ error: err instanceof Error ? err.message : "quota exceeded" });
+            .code(413)
+            .send({ error: `upload is ${declared} bytes, over the ${maxBytes}-byte cap` });
+        }
+        // Quota is checked up front when the client declared a size; a streamed
+        // upload without Content-Length is bounded by `maxBytes` instead.
+        if (backend.quota) {
+          try {
+            await backend.quota.check(principal, declared);
+          } catch (err) {
+            return reply
+              .code(507)
+              .send({ error: err instanceof Error ? err.message : "quota exceeded" });
+          }
         }
       }
-    }
 
-    try {
       const body = request.body as Readable;
       const stat = await environment.workspace.write(
         path,
@@ -392,9 +326,7 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
         { maxBytes },
       );
       return { attachment: attachmentFor(stat) };
-    } catch (err) {
-      return sendWorkspaceError(reply, err);
-    }
+    });
   });
 
   return app;
@@ -411,15 +343,6 @@ function attachmentFor(stat: FileStat): AttachmentRef {
     size: stat.size,
     entryKind: stat.kind === "dir" ? "dir" : "file",
   };
-}
-
-/** Map a workspace error onto an HTTP status; rethrow anything unrecognized. */
-function sendWorkspaceError(reply: FastifyReply, err: unknown): FastifyReply {
-  if (err instanceof WorkspaceNotFoundError) return reply.code(404).send({ error: err.message });
-  if (err instanceof FileTooLargeError) return reply.code(413).send({ error: err.message });
-  if (err instanceof WorkspacePathError) return reply.code(400).send({ error: err.message });
-  if (err instanceof WorkspaceUnavailableError) return reply.code(503).send({ error: err.message });
-  throw err;
 }
 
 function sseHeaders(): Record<string, string> {

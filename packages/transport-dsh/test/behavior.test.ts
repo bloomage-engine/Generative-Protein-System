@@ -2,14 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
 import {
-  foldState,
+  createApplyContext,
   type ApplyContext,
-  type Message,
-  type MessagePart,
   type RunControl,
   type SessionState,
-  type StateDelta,
 } from "@science-studio/transport";
+import { sessionState } from "@science-studio/contract-tests";
 import { createDshBehavior } from "../src/behavior.js";
 import type { DshTurnClient } from "../src/client.js";
 
@@ -36,52 +34,17 @@ function behavior() {
 }
 
 function freshState(): SessionState {
-  return { sessionId: "sess-1", studyId: "study-1", agentId: "main", status: "idle", messages: [] };
+  return sessionState({ sessionId: "sess-1" });
 }
 
 /**
- * A minimal `ApplyContext` over a real `SessionState`, folding through the kit's
- * `foldState` so the assertions observe the transcript the real context builds.
+ * A context over a transcript the test owns — the KIT's own primitives, not a
+ * copy of them. The copy had drifted (it merged a tool result but not the later
+ * `args`), so the mapping below was asserted against a weaker rule than the one
+ * that ships; `createApplyContext` is the same code `SessionRuntime` runs.
  */
 function makeCtx(state: SessionState, run: RunControl<SessionEvent> | null = null): ApplyContext<SessionEvent> {
-  const emit = (delta: StateDelta): void => {
-    foldState(state, delta);
-  };
-  return {
-    sessionKey: "sess-1",
-    state,
-    emit,
-    ensureMessage(id, role) {
-      const existing = state.messages.find((m) => m.id === id);
-      if (existing) return existing;
-      const message: Message = { id, role, parts: [] };
-      emit({ type: "add-message", message });
-      return state.messages.find((m) => m.id === id)!;
-    },
-    mergeToolCall(update) {
-      const message = state.messages.find((m) => m.id === update.messageId);
-      if (!message) return;
-      const index = message.parts.findIndex((p) => p.type === "tool-call" && p.id === update.toolCallId);
-      if (index === -1) {
-        if (update.name === undefined) return;
-        const part: MessagePart = { type: "tool-call", id: update.toolCallId, name: update.name, args: update.args ?? "" };
-        if (update.result !== undefined) (part as { result?: string }).result = update.result;
-        if (update.isError) (part as { isError?: boolean }).isError = true;
-        emit({ type: "add-part", messageId: message.id, part });
-        return;
-      }
-      const next = [...message.parts];
-      next[index] = {
-        ...(message.parts[index] as Extract<MessagePart, { type: "tool-call" }>),
-        ...(update.result !== undefined ? { result: update.result } : {}),
-        ...(update.isError ? { isError: true } : {}),
-      };
-      emit({ type: "update-message", messageId: message.id, patch: { parts: next } });
-    },
-    reportRunId: () => {},
-    targetRunId: null,
-    run,
-  };
+  return createApplyContext<SessionEvent>(state, { sessionKey: "sess-1", run });
 }
 
 function fakeRun(): { control: RunControl<SessionEvent>; notes: { status?: string; usage?: unknown }[] } {

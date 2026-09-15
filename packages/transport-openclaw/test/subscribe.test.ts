@@ -4,6 +4,7 @@ import { OpenClawRuntimeAdapter } from "../src/index.js";
 import type { BackendGateway, BackendGatewayOptions } from "../src/connection.js";
 import type { EventFrame } from "@openclaw/gateway-client/browser";
 import type { SessionState, StateDelta, TransportCommand, WatchSnapshot } from "@science-studio/transport";
+import { sessionState } from "@science-studio/contract-tests";
 
 const SESSION = "agent:main:main";
 
@@ -27,10 +28,12 @@ function scriptedGateway(
         for (const l of readyListeners) l();
       },
       stop: () => {},
-      request: async (method: string) => {
+      // The real `request` is generic over the payload the caller expects; a
+      // scripted double cannot know that per method, so it casts its own reply.
+      request: async <T,>(method: string): Promise<T> => {
         if (method === "chat.history")
-          return { sessionKey: SESSION, messages: history ? history() : [] };
-        if (method === "chat.send") return { runId: "run-1", status: "started" };
+          return { sessionKey: SESSION, messages: history ? history() : [] } as T;
+        if (method === "chat.send") return { runId: "run-1", status: "started" } as T;
         throw new Error(`unexpected request: ${method}`);
       },
       onEvent: (cb) => {
@@ -50,7 +53,7 @@ function scriptedGateway(
 }
 
 function freshSession(): SessionState {
-  return { sessionId: SESSION, studyId: "study-1", agentId: "main", status: "idle", messages: [] };
+  return sessionState({ sessionId: SESSION });
 }
 
 function collect(adapter: OpenClawRuntimeAdapter, commands: TransportCommand[]): Promise<StateDelta[]> {
@@ -61,7 +64,7 @@ function collect(adapter: OpenClawRuntimeAdapter, commands: TransportCommand[]):
   })();
 }
 
-const noopRecordStore = { addRun: async () => {}, addArtifact: async () => {} };
+const noopRecordStore = { addRun: async () => {} };
 
 async function makeAdapter(
   history?: () => unknown[],

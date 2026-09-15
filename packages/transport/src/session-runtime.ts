@@ -24,7 +24,7 @@ import type {
   TransportCommand,
   WatchSnapshot,
 } from "./types.js";
-import { foldState } from "./fold.js";
+import { createTranscriptOps } from "./apply-context.js";
 import { RunFlow } from "./run-flow.js";
 import { userMessageParts } from "./attachments.js";
 
@@ -257,10 +257,6 @@ export function mergeToolResult(
   return true;
 }
 
-function findToolCallIndex(parts: readonly MessagePart[], toolCallId: Id): number {
-  return parts.findIndex((p) => p.type === "tool-call" && p.id === toolCallId);
-}
-
 /**
  * One Session's canonical state and run lifecycle. The adapter holds one per
  * session key and delegates `run`/`subscribe`/`abort` to it.
@@ -275,6 +271,8 @@ export class SessionRuntime<E> {
 
   /** The canonical transcript (Science Studio's owned session state). */
   state: SessionState = { sessionId: "", projectId: "", agentId: "", status: "idle", messages: [] };
+  /** The transcript primitives — the SAME ones `createApplyContext` hands a test. */
+  private readonly ops = createTranscriptOps(this.state);
 
   private active: ActiveRun<E> | null = null;
   private readonly sinks = new Set<WatchSink>();
@@ -335,7 +333,7 @@ export class SessionRuntime<E> {
     this.active = run;
     try {
       for (const send of sends) {
-        this.emitWith(flow, {
+        this.ops.emit(flow, {
           type: "add-message",
           message: {
             id: send.message.id,
@@ -344,7 +342,7 @@ export class SessionRuntime<E> {
           },
         });
       }
-      this.emitWith(flow, { type: "session-status", status: "running" });
+      this.ops.emit(flow, { type: "session-status", status: "running" });
       // Measured, never derived: assistant rows appended from here on belong to
       // this Run's output slice.
       run.baseline = this.state.messages.length;
@@ -451,58 +449,14 @@ export class SessionRuntime<E> {
     };
   }
 
-  private emitWith(flow: RunFlow | null, delta: StateDelta): void {
-    // One fold (foldState) is the single source of delta semantics; the push to
-    // the client is conditional on an attached flow.
-    foldState(this.state, delta);
-    flow?.push(delta);
-  }
-
-  private ensureMessage(flow: RunFlow | null, id: Id, role: Message["role"]): Message {
-    const existing = this.state.messages.find((m) => m.id === id);
-    if (existing) return existing;
-    this.emitWith(flow, { type: "add-message", message: { id, role, parts: [] } });
-    return this.state.messages.find((m) => m.id === id)!;
-  }
-
-  private mergeToolCall(flow: RunFlow | null, update: ToolCallUpdate): void {
-    const message = this.state.messages.find((m) => m.id === update.messageId);
-    if (!message) return;
-    const index = findToolCallIndex(message.parts, update.toolCallId);
-    if (index === -1) {
-      // No part yet: create it, but only with a name (a start event).
-      if (update.name === undefined) return;
-      const part: Extract<MessagePart, { type: "tool-call" }> = {
-        type: "tool-call",
-        id: update.toolCallId,
-        name: update.name,
-        args: update.args ?? "",
-      };
-      if (update.result !== undefined) part.result = update.result;
-      if (update.isError) part.isError = true;
-      this.emitWith(flow, { type: "add-part", messageId: message.id, part });
-      return;
-    }
-    // Same tool, later lifecycle event: merge in place, never a duplicate.
-    const existing = message.parts[index] as Extract<MessagePart, { type: "tool-call" }>;
-    const next = [...message.parts];
-    next[index] = {
-      ...existing,
-      ...(update.args ? { args: existing.args || update.args } : {}),
-      ...(update.result !== undefined ? { result: update.result } : {}),
-      ...(update.isError ? { isError: true } : {}),
-    };
-    this.emitWith(flow, { type: "update-message", messageId: message.id, patch: { parts: next } });
-  }
-
   private applyContext(run: ActiveRun<E> | null): ApplyContext<E> {
     const flow = run?.flow ?? null;
     return {
       sessionKey: this.sessionKey,
       state: this.state,
-      emit: (delta) => this.emitWith(flow, delta),
-      ensureMessage: (id, role) => this.ensureMessage(flow, id, role),
-      mergeToolCall: (update) => this.mergeToolCall(flow, update),
+      emit: (delta) => this.ops.emit(flow, delta),
+      ensureMessage: (id, role) => this.ops.ensureMessage(flow, id, role),
+      mergeToolCall: (update) => this.ops.mergeToolCall(flow, update),
       reportRunId: (id) => {
         this.lastReportedRunId = id;
         // Adopt it for the active Run too: a gateway terminal frame is the only
@@ -540,7 +494,7 @@ export class SessionRuntime<E> {
         run.targetRunId = value;
       },
       ingest: (event) => this.ingest(event),
-      emit: (delta) => this.emitWith(run.flow, delta),
+      emit: (delta) => this.ops.emit(run.flow, delta),
       note: (meta) => {
         if (meta.status) run.directive.status = meta.status;
         if (meta.usage !== undefined) run.directive.usage = meta.usage;

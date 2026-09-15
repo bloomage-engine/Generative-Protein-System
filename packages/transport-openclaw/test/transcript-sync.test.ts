@@ -4,6 +4,7 @@ import { OpenClawRuntimeAdapter } from "../src/index.js";
 import type { BackendGateway, BackendGatewayOptions } from "../src/connection.js";
 import type { EventFrame } from "@openclaw/gateway-client/browser";
 import type { SessionState, StateDelta, TransportCommand } from "@science-studio/transport";
+import { sessionState } from "@science-studio/contract-tests";
 
 /**
  * Scripted gateway: `chat.history` returns whatever the test currently placed
@@ -17,17 +18,19 @@ function scriptedGateway(
 ): (opts: BackendGatewayOptions) => BackendGateway {
   return () => {
     const readyListeners = new Set<() => void>();
-    return {
+    const gateway: BackendGateway = {
       connected: true,
       start: () => {
         for (const l of readyListeners) l();
       },
       stop: () => {},
-      request: async (method: string) => {
-        if (method === "chat.history") return { sessionKey: "s", messages: history() };
+      // The real `request` is generic over the payload the caller expects; a
+      // scripted double cannot know that per method, so it casts its own reply.
+      request: async <T,>(method: string): Promise<T> => {
+        if (method === "chat.history") return { sessionKey: "s", messages: history() } as T;
         if (method === "chat.send") {
           if (failSends) throw new Error("chat.send failed: model provider unreachable");
-          return { runId: "run-1", status: "started" };
+          return { runId: "run-1", status: "started" } as T;
         }
         throw new Error(`unexpected request: ${method}`);
       },
@@ -37,17 +40,12 @@ function scriptedGateway(
         return () => readyListeners.delete(l);
       },
     };
+    return gateway;
   };
 }
 
 function freshSession(): SessionState {
-  return {
-    sessionId: "agent:main:main",
-    studyId: "study-1",
-    agentId: "main",
-    status: "idle",
-    messages: [],
-  };
+  return sessionState({ sessionId: "agent:main:main" });
 }
 
 function twoTurnHistory(): unknown[] {
@@ -71,7 +69,7 @@ function reconcileOf(deltas: StateDelta[]): Extract<StateDelta, { type: "reconci
   return deltas.find((d): d is Extract<StateDelta, { type: "reconcile" }> => d.type === "reconcile");
 }
 
-const noopRecordStore = { addRun: async () => {}, addArtifact: async () => {} };
+const noopRecordStore = { addRun: async () => {} };
 
 test("run() re-syncs the canonical transcript with gateway history after a remote session reset", async () => {
   let gatewayHistory: unknown[] = twoTurnHistory();

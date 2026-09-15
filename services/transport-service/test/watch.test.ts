@@ -19,7 +19,7 @@ function makeFakeAdapter(): { adapter: RuntimeAdapter & { push(s: WatchSnapshot)
   const adapter: RuntimeAdapter & { push(s: WatchSnapshot): void } = {
     runtime: "fake",
     init: async () => {},
-    run: async (_session: SessionState, _commands: TransportCommand[]) => emptyDeltas(),
+    run: (_session: SessionState, _commands: TransportCommand[]) => emptyDeltas(),
     abort: () => {},
     approve: () => {},
     subscribe: (_sessionKey: string, s: (snap: WatchSnapshot) => void) => {

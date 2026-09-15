@@ -39,7 +39,13 @@ export class RunFlow {
     for (const w of ws) w();
   }
 
-  async *iterate(): AsyncIterable<StateDelta> {
+  /**
+   * Drain this flow, suspending between pushes. An `AsyncGenerator`, not the
+   * broader `AsyncIterable`: the annotation is a promise to callers, and
+   * `AsyncIterable` would claim this is re-iterable (it is single-shot) and hide
+   * `next()` from a consumer that pulls one delta at a time.
+   */
+  async *iterate(): AsyncGenerator<StateDelta> {
     let i = 0;
     for (;;) {
       while (i < this.deltas.length) yield this.deltas[i++]!;

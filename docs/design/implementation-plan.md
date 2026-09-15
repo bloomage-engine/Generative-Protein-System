@@ -96,7 +96,9 @@ preamble, and runtimes plug in through factories. Wire contract unchanged.
    (`testPrincipalResolver`, `testWorkspace`, `testRuntimeFactory`,
    `testQuotaPolicy`), self-tested against the OSS reference implementations (14
    tests) and ADOPTED by transport-openclaw / transport-dsh for the factory
-   contract.
+   contract. (Later: `testAdapterLifecycle`, `testResolveSessionKey` and the
+   `sessionState()` fixture, so the published contract reaches the TESTS too —
+   see the `npm run build` type gate over `tsconfig.tests.json`.)
 
 **Done when:** `npm run build` passes; `npm run test` is green with
 `SS_ENTERPRISE_MODULE` unset; the service starts without waiting on the runtime

@@ -242,10 +242,12 @@ test("mirror keeps add-message payloads private — later transcript folds never
 
   const client = clientState(ops);
   assert.equal(adapterTranscript.messages[0]!.parts.length, 1);
+  const r1 = client.messages["r1"];
+  assert.ok(r1, "the client must hold the r1 message");
   assert.deepEqual(
-    client.messages.r1.parts,
+    r1.parts,
     [{ type: "text", text: "hi" }],
     "the client must receive exactly one part — the mirror must not re-apply the adapter's fold",
   );
-  assert.deepEqual(client.messages.r1, adapterTranscript.messages[0]);
+  assert.deepEqual(r1, adapterTranscript.messages[0]);
 });
