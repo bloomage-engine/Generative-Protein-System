@@ -1814,3 +1814,50 @@ localhost:3000 by default.
 **Note (no change):** the Next port's `getFreePort` pre-pick remains inherently
 racy (the API binds `0` directly; Next's `server.js` coerces `PORT=0` to 3000, so
 it needs a real number) — recorded, not fixed.
+
+### Task 18: Two-axis review response
+
+Fix the six actionable findings from the `main...HEAD` two-axis review; the rest
+are recorded below as deliberate deviations or follow-ups.
+
+**Files:**
+- Modify: `apps/desktop/src/main/index.ts` — pass `env: process.env` into
+  `resolveDesktopPaths(...)` so the tested `env.PROJECT_ROOT` override is actually
+  reachable in the app (today `paths()` omits `env`, so the override can never be
+  used).
+- Modify: `apps/desktop/src/renderer/config.ts` — delete the hand-rolled
+  `KEY=VALUE` loop and reuse `parseConfigEnv` from `../shared/config.js` (the
+  renderer already imports values from `../shared/*` through the project
+  reference); use only its `.vars`.
+- Delete: `apps/desktop/src/index.ts` (dead `export {}`; nothing imports it).
+- Modify: `apps/web/components/studio/status-bar.tsx` — the chip must not label
+  every non-ready state "dsh missing"; derive the label from what is actually
+  missing (`dshPath` absent → "dsh missing"; provider/model absent → "route not
+  configured").
+- Modify: `AGENTS.md` — reconcile the root-gate claim: the app is not in the root
+  `build` chain, but its `test/*.ts` ARE type-checked by `tsconfig.tests.json`.
+- Modify: `docs/adr/0013-desktop-app-is-electron-with-embedded-servers.md` —
+  (a) narrow "when it is missing **or the route is unreachable**" to the shipped
+  behaviour (probe `dsh`; missing/empty config opens Settings; reachability is NOT
+  probed and sending is NOT blocked — both explicit deferrals signalled by the
+  workbench runtime chip); (b) correct the `config.env` contents (provider, model,
+  credential/extra env vars — the provider ROUTE stays harness-side in
+  `settings.yaml`, there is no `baseURL` field).
+
+**Verification:** `npm run build -w @science-studio/desktop`,
+`npm run test -w @science-studio/desktop`, `npm run build -w @science-studio/web`,
+and root `npm run build` (the test type gate) all exit 0.
+
+**Recorded, not fixed (deliberate deviations / follow-ups):**
+- Reachability probing needs a runtime health surface — follow-up (Task 19,
+  optional). The composer lock stays a declared deferral.
+- PATH augmentation (`shared/env-path.ts`), the black-window retry +
+  `single-flight.ts`, and the extra electron-builder fields are justified
+  deviations beyond the literal plan — keep, note them here.
+- Three kill/reap variants (`stopHost`/`stopChild`), the `{webPort, apiPort}`
+  data clump, and the hand-rolled `restartInFlight` are refactor candidates, not
+  defects.
+- `RuntimeStatus` is intentionally re-declared in `apps/web` (that package must
+  not import `apps/desktop`).
+- The `connectionHelpPage` inline style is a data-URL page with no Tailwind
+  pipeline; the AGENTS "no inline styles" rule targets the Tailwind UI.
