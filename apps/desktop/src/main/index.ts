@@ -16,6 +16,7 @@ const appRoot = join(here, "..", "..");
 let workbench: BrowserWindow | null = null;
 let settings: BrowserWindow | null = null;
 let host: ChildProcess | null = null;
+let hostPorts: HostPorts | null = null;
 
 function paths(): DesktopPaths {
   return resolveDesktopPaths({ userDataDir: app.getPath("userData"), homeDir: homedir() });
@@ -53,18 +54,59 @@ async function boot(): Promise<HostPorts> {
     onLine: (line) => process.stderr.write(`[desktop-host] ${line}`),
   });
   host = child;
+  hostPorts = ports;
   child.on("exit", () => {
-    host = null;
+    if (host === child) {
+      host = null;
+      hostPorts = null;
+    }
   });
+  return ports;
+}
+
+async function stopHost(): Promise<void> {
+  const child = host;
+  host = null;
+  hostPorts = null;
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise<void>((resolve) => {
+    let killTimer: NodeJS.Timeout | undefined;
+    const onExit = () => {
+      if (killTimer) clearTimeout(killTimer);
+      resolve();
+    };
+    child.once("exit", onExit);
+    killTimer = setTimeout(() => {
+      child.kill("SIGKILL");
+    }, 5_000);
+    child.kill("SIGTERM");
+  });
+}
+
+function showWorkbench(ports: HostPorts): void {
+  const url = `http://127.0.0.1:${ports.webPort}/`;
+  if (workbench && !workbench.isDestroyed()) {
+    void workbench.loadURL(url);
+    workbench.focus();
+    return;
+  }
+  const win = createWorkbenchWindow(url);
+  workbench = win;
+  win.on("closed", () => {
+    if (workbench === win) workbench = null;
+  });
+}
+
+async function restart(): Promise<HostPorts> {
+  await stopHost();
+  const ports = await boot();
+  showWorkbench(ports);
   return ports;
 }
 
 async function openWorkbench(): Promise<void> {
   const ports = await boot();
-  workbench = createWorkbenchWindow(`http://127.0.0.1:${ports.webPort}/`);
-  workbench.on("closed", () => {
-    workbench = null;
-  });
+  showWorkbench(ports);
 }
 
 function openSettings(): void {
@@ -96,11 +138,8 @@ function installMenu(): void {
           },
           {
             label: "Restart Service",
-            click: async () => {
-              host?.kill("SIGTERM");
-              host = null;
-              await workbench?.loadURL("about:blank");
-              await openWorkbench();
+            click: () => {
+              void restart();
             },
           },
         ],
@@ -119,29 +158,41 @@ function registerIpc(): void {
   ipcMain.handle("desktop:openPath", async (_event, path: string) => {
     await shell.openPath(path);
   });
-  ipcMain.handle("desktop:restartHost", async () => {
-    host?.kill("SIGTERM");
-    host = null;
-    return boot();
-  });
+  ipcMain.handle("desktop:restartHost", () => restart());
 }
 
-void app.whenReady().then(async () => {
-  registerIpc();
-  installMenu();
-  const missingConfig = (await readFile(paths().configPath, "utf8").catch(() => "")).length === 0;
-  if (missingConfig || !detectDsh()) {
-    openSettings();
-  } else {
-    await openWorkbench();
-  }
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) void openWorkbench();
+void app
+  .whenReady()
+  .then(async () => {
+    registerIpc();
+    installMenu();
+    const missingConfig = (await readFile(paths().configPath, "utf8").catch(() => "")).length === 0;
+    if (missingConfig || !detectDsh()) {
+      openSettings();
+    } else {
+      await openWorkbench();
+    }
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length > 0) return;
+      if (host && hostPorts) {
+        showWorkbench(hostPorts);
+        return;
+      }
+      void openWorkbench();
+    });
+  })
+  .catch((err) => {
+    process.stderr.write(`[desktop] startup failed: ${err instanceof Error ? err.stack : String(err)}\n`);
   });
-});
 
 app.on("window-all-closed", () => {
-  host?.kill("SIGTERM");
-  host = null;
   if (process.platform !== "darwin") app.quit();
+});
+
+let quitting = false;
+app.on("before-quit", (event) => {
+  if (quitting) return;
+  event.preventDefault();
+  quitting = true;
+  void stopHost().finally(() => app.quit());
 });

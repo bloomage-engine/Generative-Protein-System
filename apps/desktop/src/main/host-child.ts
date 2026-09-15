@@ -22,13 +22,21 @@ export function forkHost(input: {
   child.stdout?.on("data", (d: Buffer) => input.onLine?.(d.toString()));
   child.stderr?.on("data", (d: Buffer) => input.onLine?.(d.toString()));
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("desktop host did not become ready within 60s")), 60_000);
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error("desktop host did not become ready within 60s"));
+    }, 60_000);
     child.on("message", (message) => {
       const m = message as { type?: string; webPort?: number; apiPort?: number };
       if (m?.type === "ready" && typeof m.webPort === "number" && typeof m.apiPort === "number") {
         clearTimeout(timer);
         resolve({ ports: { webPort: m.webPort, apiPort: m.apiPort }, child });
       }
+    });
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      if (child.pid !== undefined) child.kill("SIGTERM");
+      reject(err);
     });
     child.on("exit", (code) => {
       clearTimeout(timer);
