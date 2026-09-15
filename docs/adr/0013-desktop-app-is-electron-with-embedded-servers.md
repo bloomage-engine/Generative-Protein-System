@@ -72,18 +72,21 @@ model route the Researcher configures in an in-app Settings page.
   - **v1 shell is minimal.** One window, the default menu, and "Open project in
     file manager"; no tray. Auto-update and code signing are deferred, so v1
     packages are unsigned (macOS first launch needs a right-click open).
-  - **It lives in `apps/desktop`, outside the root build gate at first.**
-    Electron brings its own type/toolchain weight; the app gets a dedicated
-    `build:desktop` script and joins the root `npm run build` gate only once it
-    is stable. `electron-builder` produces `.dmg` (macOS) and `.AppImage`/`.deb`
-    (Linux) first, with Windows config kept but unshipped.
+  - **It lives in `apps/desktop`, outside the root build CHAIN.**
+    Electron brings its own type/toolchain weight, so the app is not a step in
+    the root `npm run build` chain and has its own `build:desktop`/`pack`
+    scripts — but its `test/*.ts` ARE type-checked, by the shared test program
+    (`tsconfig.tests.json`) that the root build runs last. `electron-builder`
+    produces `.dmg` (macOS) and `.AppImage`/`.deb` (Linux) first, with Windows
+    config kept but unshipped.
   - **Identity**: product name `Science Studio`, bundle id `ss.hx-engine.com`.
   - **Considered and rejected**: Electron Forge (viable, but more plugin wiring
     for the monorepo's `extraResources` needs) and electron-vite (a dev/build
     tool, complementary to a packager, not a replacement).
 - **Consequences**: the repo grows a fifth workspace stack (Electron main,
-  preload, a build script, `electron-builder` config) that is deliberately not in
-  the shared type gate yet, so nothing in the existing packages is disturbed. The
+  preload, a build script, `electron-builder` config) that is not a step in the
+  root build chain, so nothing in the existing packages is disturbed (its tests
+  still ride the shared test type program). The
   desktop transcript and record live per-machine under `userData`; moving a
   Project between machines means moving its `~/Documents/Science Studio/projects`
   folder, not the app state. Because the child re-exports the route as `DSH_*`,
