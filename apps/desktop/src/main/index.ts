@@ -101,23 +101,59 @@ function localUrl(ports: HostPorts): string {
   return `http://127.0.0.1:${ports.webPort}/`;
 }
 
-function showWorkbench(url: string): void {
-  if (workbench && !workbench.isDestroyed()) {
-    void workbench.loadURL(url);
-    workbench.focus();
-    return;
+function connectionHelpPage(url: string, reason: string): string {
+  const html =
+    `<!doctype html><meta charset="utf-8"><title>Science Studio</title>` +
+    `<body style="font-family: system-ui, sans-serif; background: #0b0b0b; color: #e5e5e5; padding: 2rem; line-height: 1.6">` +
+    `<h1>Cannot reach ${url}</h1><p>${reason}</p>` +
+    `<p>Start the local dev servers (<code>npm run dev</code>) and this window reconnects automatically, or press Ctrl/Cmd+R to retry.</p>` +
+    `</body>`;
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+function loadWorkbench(win: BrowserWindow, url: string, attempts: number, delayMs: number): void {
+  const attempt = (remaining: number): void => {
+    if (win.isDestroyed()) return;
+    const onFail = (
+      _event: unknown,
+      code: number,
+      description: string,
+      _validatedUrl: string,
+      isMainFrame: boolean,
+    ): void => {
+      win.webContents.off("did-fail-load", onFail);
+      if (!isMainFrame || win.isDestroyed()) return;
+      console.error(`[desktop] failed to load ${url}: ${description} (${code})`);
+      if (remaining > 1) setTimeout(() => attempt(remaining - 1), delayMs);
+      else void win.loadURL(connectionHelpPage(url, `${description} (${code})`));
+    };
+    win.webContents.once("did-fail-load", onFail);
+    win.webContents.once("did-finish-load", () => win.webContents.off("did-fail-load", onFail));
+    void win.loadURL(url).catch(() => {});
+  };
+  attempt(attempts);
+}
+
+function showWorkbench(url: string, opts: { retry?: boolean } = {}): void {
+  let win = workbench && !workbench.isDestroyed() ? workbench : null;
+  if (win) {
+    win.focus();
+  } else {
+    win = createWorkbenchWindow();
+    const created = win;
+    workbench = created;
+    created.on("closed", () => {
+      if (workbench === created) workbench = null;
+    });
   }
-  const win = createWorkbenchWindow(url);
-  workbench = win;
-  win.on("closed", () => {
-    if (workbench === win) workbench = null;
-  });
+  if (opts.retry) loadWorkbench(win, url, 30, 1_000);
+  else void win.loadURL(url).catch((err) => console.error(`[desktop] failed to load ${url}`, err));
 }
 
 async function doRestart(): Promise<HostPorts | null> {
   const dev = devUrl();
   if (dev) {
-    showWorkbench(dev);
+    showWorkbench(dev, { retry: true });
     return null;
   }
   await stopHost();
@@ -143,7 +179,7 @@ function restart(): Promise<HostPorts | null> {
 async function openWorkbench(): Promise<void> {
   const dev = devUrl();
   if (dev) {
-    showWorkbench(dev);
+    showWorkbench(dev, { retry: true });
     return;
   }
   const ports = await boot();

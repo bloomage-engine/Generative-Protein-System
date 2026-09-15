@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-export function createWorkbenchWindow(url: string): BrowserWindow {
-  const win = new BrowserWindow({
+export function createWorkbenchWindow(): BrowserWindow {
+  return new BrowserWindow({
     width: 1440,
     height: 900,
     title: "Science Studio",
@@ -16,8 +16,6 @@ export function createWorkbenchWindow(url: string): BrowserWindow {
       sandbox: true,
     },
   });
-  void win.loadURL(url);
-  return win;
 }
 
 export function createConfigWindow(appRoot: string): BrowserWindow {
