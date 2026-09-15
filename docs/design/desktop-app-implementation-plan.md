@@ -1306,9 +1306,14 @@ that was never observed.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/desktop/src/main apps/desktop/package.json apps/desktop/build
+git add apps/desktop/src/main apps/desktop/package.json
 git commit -m "feat(desktop): electron main process forks the host and opens the workbench"
 ```
+
+`build/host/` is GENERATED (esbuild output) and is gitignored via
+`apps/desktop/build/` in the root `.gitignore` — never commit the bundle or the
+copied child plugins. `electron-builder` reads the working-tree files at pack
+time (Task 12).
 
 ---
 
