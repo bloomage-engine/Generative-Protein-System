@@ -87,18 +87,28 @@ _Avoid_: Execution, Step, Attempt
 
 **Runtime Command** (also **Slash command**):
 A runtime-level operation invoked by a standalone "/"-prefixed user message
-(e.g. "/status", "/model"). Handled by the agent runtime's own command surface,
-not by the Research turn machinery: a command is visible in the conversation
-but is **not** recorded as a Run. Invoked either from the composer slash menu or
-by typing it directly.
+(e.g. "/status", "/model"). Handled inside the Runtime Adapter — by the runtime's
+own command surface, or by the adapter itself when the runtime exposes none
+(docs/adr/0010) — and never by the Research turn machinery: a command is visible
+in the conversation but is **not** recorded as a Run. A runtime whose command
+surface needs session state it does not have yet may have to CREATE it first
+(dsh drives the line as the session's first prompt and its child's pre-step
+interception runs the registry instead of the model, docs/adr/0011) — that is
+still a command, not a turn. Invoked either from the composer slash menu or by
+typing it directly.
 _Avoid_: Tool, Special message, System command
 
 **Command Catalog**:
 The set of Runtime Commands a runtime exposes, surfaced in the composer slash
 menu. Each entry carries an id, description, and the exact invocation text to
-send. The catalog is produced by the runtime adapter (for openclaw, from the
-gateway's `commands.list`) and fetched over `GET /api/transport/commands`, so
-the frontend never hardcodes a runtime's command set.
+send. The catalog is produced by the runtime adapter and fetched over
+`GET /api/transport/commands` (per Project, like every transport route), so the
+frontend never hardcodes a runtime's command set: openclaw curates its gateway's
+`commands.list`, while dsh merges the commands its adapter answers itself with
+the harness's OWN registry, read from the harness child over the command bridge
+(docs/adr/0010, docs/adr/0011) — and while that child is cold (the registry is
+agent-scoped, so it cannot be enumerated before the first turn) with a curated
+list of the pinned profile's own commands.
 _Avoid_: Menu config, Slash list, Command registry
 
 **Workflow** (also **DAG**):

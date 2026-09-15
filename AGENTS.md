@@ -24,14 +24,14 @@ packages/workspace                Workspace implementations (FsWorkspace + conta
 packages/contract-tests          the SHARED seam conformance suites (testPrincipalResolver/testWorkspace/testRuntimeFactory/testAdapterLifecycle/testQuotaPolicy/testResolveSessionKey) every implementation runs, plus the published `sessionState()` fixture a runtime's tests drive (fixtures drift silently otherwise — no test file was type-checked); the OSS reference impls self-test here, the private module and third-party runtimes run the same suites in their CI. Imports the contract from `@science-studio/transport/seams` (never the kit)
 packages/transport-client         assistant-ui client boundary (single `useTransport` session hook = history probe + standing watch + guarded import; state converter; command catalog + slash-menu / reasoning-trace helpers)
 packages/transport-openclaw       openclaw runtime adapter — owns its OWN launch surface (`GatewayBinding`), factory, capabilities and `runtimePlugins`; ports gateway WS
-packages/transport-dsh            dsh runtime adapter — owns `DshBinding` + factory + `runtimePlugins` (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC)
+packages/transport-dsh            dsh runtime adapter — owns `DshBinding` + factory + `runtimePlugins` (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC). The SDK wire has no command plane, so the adapter answers `/status` and `/new` itself — and reaches the harness's OWN registry (`/compact`, `/plan`, `/goal`, `/feedback`, `/permission`) through `bridge-plugin.ts`, a dependency-free cordis plugin it ships into that child via a per-launch profile patch (`--patch`, a private UNIX socket; docs/adr/0011). The registry is agent-scoped, so a session with no agent yet sends the line as its FIRST PROMPT, which the plugin intercepts at `agent/pre-step` (registry runs it, the step is rejected, the model never sees it) — that is what makes `/plan` and `/goal` work before the first message; while the child is cold the adapter serves a CURATED list of the pinned profile's own commands instead (so the menu is complete from the first page load). A catalog request never starts the child; a user-issued command does
 services/transport-service        backend assistant-transport service — Fastify, port 3001. Composition root: `src/composition.ts`. `TRANSPORT_RUNTIME` picks the runtime product; runtime modules are loaded DYNAMICALLY by specifier, so the service statically imports NO runtime package. The DEFAULT module list is DATA — `scienceStudio.runtimeModules` in this package's own `package.json` — and `SS_RUNTIME_MODULES` overrides it entirely, so adding a runtime edits no core code. `SS_ENTERPRISE_MODULE` swaps in the private multi-user backend; unset = the complete single-user product.
 examples/transport-openclaw-example  minimal assistant-ui example app over the openclaw adapter (Vite + core primitives; dev-only, not in the root build)
 examples/transport-dsh-example     minimal assistant-ui example app over the dsh adapter (local harness; dev-only, not in the root build)
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/design/                      design specs (research-agent-framework EN/ZH + implementation-plan)
-docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope)
+docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned)
 CONTEXT.md                        domain glossary (authoritative vocabulary)
 ```
 
@@ -130,7 +130,9 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   query's `projectId`, else the query's `project` (the older spelling), else the
   body's, else `project-default`; `project-scope.ts` is that rule's one home — and
   the watch additionally takes `threadId`. The command catalog follows the same
-  claim, so it is the Project's own adapter's catalog.
+  claim (the client carries it from `TransportApiProvider`, and the web's
+  `/api/transport/commands` hop relays the query), so it is the Project's own
+  adapter's catalog.
 - Frontend is assistant-ui's `useAssistantTransportRuntime`. It sends user
   messages as **`message.parts`** (array of `{type:"text",text}`), NOT
   `message.content`; `normalizeCommands` reads `msg.content ?? msg.parts`.
@@ -219,7 +221,27 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   COLD sessions (service restart, nothing in memory) asynchronously from its
   own mirror — and one snapshot after every settled run, so a watcher that
   attached before any content still wakes on the first settle instead of
-  hanging on an open stream (dsh has no remote settles to coalesce).
+  hanging on an open stream (dsh has no remote settles to coalesce); (6) the
+  wire has NO command plane (three methods, no server→client requests): the
+  adapter answers its own two (`/status`, `/new` — work with no child at all)
+  and resolves every other name through the harness's OWN registry — executed
+  over the command bridge when this session HAS an agent, and driven as the
+  session's FIRST PROMPT when it has none (docs/adr/0011). The bridge is a
+  dependency-free cordis plugin the adapter ships into the child over a
+  per-launch profile patch, speaking `GET /commands`/`POST /execute` on a
+  private socket (local names win, an unknown `/name` is answered); the plugin
+  ALSO holds an `agent/pre-step` listener, which is what makes the cold case
+  safe — a `/`-line prompt is run by the registry and its step REJECTED, so the
+  turn ends `blocked` and the model never sees it (the reply is the harness's own
+  `command/done`; a line the registry does not resolve gets the `Unknown command
+  …` row). That is why a command works on a session that has never prompted: the
+  prompt IS what creates the agent, so plan mode / a goal is in force before the
+  first model request. The registry is agent-scoped and an agent needs a prompt,
+  so a COLD runtime has nothing to enumerate: the menu then serves the curated
+  list of the pinned profile's own commands instead of looking empty. A batch
+  that drives no model turn (the mount probe, or commands only) still never
+  STARTS the child for a catalog read: the menu and `/status` work where the
+  harness could not launch, while a user-issued harness command does boot it.
   assistant-ui mints a per-page local `threadId` (`__LOCALID_*`) on send
   while the mount probe sends none. Each adapter's `resolveSessionKey` maps
   those (and absent ids) to its own default session, but only for clients that

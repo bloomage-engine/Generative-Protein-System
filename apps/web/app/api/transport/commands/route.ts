@@ -14,8 +14,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request): Promise<NextResponse> {
+  // The catalog belongs to the Project's OWN adapter (one per Project,
+  // docs/adr/0008), so the client's Project claim must reach the service — the
+  // same reason the transport route relays its query.
+  const { search } = new URL(request.url);
   const response = await proxyToService(request, {
-    path: "/api/transport/commands",
+    path: `/api/transport/commands${search}`,
     headers: { accept: "application/json" },
   });
 

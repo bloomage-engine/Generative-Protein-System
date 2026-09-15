@@ -12,6 +12,7 @@
 import type { EventFrame } from "@openclaw/gateway-client/browser";
 import type { Run } from "@science-studio/record";
 import {
+  isCommandText,
   promptWithAttachments,
   type ApplyContext,
   type ApplyResult,
@@ -20,7 +21,6 @@ import {
   type Workspace,
 } from "@science-studio/transport";
 import type { BackendGateway } from "./connection.js";
-import { isCommandText } from "./commands.js";
 import { decideHistorySync } from "./history-sync.js";
 import { mapChatEvent, mapThinkingEvent, mapToolEvent, parseParts } from "./mapping.js";
 

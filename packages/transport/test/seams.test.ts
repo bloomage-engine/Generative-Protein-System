@@ -34,6 +34,7 @@ const NON_CONTRACT_NAMES = [
   "userMessageParts",
   "parseWorkspaceMentions",
   "attachmentsFromMentions",
+  "isCommandText",
   "bindingString",
   "bindingOptionalString",
   // Pure single-user defaults

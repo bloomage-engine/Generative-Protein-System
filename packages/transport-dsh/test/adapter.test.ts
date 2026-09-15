@@ -161,6 +161,46 @@ test("run() streams user + assistant deltas, persists a Run, and writes the mirr
   }
 });
 
+test("a request that beats the background init waits for it instead of failing", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-init-race-"));
+  const store = new FakeRecordStore();
+  const client = new FakeDshClient(() => completedReply("am1", "Hello from dsh."));
+  const adapter = new DshRuntimeAdapter({ createClient: () => client, transcriptDir: dir });
+  try {
+    // The composition answers the request that first names a Project at once and
+    // starts `init` in the background (docs/adr/0008), so the run, the catalog
+    // read and a watch attach can all beat it. Every one of them must WAIT for
+    // it — the dsh init has a real await before the behavior exists.
+    const initializing = adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
+    const pushed: unknown[] = [];
+    const unsubscribe = adapter.subscribe("sess-1", (snapshot) => pushed.push(snapshot));
+
+    const catalog = await adapter.listCommands();
+    const deltas = await collect(adapter.run(session(), [
+      { type: "add-message", message: { id: "u1", role: "user", content: "hi" } },
+    ]));
+    await initializing;
+
+    assert.deepEqual(
+      catalog.map((descriptor) => descriptor.id),
+      ["status", "new", "compact", "feedback", "goal", "permission", "plan"],
+      "the menu answers during init, with the curated harness layer",
+    );
+    assert.ok(
+      deltas.some((delta) => delta.type === "session-status" && delta.status === "idle"),
+      "and the first request completes instead of failing",
+    );
+    assert.deepEqual(client.prompts, ["hi"]);
+    assert.equal(store.runs.length, 1);
+    assert.ok(pushed.length > 0, "the watch bound before init returned still sees the settled run");
+    assert.equal(typeof unsubscribe, "function");
+    unsubscribe();
+  } finally {
+    await adapter.abort();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a fresh adapter instance cold-starts from the mirror and reconciles history", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-cold-"));
   const store = new FakeRecordStore();

@@ -22,14 +22,20 @@ const noopClient: DshTurnClient = {
   runTurn: async () => {},
 };
 
-function behavior() {
+function behavior(over: Partial<Parameters<typeof createDshBehavior>[0]> = {}) {
   return createDshBehavior({
     client: noopClient,
     mirror: null,
     harnessSessions: new Map(),
+    profile: "sdk",
     provider: "p",
     model: "m",
+    cwd: "/workspace",
     workspace: null,
+    // No harness here: these tests drive the event→delta mapping.
+    harnessCommands: { list: async () => [], execute: async () => ({ status: "unknown" }) },
+    commandCatalog: async () => [],
+    ...over,
   });
 }
 
@@ -189,5 +195,18 @@ test("events with no seam rendering add no rows", () => {
     ctx,
   );
   b.apply?.(ev("step/start", { turn: 1, step: 1 }), ctx);
+  assert.equal(state.messages.length, 0);
+});
+
+test("a command/done outside a cold command prompt adds no row", () => {
+  // The WARM path answers with the bridge's own returned text, and the
+  // harness's registry logs the same command into the session (its
+  // `command/run`/`command/done` events reach us as ordinary session events).
+  // Rendering them as well would double the reply row.
+  const state = freshState();
+  const b = behavior();
+  const ctx = makeCtx(state);
+  b.apply?.(ev("command/run", { commandId: "c1", name: "compact", source: { kind: "user" } }), ctx);
+  b.apply?.(ev("command/done", { commandId: "c1", kind: "success", text: "Condensed 12 items" }), ctx);
   assert.equal(state.messages.length, 0);
 });

@@ -41,9 +41,12 @@ export interface RuntimeSlashMenu {
  * knowledge lives here, not in each app.
  */
 export function useRuntimeSlashMenu(): RuntimeSlashMenu {
-  const commands = useRuntimeCommands();
   const aui = useAui();
   const isRunning = useAuiState((s) => s.thread.isRunning);
+  // A run finishing is exactly when a runtime that only knows its commands once
+  // warm (the dsh harness child — docs/adr/0011) can report them, so the catalog
+  // is re-read on that edge rather than only on mount.
+  const commands = useRuntimeCommands(isRunning);
   const items = useMemo<Unstable_SlashCommand[]>(
     () =>
       (commands ?? []).map((c) => ({

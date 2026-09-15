@@ -37,6 +37,9 @@ export interface DshTurnClient {
 export interface DshClientLaunchOptions {
   /** Named profile serving the SDK protocol (default `sdk`). */
   profile?: string;
+  /** Ordered per-launch profile patches; each entry is passed to the child as
+   * `--patch <abs path>` (`@deepseek-ai/dsh-sdk-client` `resolveDshLaunch`). */
+  patches?: string[];
   /** Explicit Harness home for the child (its durable session logs live here). */
   dshHome?: string;
   /** Working directory recorded on SDK-created sessions (the agent workspace). */
@@ -56,6 +59,7 @@ class SdkDshTurnClient implements DshTurnClient {
   constructor(options: DshClientLaunchOptions) {
     this.harness = new DeepSeekHarness({
       profile: options.profile,
+      patches: options.patches,
       dshHome: options.dshHome,
       cwd: options.cwd,
       provider: options.provider,

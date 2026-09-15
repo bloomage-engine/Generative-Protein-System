@@ -60,17 +60,6 @@ export type GatewayCommandEntry = {
   }>;
 };
 
-/**
- * True when the message text is a runtime command invocation (a "/"-prefixed
- * standalone message). This is the seam-level rule: commands are ordinary
- * user text end-to-end, and an adapter never persists a `Run` for them —
- * regardless of whether they came from the slash menu, a hand-typed message,
- * or a remote client (see docs/adr/0003).
- */
-export function isCommandText(text: string): boolean {
-  return text.trimStart().startsWith("/");
-}
-
 function hasRequiredArgs(entry: GatewayCommandEntry): boolean {
   return (entry.args ?? []).some((a) => a.required === true);
 }

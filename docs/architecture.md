@@ -232,25 +232,52 @@ regression guard.
 
 ### Runtime commands (slash commands)
 
-Runtime commands (openclaw slash commands today) are **plain "/"-prefixed user
-messages** end-to-end — there is no dedicated wire command type (docs/adr/0003).
-The gateway interprets a standalone `/command` message itself; the transcript,
-reconcile and watch paths treat command rows exactly like any other rows.
+Runtime commands are **plain "/"-prefixed user messages** end-to-end — there is
+no dedicated wire command type (docs/adr/0003) — and each adapter decides what a
+command MEANS inside its own runtime; the transcript, reconcile and watch paths
+treat command rows exactly like any other rows.
 
 - **Command ≠ Run.** A command message is never persisted as a `Run`: the
-  openclaw adapter tracks runIds driven by `/`-prefixed sends, and remote settles
-  are persisted only after the `chat.history` sync (whose transcript guard skips
-  settles whose immediately preceding user row starts with `/`).
+  openclaw adapter tracks runIds driven by `/`-prefixed sends (remote settles are
+  persisted only after the `chat.history` sync, whose transcript guard skips
+  settles whose immediately preceding user row starts with `/`), and the dsh
+  adapter projects nothing when the Run's input is a command line. The rule
+  itself is seam-level: `isCommandText` in the shared kit.
 - **Catalog.** `RuntimeAdapter.listCommands()` returns runtime-agnostic
   `CommandDescriptor`s. The openclaw adapter proxies the gateway's
-  `commands.list` (60s cached) and curates it; the transport-service exposes it
-  at `GET /api/transport/commands` (JSON), and the web route handler proxies it.
+  `commands.list` (60s cached) and curates it; the dsh adapter publishes its own
+  two commands (`/status`, `/new` — answered from its own state, with no harness
+  at all) and MERGES them with the harness's own registry, which it reaches over
+  a private command bridge: a dependency-free cordis plugin it ships into the
+  harness child with a per-launch profile patch, serving `GET /commands` and
+  `POST /execute` on a process-private socket (docs/adr/0010, docs/adr/0011).
+  That registry is agent-scoped and an agent needs a prompt, so while the child
+  is COLD the harness layer is a curated list of the pinned profile's own
+  commands — the menu is complete from the first page load, and the live catalog
+  replaces the curation the moment it answers. A local name wins a collision.
+  The transport-service exposes the catalog
+  at `GET /api/transport/commands` (JSON) — per Project, like every other route,
+  since one adapter serves each Project (docs/adr/0008) — and the web route
+  handler relays the query verbatim.
+- **Execution.** openclaw sends the invocation text to its gateway; dsh answers
+  its own two locally and resolves every other name against the harness's own
+  registry — over the bridge when the session has an agent, and as that session's
+  FIRST PROMPT when it has none (the plugin intercepts at `agent/pre-step`, runs
+  the registry, and rejects the step, so the model never sees a command line).
+  An unknown or malformed command line is answered rather than passed to the
+  model. No path prompts the MODEL for the command itself, and a harness command
+  that submits a prompt (`/plan <message>`) still records no `Run`.
 - **Frontend.** `useRuntimeSlashMenu` (transport-client) fetches the catalog
-  through `TransportApiProvider` and builds the assistant-ui slash adapter; the
-  web composer and both examples only skin the popover. The "/" menu opens only
-  while a non-empty catalog is loaded and the thread is idle (`slashMenuEnabled`);
-  picking a command appends its invocation text as a normal user message,
-  leaving any partial draft untouched. Hand-typed `/commands` behave identically.
+  through `TransportApiProvider` (API base + Project) and builds the assistant-ui
+  slash adapter; the web composer and both examples only skin the popover. The
+  "/" menu opens only while a non-empty catalog is loaded and the thread is idle
+  (`slashMenuEnabled`); picking a command appends its invocation text as a normal
+  user message, leaving any partial draft untouched. Hand-typed `/commands`
+  behave identically. The catalog is re-read when the thread goes idle
+  (`useRuntimeCommands` takes an optional refresh token; the web composer passes
+  `thread.isRunning`), because a runtime that only knows its commands once warm —
+  the dsh harness child — cannot report them before the first run; only a change
+  of (API base, Project) clears the list, so a refetch never blanks the menu.
 
 ## 5. Record layer
 

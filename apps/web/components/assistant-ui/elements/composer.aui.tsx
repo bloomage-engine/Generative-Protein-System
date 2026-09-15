@@ -33,6 +33,7 @@ import {
   MessageSquareTextIcon,
   MicIcon,
   PanelTopIcon,
+  PlusIcon,
   ShieldCheckIcon,
   SparklesIcon,
   SquareIcon,
@@ -57,6 +58,7 @@ const COMMAND_ICONS: Record<string, LucideIcon> = {
   trace: ListTreeIcon,
   elevated: ShieldCheckIcon,
   status: ActivityIcon,
+  new: PlusIcon,
   tools: WrenchIcon,
   help: CircleHelpIcon,
   whoami: FingerprintIcon,
@@ -88,7 +90,11 @@ export const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
           <ComposerPrimitive.Unstable_TriggerPopoverItems>
             {(items) => (
               <div
-                className="bg-popover text-popover-foreground border-border/60 absolute bottom-full z-10 mb-2 max-h-80 w-72 overflow-y-auto rounded-2xl border p-1.5 shadow-xl"
+                // The cap is viewport-aware on purpose: a fixed `max-h-80`
+                // (320px) is shorter than this runtime's own menu (7 rows ≈
+                // 456px), so the LAST rows — /permission, /plan — sat below the
+                // fold of an internally scrolling box and looked missing.
+                className="bg-popover text-popover-foreground border-border/60 absolute bottom-full z-10 mb-2 max-h-[min(70vh,32rem)] w-72 overflow-y-auto rounded-2xl border p-1.5 shadow-xl"
                 data-slot="aui-composer-slash-menu"
               >
                 {items.map((item, index) => {

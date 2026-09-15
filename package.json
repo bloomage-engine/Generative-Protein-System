@@ -20,6 +20,7 @@
     "dev:dsh:service": "npm run dev:dsh -w @science-studio/transport-service",
     "smoke:adapter": "node scripts/smoke-openclaw-adapter.mjs",
     "smoke:dsh": "node scripts/smoke-dsh.mjs",
+    "smoke:dsh-bridge": "node scripts/smoke-dsh-command-bridge.mjs",
     "smoke:replay": "node scripts/replay-sse-frames.mjs",
     "verify:slash": "node scripts/verify-slash-commands.mjs",
     "check:running-part-status": "node scripts/check-running-part-status.mjs",

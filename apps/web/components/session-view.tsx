@@ -32,7 +32,7 @@ export const SessionView: FC<{ projectId: string | null; sessionId: string | nul
   const workspaceApi = process.env.NEXT_PUBLIC_WORKSPACE_URL ?? "/api/workspace";
 
   return (
-    <TransportApiProvider api={api}>
+    <TransportApiProvider api={api} project={projectId}>
       <WorkspaceApiProvider api={workspaceApi} project={projectId}>
         {projectId && sessionId ? (
           <Session projectId={projectId} sessionId={sessionId} />
@@ -60,7 +60,7 @@ const Session = memo(function Session({
   projectId: string;
   sessionId: string;
 }) {
-  const api = useTransportApi();
+  const { api } = useTransportApi();
   const runtime = useTransport({ api, projectId, threadId: sessionId });
   const openFile = useStudioStore((s) => s.openFile);
 

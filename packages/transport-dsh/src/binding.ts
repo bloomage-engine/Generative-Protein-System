@@ -78,7 +78,8 @@ export function dshLocalBinding(
 }
 
 export const DSH_CAPABILITIES: RuntimeCapabilities = {
-  commandCatalog: false,
+  /** The adapter publishes a catalog of commands it answers itself (docs/adr/0010). */
+  commandCatalog: true,
   remoteSettleWatch: true,
   /** Committed log events, not tokens: replies are step-granular. */
   tokenStreaming: false,

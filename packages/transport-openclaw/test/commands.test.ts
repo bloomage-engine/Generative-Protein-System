@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  isCommandText,
   mapCommandEntries,
   OPENCLAW_COMMAND_ALLOWLIST,
   type GatewayCommandEntry,
@@ -69,12 +68,4 @@ test("mapCommandEntries is empty for an empty or all-excluded catalog", () => {
     ]),
     [],
   );
-});
-
-test("isCommandText treats any trimmed /-prefixed text as a command", () => {
-  assert.equal(isCommandText("/status"), true);
-  assert.equal(isCommandText("  /model gpt-5 -s"), true);
-  assert.equal(isCommandText("hi"), false);
-  assert.equal(isCommandText(""), false);
-  assert.equal(isCommandText("use /weather"), false, "inline slash tokens are not standalone commands");
 });

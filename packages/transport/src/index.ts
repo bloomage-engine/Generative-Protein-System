@@ -96,6 +96,7 @@ export {
 } from "./attachments.js";
 export type { AttachmentRenderingOptions, MentionRef } from "./attachments.js";
 export { bindingOptionalString, bindingString } from "./runtime.js";
+export { isCommandText } from "./commands.js";
 
 // -- 3. Pure single-user defaults --------------------------------------------
 export { LocalPrincipalResolver } from "./principal.js";

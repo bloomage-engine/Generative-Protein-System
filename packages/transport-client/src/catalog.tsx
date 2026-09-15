@@ -5,6 +5,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type FC,
   type PropsWithChildren,
@@ -21,22 +22,42 @@ import { DEFAULT_API } from "./use-transport.js";
  * web app never hardcodes a runtime's command set.
  */
 
-const TransportApiContext = createContext<string>(DEFAULT_API);
+/**
+ * What the transport client is scoped to: the API base plus the Project whose
+ * adapter serves it (`null` → the service's default Project). The Project rides
+ * in context because the catalog is fetched deep in the registry composer,
+ * where no prop reaches — the workspace provider has the same shape. It is not
+ * decoration: the service provisions ONE adapter per Project (docs/adr/0008),
+ * and those adapters can differ (route, workspace, catalog), so a catalog
+ * fetched without the Project would describe another Project's runtime.
+ */
+export interface TransportScope {
+  api: string;
+  project: string | null;
+}
 
-/** Provide the transport base URL (`/api/transport` by default) to children. */
-export const TransportApiProvider: FC<PropsWithChildren<{ api: string }>> = ({
-  api,
-  children,
-}) => <TransportApiContext.Provider value={api}>{children}</TransportApiContext.Provider>;
+const TransportApiContext = createContext<TransportScope>({ api: DEFAULT_API, project: null });
 
-/** The transport base URL from the nearest `TransportApiProvider`. */
-export function useTransportApi(): string {
+/** Provide the transport base URL (`/api/transport` by default) and Project. */
+export const TransportApiProvider: FC<
+  PropsWithChildren<{ api: string; project?: string | null }>
+> = ({ api, project = null, children }) => {
+  const value = useMemo<TransportScope>(() => ({ api, project }), [api, project]);
+  return <TransportApiContext.Provider value={value}>{children}</TransportApiContext.Provider>;
+};
+
+/** The transport scope (API base + Project) from the nearest provider. */
+export function useTransportApi(): TransportScope {
   return useContext(TransportApiContext);
 }
 
-/** Fetch the runtime command catalog. Throws on transport/HTTP failure. */
-export async function fetchCommandCatalog(api: string): Promise<CommandDescriptor[]> {
-  const url = `${api.replace(/\/+$/, "")}/commands`;
+/** Fetch the runtime command catalog for one Project. Throws on HTTP failure. */
+export async function fetchCommandCatalog(
+  api: string,
+  project: string | null = null,
+): Promise<CommandDescriptor[]> {
+  const query = project ? `?projectId=${encodeURIComponent(project)}` : "";
+  const url = `${api.replace(/\/+$/, "")}/commands${query}`;
   const res = await fetch(url, { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(`command catalog request failed: ${res.status}`);
   const body = (await res.json()) as { commands?: CommandDescriptor[] };
@@ -51,15 +72,28 @@ export async function fetchCommandCatalog(api: string): Promise<CommandDescripto
  * list would swallow Enter). A resolved `[]` means the runtime exposes no
  * commands (or the fetch failed): the composer behaves as plain chat, and a
  * hand-typed "/command" message still reaches the runtime unchanged.
+ *
+ * `refreshToken` (optional) is anything whose CHANGE should re-read the catalog
+ * — the web composer passes the thread's running flag, because a runtime whose
+ * catalog only exists once it is warm (a spawned harness child, say) cannot
+ * report its full catalog before the first run (docs/adr/0011). Only a change of
+ * (api, project) clears the list: a refetch keeps the previously resolved
+ * catalog rendered until the new one arrives, so the menu never blinks off, and
+ * a failed refetch degrades to `[]` without a retry loop. Deliberately NOT read
+ * from the thread state here — this hook is a public export that must work
+ * without an assistant-ui runtime provider.
  */
-export function useRuntimeCommands(): CommandDescriptor[] | null {
-  const api = useTransportApi();
+export function useRuntimeCommands(refreshToken?: unknown): CommandDescriptor[] | null {
+  const { api, project } = useTransportApi();
   const [commands, setCommands] = useState<CommandDescriptor[] | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
     setCommands(null);
-    fetchCommandCatalog(api)
+  }, [api, project]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchCommandCatalog(api, project)
       .then((list) => {
         if (!cancelled) setCommands(list);
       })
@@ -70,7 +104,7 @@ export function useRuntimeCommands(): CommandDescriptor[] | null {
     return () => {
       cancelled = true;
     };
-  }, [api]);
+  }, [api, project, refreshToken]);
 
   return commands;
 }

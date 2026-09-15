@@ -211,8 +211,9 @@ async function localBackend(env: NodeJS.ProcessEnv): Promise<Backend> {
       const adapter = plugin.factory.create(binding);
       // Init runs in the BACKGROUND, exactly like the pre-seam service: a slow
       // or unreachable runtime must not delay the request that first names the
-      // Project. The adapter's own `run()` awaits its readiness, so a request
-      // arriving during init waits rather than fails.
+      // Project. Every adapter's own entry points WAIT for it (openclaw on its
+      // gateway handshake, dsh on the initialization it completes last — see
+      // `awaitInit`), so a request arriving during init waits rather than fails.
       void adapter
         .init({ binding, recordStore, workspace, env: { ...env } })
         .catch((err) =>
