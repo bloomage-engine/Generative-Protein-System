@@ -47,425 +47,6 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// ../../node_modules/dotenv/package.json
-var require_package = __commonJS({
-  "../../node_modules/dotenv/package.json"(exports, module) {
-    module.exports = {
-      name: "dotenv",
-      version: "16.6.1",
-      description: "Loads environment variables from .env file",
-      main: "lib/main.js",
-      types: "lib/main.d.ts",
-      exports: {
-        ".": {
-          types: "./lib/main.d.ts",
-          require: "./lib/main.js",
-          default: "./lib/main.js"
-        },
-        "./config": "./config.js",
-        "./config.js": "./config.js",
-        "./lib/env-options": "./lib/env-options.js",
-        "./lib/env-options.js": "./lib/env-options.js",
-        "./lib/cli-options": "./lib/cli-options.js",
-        "./lib/cli-options.js": "./lib/cli-options.js",
-        "./package.json": "./package.json"
-      },
-      scripts: {
-        "dts-check": "tsc --project tests/types/tsconfig.json",
-        lint: "standard",
-        pretest: "npm run lint && npm run dts-check",
-        test: "tap run --allow-empty-coverage --disable-coverage --timeout=60000",
-        "test:coverage": "tap run --show-full-coverage --timeout=60000 --coverage-report=text --coverage-report=lcov",
-        prerelease: "npm test",
-        release: "standard-version"
-      },
-      repository: {
-        type: "git",
-        url: "git://github.com/motdotla/dotenv.git"
-      },
-      homepage: "https://github.com/motdotla/dotenv#readme",
-      funding: "https://dotenvx.com",
-      keywords: [
-        "dotenv",
-        "env",
-        ".env",
-        "environment",
-        "variables",
-        "config",
-        "settings"
-      ],
-      readmeFilename: "README.md",
-      license: "BSD-2-Clause",
-      devDependencies: {
-        "@types/node": "^18.11.3",
-        decache: "^4.6.2",
-        sinon: "^14.0.1",
-        standard: "^17.0.0",
-        "standard-version": "^9.5.0",
-        tap: "^19.2.0",
-        typescript: "^4.8.4"
-      },
-      engines: {
-        node: ">=12"
-      },
-      browser: {
-        fs: false
-      }
-    };
-  }
-});
-
-// ../../node_modules/dotenv/lib/main.js
-var require_main = __commonJS({
-  "../../node_modules/dotenv/lib/main.js"(exports, module) {
-    var fs2 = __require("fs");
-    var path = __require("path");
-    var os = __require("os");
-    var crypto = __require("crypto");
-    var packageJson = require_package();
-    var version = packageJson.version;
-    var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
-    function parse(src) {
-      const obj = {};
-      let lines = src.toString();
-      lines = lines.replace(/\r\n?/mg, "\n");
-      let match;
-      while ((match = LINE.exec(lines)) != null) {
-        const key = match[1];
-        let value = match[2] || "";
-        value = value.trim();
-        const maybeQuote = value[0];
-        value = value.replace(/^(['"`])([\s\S]*)\1$/mg, "$2");
-        if (maybeQuote === '"') {
-          value = value.replace(/\\n/g, "\n");
-          value = value.replace(/\\r/g, "\r");
-        }
-        obj[key] = value;
-      }
-      return obj;
-    }
-    function _parseVault(options) {
-      options = options || {};
-      const vaultPath = _vaultPath(options);
-      options.path = vaultPath;
-      const result = DotenvModule.configDotenv(options);
-      if (!result.parsed) {
-        const err = new Error(`MISSING_DATA: Cannot parse ${vaultPath} for an unknown reason`);
-        err.code = "MISSING_DATA";
-        throw err;
-      }
-      const keys = _dotenvKey(options).split(",");
-      const length = keys.length;
-      let decrypted;
-      for (let i = 0; i < length; i++) {
-        try {
-          const key = keys[i].trim();
-          const attrs = _instructions(result, key);
-          decrypted = DotenvModule.decrypt(attrs.ciphertext, attrs.key);
-          break;
-        } catch (error) {
-          if (i + 1 >= length) {
-            throw error;
-          }
-        }
-      }
-      return DotenvModule.parse(decrypted);
-    }
-    function _warn(message) {
-      console.log(`[dotenv@${version}][WARN] ${message}`);
-    }
-    function _debug(message) {
-      console.log(`[dotenv@${version}][DEBUG] ${message}`);
-    }
-    function _log(message) {
-      console.log(`[dotenv@${version}] ${message}`);
-    }
-    function _dotenvKey(options) {
-      if (options && options.DOTENV_KEY && options.DOTENV_KEY.length > 0) {
-        return options.DOTENV_KEY;
-      }
-      if (process.env.DOTENV_KEY && process.env.DOTENV_KEY.length > 0) {
-        return process.env.DOTENV_KEY;
-      }
-      return "";
-    }
-    function _instructions(result, dotenvKey) {
-      let uri;
-      try {
-        uri = new URL(dotenvKey);
-      } catch (error) {
-        if (error.code === "ERR_INVALID_URL") {
-          const err = new Error("INVALID_DOTENV_KEY: Wrong format. Must be in valid uri format like dotenv://:key_1234@dotenvx.com/vault/.env.vault?environment=development");
-          err.code = "INVALID_DOTENV_KEY";
-          throw err;
-        }
-        throw error;
-      }
-      const key = uri.password;
-      if (!key) {
-        const err = new Error("INVALID_DOTENV_KEY: Missing key part");
-        err.code = "INVALID_DOTENV_KEY";
-        throw err;
-      }
-      const environment = uri.searchParams.get("environment");
-      if (!environment) {
-        const err = new Error("INVALID_DOTENV_KEY: Missing environment part");
-        err.code = "INVALID_DOTENV_KEY";
-        throw err;
-      }
-      const environmentKey = `DOTENV_VAULT_${environment.toUpperCase()}`;
-      const ciphertext = result.parsed[environmentKey];
-      if (!ciphertext) {
-        const err = new Error(`NOT_FOUND_DOTENV_ENVIRONMENT: Cannot locate environment ${environmentKey} in your .env.vault file.`);
-        err.code = "NOT_FOUND_DOTENV_ENVIRONMENT";
-        throw err;
-      }
-      return { ciphertext, key };
-    }
-    function _vaultPath(options) {
-      let possibleVaultPath = null;
-      if (options && options.path && options.path.length > 0) {
-        if (Array.isArray(options.path)) {
-          for (const filepath of options.path) {
-            if (fs2.existsSync(filepath)) {
-              possibleVaultPath = filepath.endsWith(".vault") ? filepath : `${filepath}.vault`;
-            }
-          }
-        } else {
-          possibleVaultPath = options.path.endsWith(".vault") ? options.path : `${options.path}.vault`;
-        }
-      } else {
-        possibleVaultPath = path.resolve(process.cwd(), ".env.vault");
-      }
-      if (fs2.existsSync(possibleVaultPath)) {
-        return possibleVaultPath;
-      }
-      return null;
-    }
-    function _resolveHome(envPath) {
-      return envPath[0] === "~" ? path.join(os.homedir(), envPath.slice(1)) : envPath;
-    }
-    function _configVault(options) {
-      const debug = Boolean(options && options.debug);
-      const quiet = options && "quiet" in options ? options.quiet : true;
-      if (debug || !quiet) {
-        _log("Loading env from encrypted .env.vault");
-      }
-      const parsed = DotenvModule._parseVault(options);
-      let processEnv = process.env;
-      if (options && options.processEnv != null) {
-        processEnv = options.processEnv;
-      }
-      DotenvModule.populate(processEnv, parsed, options);
-      return { parsed };
-    }
-    function configDotenv(options) {
-      const dotenvPath = path.resolve(process.cwd(), ".env");
-      let encoding = "utf8";
-      const debug = Boolean(options && options.debug);
-      const quiet = options && "quiet" in options ? options.quiet : true;
-      if (options && options.encoding) {
-        encoding = options.encoding;
-      } else {
-        if (debug) {
-          _debug("No encoding is specified. UTF-8 is used by default");
-        }
-      }
-      let optionPaths = [dotenvPath];
-      if (options && options.path) {
-        if (!Array.isArray(options.path)) {
-          optionPaths = [_resolveHome(options.path)];
-        } else {
-          optionPaths = [];
-          for (const filepath of options.path) {
-            optionPaths.push(_resolveHome(filepath));
-          }
-        }
-      }
-      let lastError;
-      const parsedAll = {};
-      for (const path2 of optionPaths) {
-        try {
-          const parsed = DotenvModule.parse(fs2.readFileSync(path2, { encoding }));
-          DotenvModule.populate(parsedAll, parsed, options);
-        } catch (e) {
-          if (debug) {
-            _debug(`Failed to load ${path2} ${e.message}`);
-          }
-          lastError = e;
-        }
-      }
-      let processEnv = process.env;
-      if (options && options.processEnv != null) {
-        processEnv = options.processEnv;
-      }
-      DotenvModule.populate(processEnv, parsedAll, options);
-      if (debug || !quiet) {
-        const keysCount = Object.keys(parsedAll).length;
-        const shortPaths = [];
-        for (const filePath of optionPaths) {
-          try {
-            const relative = path.relative(process.cwd(), filePath);
-            shortPaths.push(relative);
-          } catch (e) {
-            if (debug) {
-              _debug(`Failed to load ${filePath} ${e.message}`);
-            }
-            lastError = e;
-          }
-        }
-        _log(`injecting env (${keysCount}) from ${shortPaths.join(",")}`);
-      }
-      if (lastError) {
-        return { parsed: parsedAll, error: lastError };
-      } else {
-        return { parsed: parsedAll };
-      }
-    }
-    function config(options) {
-      if (_dotenvKey(options).length === 0) {
-        return DotenvModule.configDotenv(options);
-      }
-      const vaultPath = _vaultPath(options);
-      if (!vaultPath) {
-        _warn(`You set DOTENV_KEY but you are missing a .env.vault file at ${vaultPath}. Did you forget to build it?`);
-        return DotenvModule.configDotenv(options);
-      }
-      return DotenvModule._configVault(options);
-    }
-    function decrypt(encrypted, keyStr) {
-      const key = Buffer.from(keyStr.slice(-64), "hex");
-      let ciphertext = Buffer.from(encrypted, "base64");
-      const nonce = ciphertext.subarray(0, 12);
-      const authTag = ciphertext.subarray(-16);
-      ciphertext = ciphertext.subarray(12, -16);
-      try {
-        const aesgcm = crypto.createDecipheriv("aes-256-gcm", key, nonce);
-        aesgcm.setAuthTag(authTag);
-        return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
-      } catch (error) {
-        const isRange = error instanceof RangeError;
-        const invalidKeyLength = error.message === "Invalid key length";
-        const decryptionFailed = error.message === "Unsupported state or unable to authenticate data";
-        if (isRange || invalidKeyLength) {
-          const err = new Error("INVALID_DOTENV_KEY: It must be 64 characters long (or more)");
-          err.code = "INVALID_DOTENV_KEY";
-          throw err;
-        } else if (decryptionFailed) {
-          const err = new Error("DECRYPTION_FAILED: Please check your DOTENV_KEY");
-          err.code = "DECRYPTION_FAILED";
-          throw err;
-        } else {
-          throw error;
-        }
-      }
-    }
-    function populate(processEnv, parsed, options = {}) {
-      const debug = Boolean(options && options.debug);
-      const override = Boolean(options && options.override);
-      if (typeof parsed !== "object") {
-        const err = new Error("OBJECT_REQUIRED: Please check the processEnv argument being passed to populate");
-        err.code = "OBJECT_REQUIRED";
-        throw err;
-      }
-      for (const key of Object.keys(parsed)) {
-        if (Object.prototype.hasOwnProperty.call(processEnv, key)) {
-          if (override === true) {
-            processEnv[key] = parsed[key];
-          }
-          if (debug) {
-            if (override === true) {
-              _debug(`"${key}" is already defined and WAS overwritten`);
-            } else {
-              _debug(`"${key}" is already defined and was NOT overwritten`);
-            }
-          }
-        } else {
-          processEnv[key] = parsed[key];
-        }
-      }
-    }
-    var DotenvModule = {
-      configDotenv,
-      _configVault,
-      _parseVault,
-      config,
-      decrypt,
-      parse,
-      populate
-    };
-    module.exports.configDotenv = DotenvModule.configDotenv;
-    module.exports._configVault = DotenvModule._configVault;
-    module.exports._parseVault = DotenvModule._parseVault;
-    module.exports.config = DotenvModule.config;
-    module.exports.decrypt = DotenvModule.decrypt;
-    module.exports.parse = DotenvModule.parse;
-    module.exports.populate = DotenvModule.populate;
-    module.exports = DotenvModule;
-  }
-});
-
-// ../../node_modules/dotenv/lib/env-options.js
-var require_env_options = __commonJS({
-  "../../node_modules/dotenv/lib/env-options.js"(exports, module) {
-    var options = {};
-    if (process.env.DOTENV_CONFIG_ENCODING != null) {
-      options.encoding = process.env.DOTENV_CONFIG_ENCODING;
-    }
-    if (process.env.DOTENV_CONFIG_PATH != null) {
-      options.path = process.env.DOTENV_CONFIG_PATH;
-    }
-    if (process.env.DOTENV_CONFIG_QUIET != null) {
-      options.quiet = process.env.DOTENV_CONFIG_QUIET;
-    }
-    if (process.env.DOTENV_CONFIG_DEBUG != null) {
-      options.debug = process.env.DOTENV_CONFIG_DEBUG;
-    }
-    if (process.env.DOTENV_CONFIG_OVERRIDE != null) {
-      options.override = process.env.DOTENV_CONFIG_OVERRIDE;
-    }
-    if (process.env.DOTENV_CONFIG_DOTENV_KEY != null) {
-      options.DOTENV_KEY = process.env.DOTENV_CONFIG_DOTENV_KEY;
-    }
-    module.exports = options;
-  }
-});
-
-// ../../node_modules/dotenv/lib/cli-options.js
-var require_cli_options = __commonJS({
-  "../../node_modules/dotenv/lib/cli-options.js"(exports, module) {
-    var re = /^dotenv_config_(encoding|path|quiet|debug|override|DOTENV_KEY)=(.+)$/;
-    module.exports = function optionMatcher(args) {
-      const options = args.reduce(function(acc, cur) {
-        const matches = cur.match(re);
-        if (matches) {
-          acc[matches[1]] = matches[2];
-        }
-        return acc;
-      }, {});
-      if (!("quiet" in options)) {
-        options.quiet = "true";
-      }
-      return options;
-    };
-  }
-});
-
-// ../../node_modules/dotenv/config.js
-var init_config = __esm({
-  "../../node_modules/dotenv/config.js"() {
-    (function() {
-      require_main().config(
-        Object.assign(
-          {},
-          require_env_options(),
-          require_cli_options()(process.argv)
-        )
-      );
-    })();
-  }
-});
-
 // ../../packages/record/dist/memory.js
 function createInMemoryRecordStore() {
   const projects = /* @__PURE__ */ new Map();
@@ -885,7 +466,7 @@ var init_run_flow = __esm({
             yield this.deltas[i++];
           if (this.ended)
             break;
-          await new Promise((resolve4) => this.waiters.push(resolve4));
+          await new Promise((resolve3) => this.waiters.push(resolve3));
         }
       }
     };
@@ -2309,41 +1890,41 @@ var require_queue = __commonJS({
       queue.drained = drained;
       return queue;
       function push(value) {
-        var p = new Promise(function(resolve4, reject) {
+        var p = new Promise(function(resolve3, reject) {
           pushCb(value, function(err, result) {
             if (err) {
               reject(err);
               return;
             }
-            resolve4(result);
+            resolve3(result);
           });
         });
         p.catch(noop);
         return p;
       }
       function unshift(value) {
-        var p = new Promise(function(resolve4, reject) {
+        var p = new Promise(function(resolve3, reject) {
           unshiftCb(value, function(err, result) {
             if (err) {
               reject(err);
               return;
             }
-            resolve4(result);
+            resolve3(result);
           });
         });
         p.catch(noop);
         return p;
       }
       function drained() {
-        var p = new Promise(function(resolve4) {
+        var p = new Promise(function(resolve3) {
           process.nextTick(function() {
             if (queue.idle()) {
-              resolve4();
+              resolve3();
             } else {
               var previousDrain = queue.drain;
               queue.drain = function() {
                 if (typeof previousDrain === "function") previousDrain();
-                resolve4();
+                resolve3();
                 queue.drain = previousDrain;
               };
             }
@@ -2686,8 +2267,8 @@ var require_create_promise = __commonJS({
         reject: null,
         promise: null
       };
-      obj.promise = new Promise((resolve4, reject) => {
-        obj.resolve = resolve4;
+      obj.promise = new Promise((resolve3, reject) => {
+        obj.resolve = resolve3;
         obj.reject = reject;
       });
       return obj;
@@ -2956,11 +2537,11 @@ var require_thenify = __commonJS({
         return;
       }
       debug("thenify");
-      return (resolve4, reject) => {
+      return (resolve3, reject) => {
         const p = this._loadRegistered();
         return p.then(() => {
           this[kThenifyDoNotWrap] = true;
-          return resolve4(this._server);
+          return resolve3(this._server);
         }, reject);
       };
     }
@@ -3097,12 +2678,12 @@ var require_avvio = __commonJS({
     inherits(Boot, EE);
     if ("asyncDispose" in Symbol) {
       Boot.prototype[Symbol.asyncDispose] = function() {
-        return new Promise((resolve4, reject) => {
+        return new Promise((resolve3, reject) => {
           this.close((err) => {
             if (err) {
               return reject(err);
             }
-            resolve4();
+            resolve3();
           });
         });
       };
@@ -3249,12 +2830,12 @@ var require_avvio = __commonJS({
           throw new AVV_ERR_CALLBACK_NOT_FN("close", typeof func);
         }
       } else {
-        promise = new Promise(function(resolve4, reject) {
+        promise = new Promise(function(resolve3, reject) {
           func = function(err) {
             if (err) {
               return reject(err);
             }
-            resolve4();
+            resolve3();
           };
         });
       }
@@ -3274,7 +2855,7 @@ var require_avvio = __commonJS({
         queueMicrotask(this.start.bind(this));
         return;
       }
-      return new Promise((resolve4, reject) => {
+      return new Promise((resolve3, reject) => {
         this._readyQ.push(readyPromiseCB);
         this.start();
         const relativeContext = this._current[0].server;
@@ -3282,7 +2863,7 @@ var require_avvio = __commonJS({
           if (err) {
             reject(err);
           } else {
-            resolve4(relativeContext);
+            resolve3(relativeContext);
           }
           process.nextTick(done);
         }
@@ -4669,8 +4250,8 @@ var require_promise = __commonJS({
     var { kTestInternals } = require_symbols2();
     function withResolvers() {
       let res, rej;
-      const promise = new Promise((resolve4, reject) => {
-        res = resolve4;
+      const promise = new Promise((resolve3, reject) => {
+        res = resolve3;
         rej = reject;
       });
       return { promise, resolve: res, reject: rej };
@@ -4769,15 +4350,15 @@ var require_server = __commonJS({
         if (cb === void 0) {
           const listening = listenPromise.call(this, server, listenOptions);
           return listening.then((address) => {
-            const { promise, resolve: resolve4 } = PonyPromise.withResolvers();
+            const { promise, resolve: resolve3 } = PonyPromise.withResolvers();
             if (host === "localhost") {
               multipleBindings.call(this, server, httpHandler, options, listenOptions, () => {
                 this[kState].listening = true;
-                resolve4(address);
+                resolve3(address);
                 onListenHookRunner(this);
               });
             } else {
-              resolve4(address);
+              resolve3(address);
               onListenHookRunner(this);
             }
             return promise;
@@ -4904,7 +4485,7 @@ var require_server = __commonJS({
       }
       return this.ready().then(() => {
         if (this[kState].aborted) return;
-        const { promise, resolve: resolve4, reject } = PonyPromise.withResolvers();
+        const { promise, resolve: resolve3, reject } = PonyPromise.withResolvers();
         const errEventHandler = (err) => {
           cleanup();
           this[kState].listening = false;
@@ -4913,7 +4494,7 @@ var require_server = __commonJS({
         const listeningEventHandler = () => {
           cleanup();
           this[kState].listening = true;
-          resolve4(logServerAddress.call(
+          resolve3(logServerAddress.call(
             this,
             server,
             listenOptions.listenTextResolver || defaultResolveServerListeningText
@@ -9863,7 +9444,7 @@ var require_on_exit_leak_free = __commonJS({
 });
 
 // ../../node_modules/thread-stream/package.json
-var require_package2 = __commonJS({
+var require_package = __commonJS({
   "../../node_modules/thread-stream/package.json"(exports, module) {
     module.exports = {
       name: "thread-stream",
@@ -9996,7 +9577,7 @@ var require_indexes = __commonJS({
 var require_thread_stream = __commonJS({
   "../../node_modules/thread-stream/index.js"(exports, module) {
     "use strict";
-    var { version } = require_package2();
+    var { version } = require_package();
     var { EventEmitter } = __require("events");
     var { Worker } = __require("worker_threads");
     var { join: join7 } = __require("path");
@@ -10516,10 +10097,10 @@ var require_transport = __commonJS({
   "../../node_modules/pino/lib/transport.js"(exports, module) {
     "use strict";
     var { createRequire } = __require("module");
-    var { existsSync: existsSync2 } = __require("node:fs");
+    var { existsSync } = __require("node:fs");
     var getCallers = require_caller();
     var { join: join7, isAbsolute, sep: sep2 } = __require("node:path");
-    var { fileURLToPath: fileURLToPath4 } = __require("node:url");
+    var { fileURLToPath: fileURLToPath3 } = __require("node:url");
     var sleep = require_atomic_sleep();
     var onExit = require_on_exit_leak_free();
     var ThreadStream = require_thread_stream();
@@ -10585,12 +10166,12 @@ var require_transport = __commonJS({
       let path = unquoted;
       if (path.startsWith("file://")) {
         try {
-          path = fileURLToPath4(path);
+          path = fileURLToPath3(path);
         } catch {
           return false;
         }
       }
-      return isAbsolute(path) && !existsSync2(path);
+      return isAbsolute(path) && !existsSync(path);
     }
     function stripQuotes(value) {
       const first = value[0];
@@ -19021,7 +18602,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve4.call(this, root, ref);
+      let _sch = resolve3.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -19048,7 +18629,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve4(root, ref) {
+    function resolve3(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -19878,7 +19459,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve4(baseURI, relativeURI, options) {
+    function resolve3(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const {
         parsed: baseParsed,
@@ -20246,7 +19827,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve4,
+      resolve: resolve3,
       resolveComponent,
       equal,
       serialize,
@@ -24046,7 +23627,7 @@ var require_parseJson = __commonJS({
         pos++;
       } else {
         if (!parseDigits(maxDigits)) {
-          errorMessage2();
+          errorMessage();
           return void 0;
         }
       }
@@ -24058,7 +23639,7 @@ var require_parseJson = __commonJS({
         numStr += ".";
         pos++;
         if (!parseDigits()) {
-          errorMessage2();
+          errorMessage();
           return void 0;
         }
       }
@@ -24070,7 +23651,7 @@ var require_parseJson = __commonJS({
           pos++;
         }
         if (!parseDigits()) {
-          errorMessage2();
+          errorMessage();
           return void 0;
         }
       }
@@ -24085,7 +23666,7 @@ var require_parseJson = __commonJS({
         }
         return digit;
       }
-      function errorMessage2() {
+      function errorMessage() {
         parseJsonNumber.position = pos;
         parseJsonNumber.message = pos < s.length ? `unexpected token ${s[pos]}` : "unexpected end";
       }
@@ -24127,7 +23708,7 @@ var require_parseJson = __commonJS({
               code <<= 4;
               c = s[pos];
               if (c === void 0) {
-                errorMessage2("unexpected end");
+                errorMessage("unexpected end");
                 return void 0;
               }
               c = c.toLowerCase();
@@ -24136,31 +23717,31 @@ var require_parseJson = __commonJS({
               } else if (c >= "0" && c <= "9") {
                 code += c.charCodeAt(0) - CODE_0;
               } else {
-                errorMessage2(`unexpected token ${c}`);
+                errorMessage(`unexpected token ${c}`);
                 return void 0;
               }
               pos++;
             }
             str += String.fromCharCode(code);
           } else {
-            errorMessage2(`unexpected token ${c}`);
+            errorMessage(`unexpected token ${c}`);
             return void 0;
           }
         } else if (c === void 0) {
-          errorMessage2("unexpected end");
+          errorMessage("unexpected end");
           return void 0;
         } else {
           if (c.charCodeAt(0) >= 32) {
             str += c;
           } else {
-            errorMessage2(`unexpected token ${c}`);
+            errorMessage(`unexpected token ${c}`);
             return void 0;
           }
         }
       }
       parseJsonString.position = pos;
       return str;
-      function errorMessage2(msg) {
+      function errorMessage(msg) {
         parseJsonString.position = pos;
         parseJsonString.message = msg;
       }
@@ -25597,7 +25178,7 @@ var require_fast_uri2 = __commonJS({
       }
       return uri;
     }
-    function resolve4(baseURI, relativeURI, options) {
+    function resolve3(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const {
         parsed: baseParsed,
@@ -25970,7 +25551,7 @@ var require_fast_uri2 = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve4,
+      resolve: resolve3,
       resolveComponent,
       equal,
       serialize,
@@ -27869,7 +27450,7 @@ var require_fast_uri3 = __commonJS({
       }
       return uri;
     }
-    function resolve4(baseURI, relativeURI, options) {
+    function resolve3(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const {
         parsed: baseParsed,
@@ -28242,7 +27823,7 @@ var require_fast_uri3 = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve4,
+      resolve: resolve3,
       resolveComponent,
       equal,
       serialize,
@@ -37804,7 +37385,7 @@ var require_parse_url = __commonJS({
 var require_form_data = __commonJS({
   "../../node_modules/light-my-request/lib/form-data.js"(exports, module) {
     "use strict";
-    var { randomUUID: randomUUID4 } = __require("node:crypto");
+    var { randomUUID: randomUUID2 } = __require("node:crypto");
     var { Readable: Readable3 } = __require("node:stream");
     var textEncoder;
     function isFormDataLike(payload) {
@@ -37812,7 +37393,7 @@ var require_form_data = __commonJS({
     }
     function formDataToStream(formdata) {
       textEncoder = textEncoder ?? new TextEncoder();
-      const boundary = `----formdata-${randomUUID4()}`;
+      const boundary = `----formdata-${randomUUID2()}`;
       const prefix = `--${boundary}\r
 Content-Disposition: form-data`;
       const escape2 = (str) => str.replace(/\n/g, "%0A").replace(/\r/g, "%0D").replace(/"/g, "%22");
@@ -39259,7 +38840,7 @@ var require_light_my_request = __commonJS({
     var assert = __require("node:assert");
     var Request = require_request2();
     var Response = require_response();
-    var errorMessage2 = "The dispatch function has already been invoked";
+    var errorMessage = "The dispatch function has already been invoked";
     var optsValidator = require_config_validator2();
     function inject(dispatchFunc, options, callback) {
       if (callback === void 0) {
@@ -39315,9 +38896,9 @@ var require_light_my_request = __commonJS({
         const res = new Response(req, callback);
         return makeRequest(dispatchFunc, server, req, res);
       } else {
-        return new Promise((resolve4, reject) => {
+        return new Promise((resolve3, reject) => {
           const req = new RequestConstructor(options);
-          const res = new Response(req, resolve4, reject);
+          const res = new Response(req, resolve3, reject);
           makeRequest(dispatchFunc, server, req, res);
         });
       }
@@ -39352,7 +38933,7 @@ var require_light_my_request = __commonJS({
     httpMethods.forEach((method) => {
       Chain.prototype[method] = function(url) {
         if (this._hasInvoked === true || this._promise) {
-          throw new Error(errorMessage2);
+          throw new Error(errorMessage);
         }
         this.option.url = url;
         this.option.method = method.toUpperCase();
@@ -39369,7 +38950,7 @@ var require_light_my_request = __commonJS({
     chainMethods.forEach((method) => {
       Chain.prototype[method] = function(value) {
         if (this._hasInvoked === true || this._promise) {
-          throw new Error(errorMessage2);
+          throw new Error(errorMessage);
         }
         this.option[method] = value;
         return this;
@@ -39377,7 +38958,7 @@ var require_light_my_request = __commonJS({
     });
     Chain.prototype.end = function(callback) {
       if (this._hasInvoked === true || this._promise) {
-        throw new Error(errorMessage2);
+        throw new Error(errorMessage);
       }
       this._hasInvoked = true;
       if (typeof callback === "function") {
@@ -39392,7 +38973,7 @@ var require_light_my_request = __commonJS({
       Chain.prototype[method] = function(...args) {
         if (!this._promise) {
           if (this._hasInvoked === true) {
-            throw new Error(errorMessage2);
+            throw new Error(errorMessage);
           }
           this._hasInvoked = true;
           this._promise = doInject(this.dispatch, this.option);
@@ -41171,6 +40752,7 @@ __export(dist_exports, {
   resolveRuntimePlugins: () => resolveRuntimePlugins,
   toRecordStoreLike: () => toRecordStoreLike
 });
+import "dotenv/config";
 async function createTransportService(options = {}) {
   const backend = options.backend ?? await backendFromAdapters(options);
   return createServer2(backend);
@@ -41216,7 +40798,6 @@ var isMain;
 var init_dist4 = __esm({
   async "../../services/transport-service/dist/index.js"() {
     "use strict";
-    init_config();
     init_dist();
     init_dist2();
     init_composition();
@@ -41236,973 +40817,8 @@ var init_dist4 = __esm({
   }
 });
 
-// ../../node_modules/@deepseek-ai/dsh-sdk-protocol/lib/index.js
-import { randomUUID } from "node:crypto";
-import { StringDecoder } from "node:string_decoder";
-function objectParams(params) {
-  return params && typeof params === "object" && !Array.isArray(params) ? params : {};
-}
-function abortError(reason) {
-  return reason instanceof Error ? reason : /* @__PURE__ */ new Error(`JSON-RPC request aborted: ${String(reason)}`);
-}
-var JsonRpcResponseError, JsonRpcLineTransport;
-var init_lib = __esm({
-  "../../node_modules/@deepseek-ai/dsh-sdk-protocol/lib/index.js"() {
-    JsonRpcResponseError = class extends Error {
-      code;
-      data;
-      /**
-      * @param code - the wire error code, or `undefined` when the peer sent none.
-      * @param message - the wire error message.
-      * @param data - the optional structured error payload, verbatim.
-      */
-      constructor(code, message, data) {
-        super(message);
-        this.code = code;
-        this.data = data;
-        this.name = "JsonRpcResponseError";
-      }
-    };
-    JsonRpcLineTransport = class {
-      input;
-      output;
-      buffer = "";
-      decoder = new StringDecoder("utf8");
-      started = false;
-      requestHandler;
-      notificationHandler;
-      pending = /* @__PURE__ */ new Map();
-      constructor(input, output) {
-        this.input = input;
-        this.output = output;
-      }
-      /** Attach the input listeners and begin reading frames. Idempotent. */
-      start() {
-        if (this.started) return;
-        this.started = true;
-        this.input.on("data", this.onData);
-        this.input.on("error", this.onInputError);
-        this.input.on("end", this.onInputEnd);
-      }
-      /**
-      * Detach listeners and reject pending requests. Safe before {@link start}.
-      */
-      close() {
-        this.input.off("data", this.onData);
-        this.input.off("error", this.onInputError);
-        this.input.off("end", this.onInputEnd);
-        this.failPending(/* @__PURE__ */ new Error("JSON-RPC transport closed"));
-      }
-      /**
-      * Install the request handler, replacing any prior handler.
-      * @param handler - resolves to the response `result`; a rejection becomes a
-      * `-32603` error response carrying the message.
-      */
-      onRequest(handler) {
-        this.requestHandler = handler;
-      }
-      /**
-      * Install the notification handler, replacing any prior handler.
-      * @param handler - invoked per notification with the method and normalized
-      * params object.
-      */
-      onNotification(handler) {
-        this.notificationHandler = handler;
-      }
-      /**
-      * Send a request and await its response.
-      * @param method - the JSON-RPC method name.
-      * @param params - the request parameters object.
-      * @param signal - optional abandonment signal: aborting removes the pending
-      * entry (no state is retained for a response that may never come) and
-      * rejects with the signal's reason.
-      * @returns the result; rejects per {@link JsonRpcTransportPeer.request}.
-      */
-      request(method, params, signal) {
-        const id = `req_${randomUUID().replaceAll("-", "")}`;
-        const message = {
-          jsonrpc: "2.0",
-          id,
-          method,
-          params
-        };
-        return new Promise((resolve4, reject) => {
-          let detach = () => {
-          };
-          if (signal !== void 0) {
-            if (signal.aborted) {
-              reject(abortError(signal.reason));
-              return;
-            }
-            const onAbort = () => {
-              this.pending.delete(id);
-              reject(abortError(signal.reason));
-            };
-            signal.addEventListener("abort", onAbort, { once: true });
-            detach = () => {
-              signal.removeEventListener("abort", onAbort);
-            };
-          }
-          this.pending.set(id, {
-            resolve: (value) => {
-              detach();
-              resolve4(value);
-            },
-            reject: (error) => {
-              detach();
-              reject(error);
-            }
-          });
-          try {
-            this.write(message);
-          } catch (error) {
-            this.pending.delete(id);
-            detach();
-            reject(error instanceof Error ? error : new Error(String(error)));
-          }
-        });
-      }
-      notify(method, params) {
-        this.write(params === void 0 ? {
-          jsonrpc: "2.0",
-          method
-        } : {
-          jsonrpc: "2.0",
-          method,
-          params
-        });
-      }
-      /**
-      * Wait for prior frame write callbacks. The empty barrier emits no bytes.
-      * @returns a promise that settles with the output write callback.
-      */
-      flush() {
-        return new Promise((resolve4, reject) => {
-          this.output.write("", (error) => {
-            if (error) reject(error);
-            else resolve4();
-          });
-        });
-      }
-      onData = (chunk) => {
-        this.buffer += typeof chunk === "string" ? chunk : this.decoder.write(chunk);
-        this.drainLines();
-      };
-      drainLines() {
-        for (; ; ) {
-          const newline = this.buffer.indexOf("\n");
-          if (newline < 0) break;
-          const line = this.buffer.slice(0, newline).trim();
-          this.buffer = this.buffer.slice(newline + 1);
-          if (!line) continue;
-          this.handleLine(line);
-        }
-      }
-      onInputError = (error) => {
-        this.failPending(error);
-      };
-      onInputEnd = () => {
-        this.buffer += this.decoder.end();
-        this.drainLines();
-        this.failPending(/* @__PURE__ */ new Error("JSON-RPC input closed"));
-      };
-      async handleLine(line) {
-        let message;
-        try {
-          message = JSON.parse(line);
-        } catch {
-          return;
-        }
-        if (!message || typeof message !== "object") return;
-        const frame = message;
-        const id = frame.id;
-        const method = frame.method;
-        if ((typeof id === "string" || typeof id === "number") && typeof method === "string") {
-          await this.handleIncomingRequest(id, method, objectParams(frame.params));
-          return;
-        }
-        if (typeof id === "string" || typeof id === "number") {
-          this.handleIncomingResponse(id, frame);
-          return;
-        }
-        if (typeof method === "string") this.notificationHandler?.(method, objectParams(frame.params));
-      }
-      async handleIncomingRequest(id, method, params) {
-        const handler = this.requestHandler;
-        if (!handler) {
-          this.writeError(id, -32601, `method not found: ${method}`);
-          return;
-        }
-        try {
-          const result = await handler(method, params);
-          this.write({
-            jsonrpc: "2.0",
-            id,
-            result
-          });
-        } catch (error) {
-          this.writeError(id, -32603, error instanceof Error ? error.message : String(error));
-        }
-      }
-      handleIncomingResponse(id, frame) {
-        const pending = this.pending.get(id);
-        if (!pending) return;
-        this.pending.delete(id);
-        if (frame.error && typeof frame.error === "object") {
-          const error = frame.error;
-          pending.reject(new JsonRpcResponseError(typeof error.code === "number" ? error.code : void 0, typeof error.message === "string" ? error.message : "JSON-RPC error", error.data));
-          return;
-        }
-        pending.resolve(frame.result);
-      }
-      writeError(id, code, message) {
-        this.write({
-          jsonrpc: "2.0",
-          id,
-          error: {
-            code,
-            message
-          }
-        });
-      }
-      write(message) {
-        this.output.write(`${JSON.stringify(message)}
-`);
-      }
-      failPending(error) {
-        const pending = [...this.pending.values()];
-        this.pending.clear();
-        for (const waiter of pending) waiter.reject(error);
-      }
-    };
-  }
-});
-
-// ../../node_modules/@deepseek-ai/dsh-sdk-client/lib/index.js
-import { randomUUID as randomUUID2 } from "node:crypto";
-import { dirname as dirname3, resolve as resolve2 } from "node:path";
-import { spawn as spawn2 } from "node:child_process";
-import { existsSync, readFileSync as readFileSync2 } from "node:fs";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
-function exitsWithin(child, ms) {
-  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
-  return new Promise((resolve4) => {
-    const onExit = () => {
-      clearTimeout(timer);
-      resolve4(true);
-    };
-    const timer = setTimeout(() => {
-      child.removeListener("exit", onExit);
-      resolve4(false);
-    }, ms).unref();
-    child.once("exit", onExit);
-  });
-}
-function forceTerminateWithin(child, ms) {
-  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
-  return new Promise((resolve4, reject) => {
-    let accepted = false;
-    let settled = false;
-    const cleanup = () => {
-      clearTimeout(timer);
-      child.off("exit", onExit);
-      child.off("error", onError);
-    };
-    const settle = (complete) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      complete();
-    };
-    const onExit = () => {
-      settle(resolve4);
-    };
-    const onError = (error) => {
-      settle(() => {
-        reject(error);
-      });
-    };
-    child.once("exit", onExit);
-    child.once("error", onError);
-    const timer = setTimeout(() => {
-      const disposition = accepted ? "accepted" : "refused";
-      settle(() => {
-        reject(/* @__PURE__ */ new Error(`runtime process did not exit within ${ms}ms after SIGKILL was ${disposition}`));
-      });
-    }, ms).unref();
-    try {
-      accepted = child.kill("SIGKILL");
-      if (child.exitCode !== null || child.signalCode !== null) settle(resolve4);
-    } catch (error) {
-      settle(() => {
-        reject(new Error("SIGKILL failed", { cause: error }));
-      });
-    }
-  });
-}
-async function disposeRuntimeProcess(child, graces, platform = process.platform) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  child.stdin?.end();
-  if (await exitsWithin(child, graces.disposeEofGraceMs)) return;
-  if (platform !== "win32") {
-    child.kill("SIGTERM");
-    if (await exitsWithin(child, graces.disposeGraceMs)) return;
-  }
-  await forceTerminateWithin(child, graces.disposeGraceMs);
-}
-function manifest(url) {
-  return JSON.parse(readFileSync2(fileURLToPath2(url), "utf8"));
-}
-function resolveDshBinFromManifests(dshManifestUrl, clientManifestUrl) {
-  const dshManifest = manifest(dshManifestUrl);
-  const clientManifest = manifest(clientManifestUrl);
-  if (typeof dshManifest.version !== "string" || dshManifest.version !== clientManifest.version) throw new Error(`dsh SDK client ${String(clientManifest.version)} requires the same dsh version, got ${String(dshManifest.version)}`);
-  const bin = typeof dshManifest.bin === "object" && dshManifest.bin !== null ? dshManifest.bin.dsh : dshManifest.bin;
-  if (typeof bin !== "string" || bin === "") throw new Error("@deepseek-ai/dsh declares no dsh executable");
-  return resolve2(dirname3(fileURLToPath2(dshManifestUrl)), bin);
-}
-function resolveDshNodeLaunchFromManifests(dshManifestUrl, clientManifestUrl, sourceLoaderUrl) {
-  const bin = resolveDshBinFromManifests(dshManifestUrl, clientManifestUrl);
-  if (existsSync(bin)) return {
-    nodeArgs: [bin],
-    patches: [],
-    environment: {}
-  };
-  const packageDir = dirname3(fileURLToPath2(dshManifestUrl));
-  const sourceBin = resolve2(packageDir, "src/bin.ts");
-  const sourcePatch = resolve2(packageDir, "src/sdk-source.cordis.patch.yml");
-  const sourceTsconfig = resolve2(packageDir, "tsconfig.json");
-  if (!existsSync(sourceBin) || !existsSync(sourcePatch) || !existsSync(sourceTsconfig)) throw new Error(`@deepseek-ai/dsh is missing its built executable ${bin} and complete source launch files ${sourceBin}, ${sourcePatch}, ${sourceTsconfig}`);
-  return {
-    nodeArgs: [
-      "--import",
-      sourceLoaderUrl ?? import.meta.resolve("tsx/esm"),
-      sourceBin
-    ],
-    patches: [sourcePatch],
-    environment: { TSX_TSCONFIG_PATH: sourceTsconfig }
-  };
-}
-function installedDshNodeLaunch() {
-  return resolveDshNodeLaunchFromManifests(import.meta.resolve("@deepseek-ai/dsh/package.json"), new URL("../package.json", import.meta.url).href);
-}
-function resolveDshLaunch(options = {}, callerCwd = process.cwd()) {
-  const profile = options.profile ?? "sdk";
-  const dshLaunch = options.dshBin === void 0 ? installedDshNodeLaunch() : {
-    nodeArgs: [resolve2(callerCwd, options.dshBin)],
-    patches: [],
-    environment: {}
-  };
-  const patches = [...dshLaunch.patches, ...(options.patches ?? []).map((path) => resolve2(callerCwd, path))];
-  const dshHome = options.dshHome === void 0 ? void 0 : resolve2(callerCwd, options.dshHome);
-  return {
-    command: process.execPath,
-    args: [
-      ...dshLaunch.nodeArgs,
-      "--profile",
-      profile,
-      ...patches.flatMap((path) => ["--patch", path])
-    ],
-    ...options.processCwd === void 0 ? {} : { cwd: resolve2(callerCwd, options.processCwd) },
-    environment: () => ({
-      ...options.env ?? process.env,
-      ...dshLaunch.environment,
-      ...dshHome === void 0 ? {} : { DSH_HOME: dshHome }
-    }),
-    description: `dsh profile ${JSON.stringify(profile)}`,
-    initializeTimeoutMs: options.initializeTimeoutMs ?? 1e4,
-    ...options.requestTimeoutMs === void 0 ? {} : { requestTimeoutMs: options.requestTimeoutMs },
-    ...options.shutdownTimeoutMs === void 0 ? {} : { shutdownTimeoutMs: options.shutdownTimeoutMs },
-    ...options.disposeEofGraceMs === void 0 ? {} : { disposeEofGraceMs: options.disposeEofGraceMs },
-    ...options.disposeGraceMs === void 0 ? {} : { disposeGraceMs: options.disposeGraceMs }
-  };
-}
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function errorMessage(error) {
-  return error instanceof Error ? error.message : String(error);
-}
-function normalizeInput(input) {
-  return typeof input === "string" ? [{
-    type: "text",
-    text: input
-  }] : input;
-}
-function validatedTurnEndReason(value) {
-  if (!isRecord(value) || typeof value.kind !== "string") throw new SdkProtocolError(`turn/end carried no reason envelope: ${JSON.stringify(value)}`);
-  if (value.kind === "aborted") {
-    if (!isRecord(value.reason) || typeof value.reason.kind !== "string") throw new SdkProtocolError(`turn/end carried a malformed aborted reason: ${JSON.stringify(value)}`);
-    switch (value.reason.kind) {
-      case "user":
-      case "parent":
-      case "disposed":
-      case "legacy":
-        break;
-      case "hook":
-        if (typeof value.reason.reason !== "string") throw new SdkProtocolError(`turn/end carried a malformed hook abort reason: ${JSON.stringify(value)}`);
-        break;
-      default:
-        throw new SdkProtocolError(`turn/end carried an unknown abort reason: ${JSON.stringify(value)}`);
-    }
-  }
-  return value;
-}
-function validatedSessionEvent(value) {
-  if (!isRecord(value) || typeof value.type !== "string") throw new SdkProtocolError(`session.event carried no event envelope: ${JSON.stringify(value)}`);
-  if (value.type === "assistant/message") {
-    const message = isRecord(value.data) ? value.data.message : void 0;
-    const content = isRecord(message) ? message.content : void 0;
-    if (!Array.isArray(content) || !content.every((block) => isRecord(block) && typeof block.type === "string")) throw new SdkProtocolError(`assistant/message event carried malformed content: ${JSON.stringify(value)}`);
-  }
-  if (value.type === "turn/end") {
-    const data = isRecord(value.data) ? value.data : void 0;
-    if (data === void 0) throw new SdkProtocolError(`turn/end event carried malformed data: ${JSON.stringify(value)}`);
-    validatedTurnEndReason(data.reason);
-  }
-  return value;
-}
-function isInboxReceipt(value, messageId) {
-  if (!isRecord(value) || value.type !== "agent/inbox/spliced" || !isRecord(value.data)) return false;
-  const inserted = value.data.inserted;
-  return Array.isArray(inserted) && inserted.some((message) => isRecord(message) && message.id === messageId);
-}
-function finalResponse(events) {
-  for (let index = events.length - 1; index >= 0; index--) {
-    const event = events[index];
-    if (event?.type !== "assistant/message") continue;
-    return event.data.message.content.filter((block) => block.type === "text").map((block) => block.text).join("");
-  }
-  return "";
-}
-var STDERR_TAIL_LIMIT, STREAM_SETTLE_MS, TransportClosedError, RequestTimeoutError, SdkProtocolError, NotificationSubscriptionImpl, HarnessClient, DeepSeekHarness, HarnessSession;
-var init_lib2 = __esm({
-  "../../node_modules/@deepseek-ai/dsh-sdk-client/lib/index.js"() {
-    init_lib();
-    STDERR_TAIL_LIMIT = 400;
-    STREAM_SETTLE_MS = 100;
-    TransportClosedError = class extends Error {
-      /** @param message - the failure description, including any stderr tail. */
-      constructor(message) {
-        super(message);
-        this.name = "TransportClosedError";
-      }
-    };
-    RequestTimeoutError = class extends Error {
-      /** @param message - which method timed out. */
-      constructor(message) {
-        super(message);
-        this.name = "RequestTimeoutError";
-      }
-    };
-    SdkProtocolError = class extends Error {
-      /** @param message - the protocol violation description. */
-      constructor(message) {
-        super(message);
-        this.name = "SdkProtocolError";
-      }
-    };
-    NotificationSubscriptionImpl = class {
-      state;
-      unsubscribe;
-      constructor(state, unsubscribe) {
-        this.state = state;
-        this.unsubscribe = unsubscribe;
-      }
-      /**
-      * Await the next matching notification.
-      * @returns the notification; after the runtime died, drains what was
-      * already delivered and then rejects; after {@link close}, rejects
-      * immediately (the queue is dropped).
-      */
-      next() {
-        const queued = this.state.queue.shift();
-        if (queued !== void 0) return Promise.resolve(queued);
-        if (this.state.failure !== void 0) return Promise.reject(this.state.failure);
-        return new Promise((resolve4, reject) => {
-          this.state.waiters.push({
-            resolve: resolve4,
-            reject
-          });
-        });
-      }
-      /**
-      * Drain one already-delivered notification without waiting.
-      * @returns the next queued notification, or `undefined` when none is queued.
-      */
-      tryNext() {
-        return this.state.queue.shift();
-      }
-      /** Detach from the client; queued items drop and pending waiters reject. */
-      close() {
-        this.unsubscribe();
-        this.state.queue.length = 0;
-        this.fail(new TransportClosedError("notification subscription closed"));
-      }
-      /**
-      * Reject pending and future waits (delivery stops; the first failure wins).
-      * Already-queued notifications remain drainable via {@link next}/{@link tryNext}.
-      * @param error - the terminal failure delivered to waiters.
-      */
-      fail(error) {
-        this.state.failure ??= error;
-        for (const waiter of this.state.waiters.splice(0)) waiter.reject(this.state.failure);
-      }
-      /**
-      * Deliver one notification to a waiter or the queue when the filter
-      * matches. A throwing filter fails only THIS subscription (detached, the
-      * throw becomes its terminal error) — it never disturbs sibling
-      * subscriptions or the transport's read loop.
-      * @param notification - the wire notification to deliver.
-      */
-      push(notification) {
-        let matches;
-        try {
-          matches = this.state.filter === void 0 || this.state.filter(notification);
-        } catch (error) {
-          this.unsubscribe();
-          this.fail(error instanceof Error ? error : new Error(String(error)));
-          return;
-        }
-        if (!matches) return;
-        const waiter = this.state.waiters.shift();
-        if (waiter !== void 0) waiter.resolve(notification);
-        else this.state.queue.push(notification);
-      }
-      /**
-      * Iterate notifications until the subscription or runtime closes (the
-      * terminating rejection propagates).
-      * @returns an async iterator over {@link next} results.
-      */
-      async *[Symbol.asyncIterator]() {
-        for (; ; ) yield await this.next();
-      }
-    };
-    HarnessClient = class {
-      /** Original public dsh launch and timeout options for this client. */
-      options;
-      runtime;
-      child;
-      transport;
-      stderrTail = [];
-      subscriptions = /* @__PURE__ */ new Map();
-      sessionParents = /* @__PURE__ */ new Map();
-      subscriptionSerial = 0;
-      exitCode;
-      spawnError;
-      streamsSettled = Promise.resolve();
-      closeTask;
-      constructor(options = {}, runtime) {
-        this.options = options;
-        this.runtime = runtime ?? resolveDshLaunch(options);
-      }
-      /**
-      * Spawn the runtime subprocess and start reading frames. Idempotent while
-      * the process is live; rejects reuse after {@link close}.
-      */
-      start() {
-        if (this.closeTask !== void 0) throw new TransportClosedError("DeepSeek Harness runtime client is closed");
-        if (this.child !== void 0) return;
-        const child = spawn2(this.runtime.command, this.runtime.args, {
-          cwd: this.runtime.cwd,
-          env: this.runtime.environment(),
-          stdio: [
-            "pipe",
-            "pipe",
-            "pipe"
-          ]
-        });
-        this.child = child;
-        child.once("error", (error) => {
-          this.spawnError = error;
-          this.transport?.close();
-          this.failSubscriptions(this.closedError("DeepSeek Harness runtime failed to start"));
-        });
-        child.stdin.on("error", () => {
-        });
-        let stderrBuffer = "";
-        child.stderr.setEncoding("utf8");
-        child.stderr.on("data", (chunk) => {
-          stderrBuffer += chunk;
-          const newline = stderrBuffer.lastIndexOf("\n");
-          if (newline >= 0) {
-            this.appendStderr(stderrBuffer.slice(0, newline).split("\n"));
-            stderrBuffer = stderrBuffer.slice(newline + 1);
-          }
-        });
-        let signalStreamsSettled;
-        this.streamsSettled = new Promise((resolve4) => {
-          signalStreamsSettled = resolve4;
-        });
-        const settled = {
-          stderr: false,
-          exited: false
-        };
-        const maybeSettle = () => {
-          if (settled.stderr && settled.exited) signalStreamsSettled();
-        };
-        child.stderr.once("close", () => {
-          if (stderrBuffer.length > 0) this.appendStderr([stderrBuffer]);
-          settled.stderr = true;
-          maybeSettle();
-        });
-        child.once("exit", (code) => {
-          this.exitCode = code;
-          settled.exited = true;
-          maybeSettle();
-          this.failSubscriptions(this.closedError("DeepSeek Harness runtime exited"));
-        });
-        child.once("close", () => {
-          this.transport?.close();
-        });
-        const transport = new JsonRpcLineTransport(child.stdout, child.stdin);
-        transport.onNotification((method, params) => {
-          this.dispatchNotification({
-            method,
-            params
-          });
-        });
-        transport.start();
-        this.transport = transport;
-      }
-      /**
-      * Perform the process-wide handshake.
-      * @param params - workspace cwd plus the provider/model route.
-      * @returns the runtime's wire identity.
-      */
-      async initialize(params) {
-        const result = await this.request("initialize", { ...params }, this.runtime.initializeTimeoutMs);
-        if (!isRecord(result) || !isRecord(result.serverInfo) || typeof result.serverInfo.name !== "string" || typeof result.serverInfo.version !== "string") throw new SdkProtocolError(`initialize returned no server identity: ${JSON.stringify(result)}`);
-        return { serverInfo: {
-          name: result.serverInfo.name,
-          version: result.serverInfo.version
-        } };
-      }
-      /**
-      * Queue one prompt and return its durable inbox identity.
-      * @param sessionId - target session; an unknown id creates it.
-      * @param contentBlocks - the user message, sent verbatim.
-      * @returns the queued message id.
-      */
-      async prompt(sessionId, contentBlocks) {
-        const params = {
-          sessionId,
-          contentBlocks
-        };
-        const result = await this.request("session/prompt", { ...params });
-        if (!isRecord(result) || typeof result.messageId !== "string") throw new SdkProtocolError(`session/prompt returned no message id: ${JSON.stringify(result)}`);
-        return result.messageId;
-      }
-      /**
-      * Send one JSON-RPC request and await its result.
-      * @param method - the wire method name.
-      * @param params - the params object; omitted params send `{}`.
-      * @param timeoutMs - per-call override of {@link HarnessClientOptions.requestTimeoutMs}.
-      * @returns the raw result; rejects with {@link JsonRpcResponseError} on a
-      * protocol error response, {@link RequestTimeoutError} on timeout, and
-      * {@link TransportClosedError} when the runtime is gone.
-      */
-      async request(method, params, timeoutMs) {
-        this.start();
-        if (this.exitCode !== void 0 || this.spawnError !== void 0) {
-          await this.settleStreams();
-          throw this.closedError("DeepSeek Harness runtime is not running");
-        }
-        const transport = this.transport;
-        if (transport === void 0) throw new TransportClosedError("DeepSeek Harness runtime is not running");
-        const timeout = timeoutMs ?? this.runtime.requestTimeoutMs;
-        try {
-          if (timeout === void 0) return await transport.request(method, params ?? {});
-          const abandon = new AbortController();
-          const timer = setTimeout(() => {
-            const stderr = this.stderrTail.length === 0 ? "" : `; stderr tail:
-${this.stderrTail.join("\n")}`;
-            abandon.abort(new RequestTimeoutError(`${method} timed out after ${timeout}ms waiting for ${this.runtime.description}${stderr}`));
-          }, timeout);
-          try {
-            return await transport.request(method, params ?? {}, abandon.signal);
-          } finally {
-            clearTimeout(timer);
-          }
-        } catch (error) {
-          if (error instanceof JsonRpcResponseError || error instanceof RequestTimeoutError) throw error;
-          await this.settleStreams();
-          throw this.closedError(errorMessage(error));
-        }
-      }
-      /**
-      * Subscribe to server notifications.
-      * @param filter - optional predicate; omitted means every notification.
-      * @returns the subscription handle; close it to stop delivery. After
-      * {@link close} or runtime death the handle is born failed — there is no
-      * producer left, so `next()` rejects instead of waiting forever.
-      */
-      subscribe(filter) {
-        const id = String(this.subscriptionSerial++);
-        const subscription = new NotificationSubscriptionImpl({
-          queue: [],
-          waiters: [],
-          filter,
-          failure: void 0
-        }, () => {
-          this.subscriptions.delete(id);
-        });
-        if (this.closeTask !== void 0 || this.exitCode !== void 0 || this.spawnError !== void 0) {
-          subscription.fail(this.closedError("DeepSeek Harness runtime closed"));
-          return subscription;
-        }
-        this.subscriptions.set(id, subscription);
-        return subscription;
-      }
-      /**
-      * Subscribe to one session and the descendants discovered from
-      * `subagent.started` lineage edges. The runtime notifies for every session
-      * in its context, so this client applies the scope.
-      * @param sessionId - the root session id.
-      * @returns the filtered subscription handle.
-      */
-      subscribeSessionTree(sessionId) {
-        return this.subscribe((notification) => {
-          const params = notification.params;
-          if (notification.method === "subagent.started" || notification.method === "subagent.finished") {
-            const parentId = params.parentSessionId;
-            if (typeof parentId === "string" && this.isDescendantOf(parentId, sessionId)) return true;
-            return params.childSessionId === sessionId;
-          }
-          const relatedId = params.sessionId;
-          return typeof relatedId === "string" && this.isDescendantOf(relatedId, sessionId);
-        });
-      }
-      /**
-      * Shut the runtime down and reap it: a best-effort protocol `shutdown`
-      * bounded by `shutdownTimeoutMs`, then the shared stdin-EOF → SIGTERM →
-      * SIGKILL ladder until the process actually exited. Idempotent.
-      * @returns settlement of the complete teardown.
-      */
-      close() {
-        this.closeTask ??= this.performClose();
-        return this.closeTask;
-      }
-      async performClose() {
-        const child = this.child;
-        if (child === void 0) return;
-        try {
-          await this.request("shutdown", void 0, this.runtime.shutdownTimeoutMs ?? 1e3);
-        } catch (error) {
-          this.appendStderr([`shutdown request failed: ${errorMessage(error)}`]);
-        }
-        await disposeRuntimeProcess(child, {
-          disposeEofGraceMs: this.runtime.disposeEofGraceMs ?? 6e3,
-          disposeGraceMs: this.runtime.disposeGraceMs ?? 3e3
-        });
-        this.transport?.close();
-        this.failSubscriptions(this.closedError("DeepSeek Harness runtime closed"));
-      }
-      dispatchNotification(notification) {
-        this.recordSessionRelationship(notification);
-        for (const subscription of this.subscriptions.values()) subscription.push(notification);
-      }
-      recordSessionRelationship(notification) {
-        if (notification.method !== "subagent.started") return;
-        const parentId = notification.params.parentSessionId;
-        const childId = notification.params.childSessionId;
-        if (typeof parentId === "string" && parentId !== "" && typeof childId === "string" && childId !== "" && parentId !== childId) this.sessionParents.set(childId, parentId);
-      }
-      isDescendantOf(sessionId, rootSessionId) {
-        const visited = /* @__PURE__ */ new Set();
-        let current = sessionId;
-        while (!visited.has(current)) {
-          if (current === rootSessionId) return true;
-          visited.add(current);
-          const parent = this.sessionParents.get(current);
-          if (parent === void 0) return false;
-          current = parent;
-        }
-        return false;
-      }
-      failSubscriptions(error) {
-        for (const subscription of this.subscriptions.values()) subscription.fail(error);
-      }
-      appendStderr(lines) {
-        const kept = lines.filter((line) => line.length > 0);
-        this.stderrTail.push(...kept);
-        if (this.stderrTail.length > STDERR_TAIL_LIMIT) this.stderrTail.splice(0, this.stderrTail.length - STDERR_TAIL_LIMIT);
-      }
-      settleStreams() {
-        return Promise.race([this.streamsSettled, new Promise((resolve4) => {
-          setTimeout(resolve4, STREAM_SETTLE_MS);
-        })]);
-      }
-      closedError(reason) {
-        const parts = [`${this.runtime.description}: ${reason}`];
-        if (this.spawnError !== void 0) parts.push(`spawn error: ${this.spawnError.message}`);
-        if (this.exitCode !== void 0) parts.push(`exit code: ${String(this.exitCode)}`);
-        if (this.stderrTail.length > 0) parts.push(`stderr tail:
-${this.stderrTail.join("\n")}`);
-        return new TransportClosedError(parts.join("\n"));
-      }
-    };
-    DeepSeekHarness = class {
-      clientInstance;
-      createClient;
-      cwd;
-      provider;
-      model;
-      reasoningEffort;
-      maxTokens;
-      initialized;
-      closed = false;
-      constructor(options = {}, clientFactory) {
-        this.createClient = clientFactory ?? (() => new HarnessClient(options));
-        this.clientInstance = this.createClient();
-        this.cwd = resolve2(options.cwd ?? options.processCwd ?? process.cwd());
-        this.provider = options.provider ?? "deepseek-official";
-        this.model = options.model ?? "deepseek-v4-flash";
-        this.reasoningEffort = options.reasoningEffort;
-        this.maxTokens = options.maxTokens;
-      }
-      /**
-      * The underlying JSON-RPC client (exposed for low-level access). A failed
-      * handshake swaps in a fresh instance only after cleanup proves the runtime
-      * exited; cleanup failure retains this client, so do not cache it across a
-      * failed {@link start}.
-      * @returns the client currently owning the runtime subprocess.
-      */
-      get client() {
-        return this.clientInstance;
-      }
-      /**
-      * Start the subprocess and perform the `initialize` handshake once. On
-      * failure, successful SDK-owned cleanup reaps the runtime and installs a
-      * fresh client (`HarnessClient.close` is permanent), so a later call retries
-      * with a new subprocess unless {@link close} already ended this harness. If
-      * cleanup also fails, rejects with an `AggregateError` whose ordered errors
-      * preserve both causes and retains the failed client rather than spawning
-      * alongside a process whose exit was not proved.
-      * @returns settlement of the (memoized) handshake.
-      */
-      start() {
-        this.initialized ??= (async () => {
-          try {
-            this.clientInstance.start();
-            await this.clientInstance.initialize({
-              cwd: this.cwd,
-              provider: this.provider,
-              model: this.model,
-              ...this.reasoningEffort === void 0 ? {} : { reasoningEffort: this.reasoningEffort },
-              ...this.maxTokens === void 0 ? {} : { maxTokens: this.maxTokens }
-            });
-          } catch (error) {
-            this.initialized = void 0;
-            try {
-              await this.clientInstance.close();
-            } catch (cleanupError) {
-              throw new AggregateError([error, cleanupError], "DeepSeek Harness initialization and cleanup failed");
-            }
-            if (!this.closed) this.clientInstance = this.createClient();
-            throw error;
-          }
-        })();
-        return this.initialized;
-      }
-      /**
-      * Open a session handle (no wire traffic; the runtime creates the session
-      * on its first prompt).
-      * @param sessionId - explicit id to reuse; omitted mints a fresh one.
-      * @returns the session handle.
-      */
-      session(sessionId) {
-        return new HarnessSession(this, sessionId ?? `session-${randomUUID2().replaceAll("-", "")}`);
-      }
-      /**
-      * Run one prompt on a fresh (or named) session.
-      * @param input - prompt text, or content blocks sent verbatim.
-      * @param options - optional session id and per-notification observer.
-      * @returns the owned activity interval.
-      */
-      run(input, options) {
-        return this.session(options?.sessionId).run(input, options);
-      }
-      /**
-      * Shut down and reap the runtime subprocess. Idempotent and terminal —
-      * a closed harness no longer retries a failed handshake.
-      * @returns settlement of the complete teardown.
-      */
-      close() {
-        this.closed = true;
-        return this.clientInstance.close();
-      }
-      /**
-      * `await using` support: {@link close}.
-      * @returns settlement of the teardown.
-      */
-      [Symbol.asyncDispose]() {
-        return this.close();
-      }
-    };
-    HarnessSession = class {
-      harness;
-      id;
-      /**
-      * @param harness - the owning harness (supplies the client and handshake).
-      * @param id - the wire session id this handle runs on.
-      */
-      constructor(harness, id) {
-        this.harness = harness;
-        this.id = id;
-      }
-      /**
-      * Queue one prompt, then observe the whole session through its next idle.
-      * @param input - prompt text, or content blocks sent verbatim.
-      * @param options - optional per-notification observer.
-      * @returns the owned activity interval; rejects on transport loss, timeout,
-      * or a protocol error.
-      */
-      async run(input, options) {
-        await this.harness.start();
-        const client = this.harness.client;
-        const contentBlocks = normalizeInput(input);
-        const events = [];
-        const notifications = [];
-        const subscription = client.subscribeSessionTree(this.id);
-        const collect = (notification) => {
-          if (notification.method === "session.event" && notification.params.sessionId === this.id) {
-            const event = validatedSessionEvent(notification.params.event);
-            notifications.push(notification);
-            options?.onNotification?.(notification);
-            events.push(event);
-            return;
-          }
-          notifications.push(notification);
-          options?.onNotification?.(notification);
-        };
-        try {
-          const messageId = await client.prompt(this.id, contentBlocks);
-          let received = false;
-          while (true) {
-            const notification = await subscription.next();
-            if (!received) {
-              if (notification.method !== "session.event" || notification.params.sessionId !== this.id || !isInboxReceipt(notification.params.event, messageId)) continue;
-              received = true;
-            }
-            collect(notification);
-            if (notification.method === "session.status" && notification.params.sessionId === this.id && notification.params.status === "idle") break;
-          }
-        } finally {
-          subscription.close();
-        }
-        return {
-          sessionId: this.id,
-          finalResponse: finalResponse(events),
-          events,
-          notifications
-        };
-      }
-    };
-  }
-});
-
 // ../../packages/transport-dsh/dist/client.js
+import { DeepSeekHarness } from "@deepseek-ai/dsh-sdk-client";
 function createDshTurnClient(options) {
   return new SdkDshTurnClient(options);
 }
@@ -42210,7 +40826,6 @@ var SdkDshTurnClient;
 var init_client = __esm({
   "../../packages/transport-dsh/dist/client.js"() {
     "use strict";
-    init_lib2();
     SdkDshTurnClient = class {
       harness;
       constructor(options) {
@@ -42448,7 +41063,7 @@ var init_commands2 = __esm({
 // ../../packages/transport-dsh/dist/bridge.js
 import { request } from "node:http";
 import { once } from "node:events";
-import { randomUUID as randomUUID3 } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { mkdir as mkdir3, writeFile as writeFile2 } from "node:fs/promises";
 import { basename, join as join4 } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -42535,7 +41150,7 @@ function createCommandBridge(endpoint) {
   };
 }
 function bridgeSocketPath(dir) {
-  const unique = `${process.pid}-${randomUUID3().slice(0, 8)}`;
+  const unique = `${process.pid}-${randomUUID().slice(0, 8)}`;
   return process.platform === "win32" ? `\\\\.\\pipe\\ss-dsh-bridge-${unique}` : join4(dir, `${unique}.sock`);
 }
 async function writeBridgePatch(opts) {
@@ -42556,7 +41171,7 @@ async function writeBridgePatch(opts) {
 async function writeProjectPatch(opts) {
   const { dir, pluginPath, config } = opts;
   await mkdir3(dir, { recursive: true });
-  const file = join4(dir, `project-${randomUUID3().slice(0, 8)}.cordis.patch.yml`);
+  const file = join4(dir, `project-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
   const document = [
     "- insert:",
     "    - id: science-studio-project",
@@ -42578,7 +41193,7 @@ var init_bridge = __esm({
 
 // ../../packages/transport-dsh/dist/mirror.js
 import { promises as fs } from "node:fs";
-import { dirname as dirname4, join as join5, resolve as resolve3 } from "node:path";
+import { dirname as dirname3, join as join5, resolve as resolve2 } from "node:path";
 var TranscriptMirror;
 var init_mirror = __esm({
   "../../packages/transport-dsh/dist/mirror.js"() {
@@ -42589,7 +41204,7 @@ var init_mirror = __esm({
         this.dir = dir;
       }
       fileFor(sessionKey) {
-        return join5(resolve3(this.dir), `${encodeURIComponent(sessionKey)}.json`);
+        return join5(resolve2(this.dir), `${encodeURIComponent(sessionKey)}.json`);
       }
       /** Read a session's mirror; returns null when absent or unreadable. */
       async load(sessionKey) {
@@ -42607,7 +41222,7 @@ var init_mirror = __esm({
       async save(sessionKey, status, messages) {
         const file = this.fileFor(sessionKey);
         try {
-          await fs.mkdir(dirname4(file), { recursive: true });
+          await fs.mkdir(dirname3(file), { recursive: true });
           const payload = {
             v: 1,
             sessionId: sessionKey,
@@ -42943,7 +41558,7 @@ var init_behavior = __esm({
 // ../../packages/transport-dsh/dist/adapter.js
 import { tmpdir } from "node:os";
 import { join as join6 } from "node:path";
-import { fileURLToPath as fileURLToPath3 } from "node:url";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
 function createDshRuntimeFactory() {
   return {
     runtime: "dsh",
@@ -43011,12 +41626,12 @@ var init_adapter = __esm({
       constructor(options = {}) {
         this.createClient = options.createClient ?? createDshTurnClient;
         this.transcriptDir = options.transcriptDir ?? "";
-        this.bridgePluginPath = options.bridgePluginPath ?? fileURLToPath3(new URL("./bridge-plugin.js", import.meta.url));
-        this.projectPluginPath = options.projectPluginPath ?? fileURLToPath3(new URL("./project-plugin.js", import.meta.url));
+        this.bridgePluginPath = options.bridgePluginPath ?? fileURLToPath2(new URL("./bridge-plugin.js", import.meta.url));
+        this.projectPluginPath = options.projectPluginPath ?? fileURLToPath2(new URL("./project-plugin.js", import.meta.url));
         this.bridgeDir = options.bridgeDir ?? join6(tmpdir(), "science-studio", "dsh-bridge");
         this.createBridge = options.createBridge ?? createCommandBridge;
-        this.initialized = new Promise((resolve4) => {
-          this.markInitialized = resolve4;
+        this.initialized = new Promise((resolve3) => {
+          this.markInitialized = resolve3;
         });
       }
       /**
@@ -43327,14 +41942,14 @@ import { join } from "node:path";
 // src/shared/net.ts
 import { createServer } from "node:net";
 function getFreePort(host = "127.0.0.1") {
-  return new Promise((resolve4, reject) => {
+  return new Promise((resolve3, reject) => {
     const srv = createServer();
     srv.unref();
     srv.on("error", reject);
     srv.listen(0, host, () => {
       const address = srv.address();
       const port = typeof address === "object" && address !== null ? address.port : 0;
-      srv.close(() => resolve4(port));
+      srv.close(() => resolve3(port));
     });
   });
 }
@@ -43376,10 +41991,10 @@ async function startNextServer(input) {
   child.stdout?.on("data", (d) => input.log?.(d.toString()));
   child.stderr?.on("data", (d) => input.log?.(d.toString()));
   try {
-    await new Promise((resolve4, reject) => {
+    await new Promise((resolve3, reject) => {
       const onSpawn = () => {
         cleanup();
-        resolve4();
+        resolve3();
       };
       const onError = (err) => {
         cleanup();
@@ -43401,11 +42016,11 @@ async function startNextServer(input) {
 }
 async function stopChild(child) {
   if (child.exitCode !== null || child.signalCode !== null || child.pid === void 0) return;
-  await new Promise((resolve4) => {
+  await new Promise((resolve3) => {
     let killTimer;
     const onExit = () => {
       if (killTimer) clearTimeout(killTimer);
-      resolve4();
+      resolve3();
     };
     child.once("exit", onExit);
     killTimer = setTimeout(() => {

@@ -6,7 +6,7 @@
   "main": "dist/main/index.js",
   "scripts": {
     "build": "tsc -b",
-    "build:host": "esbuild src/server/host-main.ts --bundle --platform=node --format=esm --target=node20 --outfile=build/host/host.mjs --external:electron --banner:js=\"import { createRequire } from 'module'; process.argv[1]=''; const require = createRequire(import.meta.url);\" && cp ../../packages/transport-dsh/dist/bridge-plugin.js build/host/ && cp ../../packages/transport-dsh/dist/project-plugin.js build/host/",
+    "build:host": "esbuild src/server/host-main.ts --bundle --platform=node --format=esm --target=node20 --outfile=build/host/host.mjs --external:electron --external:@deepseek-ai/dsh-sdk-client --external:@deepseek-ai/dsh --external:@deepseek-ai/dsh-llm --external:@deepseek-ai/dsh-session --external:dotenv --banner:js=\"import { createRequire } from 'module'; process.argv[1]=''; const require = createRequire(import.meta.url);\" && cp ../../packages/transport-dsh/dist/bridge-plugin.js build/host/ && cp ../../packages/transport-dsh/dist/project-plugin.js build/host/",
     "build:web": "npm --prefix ../.. run build:web:standalone",
     "build:desktop": "npm run build:host && npm run build:web",
     "typecheck": "tsc -b --noEmit",
