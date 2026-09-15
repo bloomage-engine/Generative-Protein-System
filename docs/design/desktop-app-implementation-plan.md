@@ -1706,3 +1706,99 @@ git commit -m "feat(desktop): dev mode against the local dev servers, and docume
 - The exact path of the Next standalone `server.js` under `outputFileTracingRoot` (Task 9 Step 3) — copy it verbatim into `nextDir()` and `extraResources`.
 - esbuild bundling `@science-studio/transport-dsh` may surface a missing dependency or a `__dirname`/`import.meta` assumption; if so, add `--external:<pkg>` and ship that package under `extraResources`, keeping the plugin files next to the bundle.
 - `electron-builder` may need `asarUnpack` if the host bundle or Next reads files it cannot read from an asar; the host and plugins already live in `extraResources`, so start without `asarUnpack`.
+
+---
+
+## Follow-ups (from the final review + recorded minors)
+
+Tasks 14–17. Same process; `apps/desktop` stays outside the root build gate.
+The `builder-config.test.mjs` target assertions (recorded as a Task 12 minor) are
+already present, so no task is needed for them.
+
+### Task 14: Runtime setup UX (P1)
+
+**Why:** a missing `dsh` (or an empty config) currently opens only the Settings
+window with no way to reach the workbench, and the web UI never says the runtime
+is unavailable — the deferred half of the Q14 decision.
+
+**Files:**
+- Create: `apps/desktop/src/shared/runtime-status.ts`
+- Create: `apps/desktop/src/preload/workbench.cts` (a sandboxed CJS preload: it
+  may use only `contextBridge`/`ipcRenderer`)
+- Modify: `apps/desktop/tsconfig.json` (add `src/**/*.cts` to `include`)
+- Modify: `apps/desktop/src/main/windows.ts` (`createWorkbenchWindow` uses
+  `workbench.cjs`; keep `sandbox: true`)
+- Modify: `apps/desktop/src/main/index.ts` (IPC `desktop:runtimeStatus` and
+  `desktop:openWorkbench`)
+- Modify: `apps/desktop/src/renderer/config.ts` + `config.html` (dsh status +
+  "Open workbench anyway")
+- Modify: `apps/web/components/studio/status-bar.tsx` (a `RuntimeChip` shown only
+  when the desktop bridge is present)
+- Test: `apps/desktop/test/runtime-status.test.ts`
+
+**Interfaces:**
+- `runtimeStatus(input: { dshPath: string | null; config: DesktopConfig }): { dshPath: string | null; provider: string | null; model: string | null; ready: boolean }`, where `ready = dshPath !== null && provider !== null && model !== null`.
+- `workbench.cts` exposes EXACTLY `runtimeStatus(): Promise<RuntimeStatus>` — no config write, no `openPath`.
+- Main IPC: `desktop:runtimeStatus` → `runtimeStatus({ dshPath: detectDsh({ pathEnv: pathEnv() }), config: await readConfig() })`; `desktop:openWorkbench` → `await openWorkbench()` (boots the host and shows the workbench regardless of the gate).
+- The web `RuntimeChip` reads `window.scienceStudioDesktop?.runtimeStatus` optionally; it renders "runtime: ready" / "runtime: dsh missing" with a popover (provider/model + hint). It does NOT disable the composer (deferred; document here).
+
+**Steps:** TDD `runtimeStatus`; wire the preload/IPC; renderer status + button; web chip. `npm run test -w @science-studio/desktop` and `npm run build -w @science-studio/desktop`.
+
+**Acceptance:** with no `dsh` on PATH the Settings window shows "dsh: missing" and
+"Open workbench anyway" opens the workbench; the workbench's status bar shows the
+runtime chip inside the desktop app and renders unchanged in a plain browser.
+
+### Task 15: Packaging finish (P2)
+
+**Files:**
+- Modify: `apps/desktop/package.json` (add `"author"`)
+- Modify: `apps/desktop/electron-builder.yml` (`deb.maintainer` real value)
+- Create: `apps/web/public/.gitkeep` (so the `../web/public` mapping always resolves)
+
+**Steps:** set `author` and `deb.maintainer` to
+`zhonghua-wang <zhonghua.wang@outlook.com>`; create `apps/web/public/.gitkeep`;
+re-pack; launch the packaged AppImage under the user's display with `--no-sandbox`
+(the AppImage's chrome-sandbox cannot be setuid) and confirm the log has no
+`[desktop] failed to load`, then ask the user to confirm visually.
+
+**Acceptance:** `npm run pack -w @science-studio/desktop` exits 0 with no
+"file source doesn't exist" and no "author is missed"; the launched AppImage
+renders the workbench.
+
+**Deferred:** an app icon (no image toolchain here and no asset in the repo) — the
+default Electron icon ships until an asset is supplied.
+
+### Task 16: Test/type-gate hardening (P3)
+
+**Files:**
+- Modify: `tsconfig.tests.json` (include `apps/desktop/test/**/*.ts`)
+- Modify: `services/transport-service/test/injected-plugins.test.ts` (the empty-`[]` fallback case)
+- Modify: `apps/desktop/test/config.test.ts` (seed `base.SS_ENTERPRISE_MODULE`; add an empty-config round-trip)
+
+**Steps:** add `apps/desktop/test/**/*.ts` to the test program's `include`, then
+run `npm run build` (which ends with `tsc -p tsconfig.tests.json`) and fix every
+error it surfaces — including errors in the desktop `src` modules the tests pull
+in; add the two test cases; re-run.
+
+**Acceptance:** `npm run build` exits 0 with the desktop tests type-checked; the
+new cases fail against the pre-change code and pass after (RED/GREEN evidence).
+
+### Task 17: Renderer + detectDsh robustness, docs (P4/P5)
+
+**Files:**
+- Modify: `apps/desktop/src/renderer/config.ts` (build inputs with DOM `textContent`/`createElement`, not raw `innerHTML`; wrap `getConfig`/`detectDsh`/`setConfig` in try/catch and show a status/error line)
+- Create: `apps/desktop/tsconfig.renderer.json` (lib `ES2022` + `DOM`, `src/renderer` only)
+- Modify: `apps/desktop/tsconfig.json` (drop `DOM` from `lib`)
+- Modify: `apps/desktop/package.json` (`build` runs both tsconfigs)
+- Modify: `apps/desktop/src/shared/dsh.ts` (accept a `pathModule`/platform so `join`/`delimiter` are platform-correct; use `statSync(candidate).isFile()` instead of `access(X_OK)` so a directory named `dsh` is rejected)
+- Modify: `apps/desktop/test/dsh.test.ts` (cover the directory case and win32 separators)
+- Modify: root `package.json` (drop the redundant `${DESKTOP_DEV_URL:-…}` from `dev:desktop`; the workspace `dev` already defaults it)
+
+**Acceptance:** `apps/desktop` build and tests pass; the renderer no longer
+interpolates stored values into `innerHTML`; `detectDsh` rejects a directory and
+honors an injected win32 platform; the root `dev:desktop` still reaches
+localhost:3000 by default.
+
+**Note (no change):** the Next port's `getFreePort` pre-pick remains inherently
+racy (the API binds `0` directly; Next's `server.js` coerces `PORT=0` to 3000, so
+it needs a real number) — recorded, not fixed.
