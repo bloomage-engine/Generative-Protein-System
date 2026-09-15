@@ -11,6 +11,13 @@ The product. A platform where researchers and managers run and observe agent-dri
 R&D work, with full traceability.
 _Avoid_: Scientist Studio, Lab Studio, Bio Studio
 
+**Desktop App**:
+The self-contained single-user form of Science Studio: it runs on the Researcher's
+own machine, with the agent runtime and the research record local to it. The same
+product also runs as a hosted server for many users; "Desktop App" names the local
+delivery form, not a different product.
+_Avoid_: Client, GUI, Frontend
+
 **Researcher**:
 A domain expert who defines research objectives and reviews agent-produced results.
 _Avoid_: User, Scientist, Lab worker
