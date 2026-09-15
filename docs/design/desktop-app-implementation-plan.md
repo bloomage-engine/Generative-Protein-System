@@ -973,12 +973,13 @@ In root `package.json` `scripts`, add (do not change the existing `build` chain)
 - [ ] **Step 3: Build and verify the standalone tree**
 
 Run: `npm run build:web:standalone`
-Expected: exits 0; these exist:
-- `apps/web/.next/standalone/server.js`
-- `apps/web/.next/standalone/apps/web/server.js`
-(List if unsure: `ls apps/web/.next/standalone`.)
+Expected: exits 0; the traced app is NESTED because `outputFileTracingRoot` is the
+repo root — `server.js` lands at `apps/web/.next/standalone/apps/web/server.js`
+(confirmed empirically; a flat `standalone/server.js` does NOT exist). The
+directory containing `server.js` — `apps/web/.next/standalone/apps/web` — is the
+`nextDir` the desktop host launches from and the `cwd` it uses.
 
-Note: with `outputFileTracingRoot` set, `server.js` and the traced app may sit one level down at `standalone/server.js`; confirm the actual location in this step and use it verbatim as `nextDir` in Task 10's dev path and Task 13's `extraResources`.
+Verify with: `find apps/web/.next/standalone -maxdepth 3 -name server.js`.
 
 - [ ] **Step 4: Verify a normal web build is unaffected**
 
@@ -1142,7 +1143,9 @@ async function writeConfig(config: DesktopConfig): Promise<void> {
 }
 
 function nextDir(): string {
-  return process.env.DESKTOP_NEXT_DIR ?? join(appRoot, "..", "web", ".next", "standalone");
+  if (process.env.DESKTOP_NEXT_DIR) return process.env.DESKTOP_NEXT_DIR;
+  if (app.isPackaged) return join(process.resourcesPath, "next", "apps", "web");
+  return join(appRoot, "..", "web", ".next", "standalone", "apps", "web");
 }
 
 async function boot(): Promise<HostPorts> {
@@ -1278,10 +1281,17 @@ With a built web standalone (`npm run build:desktop`) and `dsh` on PATH plus a c
 ```bash
 npm run build -w @science-studio/desktop
 npm run build:host -w @science-studio/desktop
-DESKTOP_NEXT_DIR="$PWD/apps/web/.next/standalone" npx electron apps/desktop
+DESKTOP_NEXT_DIR="$PWD/apps/web/.next/standalone/apps/web" npx electron apps/desktop
 ```
 
 Expected: Electron opens two windows (Settings first when unconfigured), and after saving config and restarting, the workbench loads and the composer can send. Destroy on any error; capture `[desktop-host]` stderr lines.
+
+Note: in a container/headless box (no X display, no root-owned
+`chrome-sandbox`) Electron needs `--no-sandbox` and an X server; on a normal
+developer desktop run the command as written. If the environment cannot open a
+window, record that GUI verification was not possible here and rely on the
+build/types plus the host's own tests — do NOT mark the task done on a GUI claim
+that was never observed.
 
 - [ ] **Step 6: Commit**
 
@@ -1472,9 +1482,9 @@ extraResources:
   - from: ../web/.next/standalone
     to: next
   - from: ../web/.next/static
-    to: next/.next/static
+    to: next/apps/web/.next/static
   - from: ../web/public
-    to: next/public
+    to: next/apps/web/public
 mac:
   target:
     - dmg
@@ -1500,8 +1510,8 @@ test("builder config ships the host bundle and the next standalone tree", async 
   assert.match(text, /productName: Science Studio/);
   assert.match(text, /from: build\/host\s*\n\s*to: host/);
   assert.match(text, /from: \.\.\/web\/\.next\/standalone\s*\n\s*to: next/);
-  assert.match(text, /to: next\/\.next\/static/);
-  assert.match(text, /to: next\/public/);
+  assert.match(text, /to: next\/apps\/web\/\.next\/static/);
+  assert.match(text, /to: next\/apps\/web\/public/);
 });
 ```
 
@@ -1519,7 +1529,7 @@ Expected: FAIL — `ENOENT electron-builder.yml` before Step 1, or assertion mis
 ```
 
 Run: `npm run pack -w @science-studio/desktop`
-Expected: `apps/desktop/release/` contains a `.dmg` (macOS) or `.AppImage` + `.deb` (Linux), and `release/linux-unpacked/resources/host/host.mjs` + `resources/next/server.js` exist.
+Expected: `apps/desktop/release/` contains a `.dmg` (macOS) or `.AppImage` + `.deb` (Linux), and `release/linux-unpacked/resources/host/host.mjs` + `resources/next/apps/web/server.js` exist.
 
 - [ ] **Step 5: Run test to verify it passes**
 
