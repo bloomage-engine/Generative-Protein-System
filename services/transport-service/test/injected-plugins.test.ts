@@ -34,6 +34,19 @@ test("createBackend uses preloaded plugins instead of importing by specifier", a
   );
 });
 
+test("createBackend falls back to dynamic resolution when no plugins are preloaded", async () => {
+  const backend = await createBackend(
+    { TRANSPORT_RUNTIME: "dsh", RECORD_STORE: "memory" },
+    [],
+  );
+  assert.ok(backend.environments);
+  assert.equal(
+    backend.capabilities?.commandCatalog,
+    true,
+    "an empty preloaded list must fall back to the real dsh plugin, whose commandCatalog is true (the stub's is false)",
+  );
+});
+
 test("createBackend throws when the selected runtime has no preloaded plugin", async () => {
   await assert.rejects(
     () => createBackend({ TRANSPORT_RUNTIME: "nope", RECORD_STORE: "memory" }, [stubPlugin]),

@@ -17,9 +17,17 @@ test("serializeConfigEnv round-trips through parseConfigEnv", () => {
   assert.deepEqual(parseConfigEnv(serializeConfigEnv(config)), config);
 });
 
+test("an empty config round-trips through parseConfigEnv", () => {
+  assert.deepEqual(parseConfigEnv(serializeConfigEnv({})), {});
+});
+
 test("buildChildEnv pins dsh and the app's directories", () => {
   const paths = resolveDesktopPaths({ userDataDir: "/ud", homeDir: "/home/me" });
-  const env = buildChildEnv({ base: { PATH: "/bin" }, config: { provider: "p", model: "m" }, paths });
+  const env = buildChildEnv({
+    base: { PATH: "/bin", SS_ENTERPRISE_MODULE: "x" },
+    config: { provider: "p", model: "m" },
+    paths,
+  });
   assert.equal(env.PATH, "/bin");
   assert.equal(env.TRANSPORT_RUNTIME, "dsh");
   assert.equal(env.DSH_PROVIDER, "p");

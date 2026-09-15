@@ -26,5 +26,5 @@
     "lib": ["ES2022"],
     "types": ["node"]
   },
-  "include": ["packages/*/test/**/*.ts", "services/*/test/**/*.ts"]
+  "include": ["packages/*/test/**/*.ts", "services/*/test/**/*.ts", "apps/desktop/test/**/*.ts"]
 }
