@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.mts"],
+  "references": [
+    { "path": "../../packages/transport" },
+    { "path": "../../services/transport-service" }
+  ]
+}

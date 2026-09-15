@@ -1,0 +1,26 @@
+{
+  "name": "@science-studio/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "start": "npm run build && electron .",
+    "pack": "npm run build && npm run build:desktop && electron-builder"
+  },
+  "dependencies": {
+    "@science-studio/transport": "*",
+    "@science-studio/transport-dsh": "*",
+    "@science-studio/transport-service": "*"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.13"
+  }
+}
