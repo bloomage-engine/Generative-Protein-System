@@ -129,8 +129,13 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
 
   const refreshRoot = root.refresh;
   const refresh = useCallback(() => {
+    setLoadError(null);
     refreshRoot();
-    for (const item of tree.getItems()) void item.invalidateChildrenIds();
+    // Only folders have children to re-read; invalidating a file's children
+    // asks the API for a listing it answers ENOTDIR (HTTP 500).
+    for (const item of tree.getItems()) {
+      if (item.isFolder()) void item.invalidateChildrenIds();
+    }
   }, [refreshRoot, tree]);
 
   return (
