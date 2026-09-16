@@ -248,8 +248,10 @@ export function ConversationMapAui({
     >
       <div
         className={cn(
-          "pointer-events-auto absolute top-0 px-3 py-10",
-          side === "right" ? "right-0" : "left-0",
+          "pointer-events-auto absolute top-0 py-8",
+          side === "right"
+            ? "right-[max(0.75rem,calc(50%_-_24rem))]"
+            : "left-[max(0.75rem,calc(50%_-_24rem))]",
         )}
         style={{ height: viewportHeight }}
       >

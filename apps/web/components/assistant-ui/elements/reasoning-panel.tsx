@@ -45,7 +45,7 @@ export function ReasoningPanel({
       onOpenChange={onOpenChange}
       className={cn("w-full max-w-sm", className)}
     >
-      <CollapsibleTrigger className="group/trigger text-foreground/55 hover:text-foreground/90 flex items-center gap-1.5 py-1 text-[13.5px] transition-[color,scale] outline-none active:scale-[0.98]">
+      <CollapsibleTrigger className="group/trigger text-foreground/55 hover:text-foreground/90 flex items-center gap-2 py-1.5 text-[13px] transition-[color,scale] outline-none active:scale-[0.98]">
         <SwapLabel active={streaming ? 0 : 1} className="text-start">
           <>
             <ShimmerLabel
@@ -65,7 +65,7 @@ export function ReasoningPanel({
         <ChevronDownIcon className="size-3.5 shrink-0 opacity-60 transition-transform duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-open/trigger:rotate-180 group-data-panel-open/trigger:rotate-180 motion-reduce:transition-none" />
       </CollapsibleTrigger>
       <CollapsibleContent className={cn(collapsePanel, "outline-none")}>
-        <ol className="flex flex-col gap-4 pt-3 pb-1">
+        <ol className="flex flex-col gap-3.5 pt-2.5 pb-1">
           {shown.map((step, i) => {
             const active = streaming && i === shown.length - 1;
             return (
@@ -83,10 +83,10 @@ export function ReasoningPanel({
                   )}
                 />
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <p className="text-foreground/90 text-[13.5px] font-medium">
+                  <p className="text-foreground/90 text-[13px] font-medium">
                     {step.title}
                   </p>
-                  <p className="text-foreground/50 mt-0.5 text-[13px] leading-relaxed break-words">
+                  <p className="text-foreground/50 mt-1 text-xs leading-relaxed break-words">
                     {step.body}
                   </p>
                 </span>

@@ -82,7 +82,7 @@ export function ConversationMap({
       aria-label="Conversation map"
       onKeyDown={handleKeyDown}
       className={cn(
-        "group/rail flex h-full w-6 flex-col justify-center",
+        "group/rail flex h-full w-6 flex-col justify-center gap-1",
         className,
       )}
       {...props}
