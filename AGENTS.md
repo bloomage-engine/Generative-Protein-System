@@ -356,6 +356,17 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   (the symptom of docs/adr/0009's scope switching). `apps/web/test/scope-switch-sockets.test.mjs`
   is the regression guard: it serves the watch over a real socket, switches
   Projects repeatedly, and asserts a same-origin request still starts.
+- **Open file tabs stay MOUNTED; only the active one is shown.**
+  `FilePreviewPane` (`apps/web/components/studio/file-preview-pane.tsx`) renders
+  EVERY tab's `Preview` and hides the inactive ones with `invisible`
+  (`visibility:hidden`) + `inert` + `aria-hidden` — never `display:none`/`hidden`,
+  which drops the layout box and can reset a scroll container's `scrollTop`. That
+  is what preserves per-tab state (scroll position, and any component state a
+  future renderer holds) across a tab switch, and why each tab fetches its file
+  once instead of on every switch. Scope: same Session only — a Session switch
+  remounts the shell (`StudioHost` keys `SessionView` by
+  `projectId/sessionId`), and a Project switch clears `tabs`. The regression
+  guard is `apps/web/test/tab-state.test.mjs`.
 - **Adapters compose one shared run lifecycle** in `@science-studio/transport`
   (docs/adr/0005): `SessionRuntime` owns the run loop (reconcile-first, probe
   termination, user echo, flow drain), the settle pipeline (project →
