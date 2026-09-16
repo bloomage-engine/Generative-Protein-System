@@ -209,6 +209,17 @@ export interface RuntimeAdapter {
   ): () => void;
 }
 
+/**
+ * The record-owned Project an adapter serves, when it serves one — a read-only
+ * view an adapter may render into its Project Workspace files (docs/adr/0012).
+ * It is a convenience copy, never a replacement for the record as the authority.
+ */
+export interface ProjectContext {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
 export interface RuntimeInitOptions {
   /**
    * Opaque connection material for THIS adapter, produced by a sandbox provider
@@ -217,6 +228,11 @@ export interface RuntimeInitOptions {
    */
   binding: RuntimeBinding;
   recordStore: RecordStoreLike;
+  /**
+   * The Project this adapter serves, when the deployment has one. A dsh child
+   * renders it into the Project Workspace's Project Brief (docs/adr/0012).
+   */
+  project?: ProjectContext;
   /**
    * Optional deployment env slice, generic to every runtime. A FALLBACK only —
    * a runtime's launch surface belongs in its binding, not here.

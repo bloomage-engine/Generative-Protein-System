@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchProjects, fetchProjectSessions } from "@science-studio/transport-client";
+import { fetchProjectsOverview, fetchProjectSessions } from "@science-studio/transport-client";
 import { readScopeMemory, resolveProject, resolveSession } from "@/lib/scope-memory";
 import { StudioHost } from "./host";
 import { useStudioStore } from "@/store/studio-store";
@@ -52,9 +52,10 @@ export function StudioPage({
 
     void (async () => {
       try {
-        const projects = await fetchProjects(api);
+        const { projects, defaultProjectId } = await fetchProjectsOverview(api);
         if (cancelled) return;
         s().setProjects(projects);
+        s().setDefaultProjectId(defaultProjectId);
 
         const project = resolveProject({
           claimedProjectId: routeProjectId,

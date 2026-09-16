@@ -31,9 +31,12 @@ export interface Session {
   projectId: Id;
   /** The Agent identity active in this session (a flat id; `AgentBlueprint` is deferred). */
   agentId: Id;
+  /** The display name a Researcher gave the Session (its only mutable field). */
   title?: string;
   createdAt: string;
   updatedAt: string;
+  /** Set when the Session is archived — hidden from the default listing, never deleted. */
+  archivedAt?: string;
 }
 
 export type RunStatus = "running" | "completed" | "aborted" | "error";

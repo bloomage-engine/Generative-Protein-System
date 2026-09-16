@@ -11,6 +11,13 @@ The product. A platform where researchers and managers run and observe agent-dri
 R&D work, with full traceability.
 _Avoid_: Scientist Studio, Lab Studio, Bio Studio
 
+**Desktop App**:
+The self-contained single-user form of Science Studio: it runs on the Researcher's
+own machine, with the agent runtime and the research record local to it. The same
+product also runs as a hosted server for many users; "Desktop App" names the local
+delivery form, not a different product.
+_Avoid_: Client, GUI, Frontend
+
 **Researcher**:
 A domain expert who defines research objectives and reviews agent-produced results.
 _Avoid_: User, Scientist, Lab worker
@@ -64,8 +71,30 @@ _Avoid_: Workspace (collides with Project Workspace), Sandbox, Home
 The top-level container owned by a Researcher or team. A Project owns one Project
 Workspace and any number of Sessions, and everything its Sessions produce is
 shared at the Project level. Managers view Project-level aggregates. The
-platform's coarsest unit of oversight.
+platform's coarsest unit of oversight. The auto-ensured bootstrap Project cannot
+be renamed, archived or deleted (docs/adr/0014).
 _Avoid_: Space, Organization, Folder
+
+**Delete**:
+The irreversible-from-the-UI removal of a Project or Session: the record rows go
+(a Project cascades its Sessions and their Runs; a Session cascades its Runs) and
+a Project's Project Workspace is moved to the Recycle Bin. The default Project
+cannot be deleted (docs/adr/0014).
+_Avoid_: Archive, Remove, Trash
+
+**Archive**:
+The reversible hiding of a Project or Session: the record keeps an `archivedAt`
+timestamp, the row leaves the default listing, and clearing the timestamp brings
+it back. Files are untouched.
+_Avoid_: Delete, Remove, Trash
+
+**Recycle Bin**:
+Where a deleted Project's Project Workspace is physically moved (a sibling
+`.recycle/` directory under `PROJECT_ROOT`) when the Project is deleted
+(docs/adr/0014). A filesystem safety net for manual recovery, never a product
+surface: the UI offers no restore for delete.
+_Avoid_: Trash, Backup, Archive
+
 
 **Project Workspace**:
 The one filesystem workspace a Project owns, shared flatly by every Session under
@@ -73,6 +102,24 @@ it. "Independent" means independent of other Projects, not of the Sessions insid
 one — those are meant to share.
 _Avoid_: Workspace (unqualified — collides with the dsh runtime term), Sandbox,
 Project dir
+
+**Project Scaffold**:
+The conventional directory layout a Project Workspace starts with — `docs/`,
+`references/`, `data/{raw,interim,processed}`, `scripts/`, `notebooks/`,
+`experiments/`, `results/`, `models/`, `reports/`, `logs/`, `config/`,
+`scratch/` — laid down the first time an agent works in the Project, so a
+research project has a predictable shape from its first turn. A convention over
+the filesystem, not a record entity: it is never enforced, and laying it down
+only ever ADDS what is missing.
+_Avoid_: Template, Skeleton, Folder structure
+
+**Project Brief** (the `PROJECT.md` file):
+A Markdown document at a Project Workspace's root that narrates the project —
+background, objectives, methods, milestones, progress log, current status,
+results, open questions — kept current by the Agent as the work proceeds. A
+companion to the record, never its authority: the record owns Project metadata
+(`id`, `name`, `createdAt`); the Brief is prose a human reads.
+_Avoid_: Project doc, README, Log
 
 **Session**:
 A conversation between a Researcher and an Agent under a Project. Rendered as an

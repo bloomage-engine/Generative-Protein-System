@@ -6,6 +6,7 @@ import {
   type ApplyContext,
   type RunControl,
   type SessionState,
+  type SettleContext,
 } from "@science-studio/transport";
 import { sessionState } from "@science-studio/contract-tests";
 import { createDshBehavior } from "../src/behavior.js";
@@ -209,4 +210,45 @@ test("a command/done outside a cold command prompt adds no row", () => {
   b.apply?.(ev("command/run", { commandId: "c1", name: "compact", source: { kind: "user" } }), ctx);
   b.apply?.(ev("command/done", { commandId: "c1", kind: "success", text: "Condensed 12 items" }), ctx);
   assert.equal(state.messages.length, 0);
+});
+
+function settleCtx(
+  state: SessionState,
+  directive: { status?: "completed" | "error"; usage?: unknown } = {},
+): SettleContext {
+  return {
+    sessionKey: "sess-1",
+    state,
+    inRun: true,
+    runId: "run-1",
+    userMessageId: "u1",
+    input: "q",
+    baseline: 0,
+    directive,
+    startedAt: "2026-01-01T00:00:00.000Z",
+    replaceMessages: () => {},
+    resetSession: () => {},
+    notify: () => {},
+  };
+}
+
+test("request/context records provider/model/contextWindow on the projected Run", () => {
+  const state = freshState();
+  const b = behavior();
+  b.apply?.(
+    ev("request/context", { provider: "prov", model: "mod", contextWindow: 128000 }),
+    makeCtx(state),
+  );
+  const spec = b.projectRun!(settleCtx(state, { usage: { inputTokens: 10, outputTokens: 5 } }));
+  assert.equal(spec?.parameters?.provider, "prov");
+  assert.equal(spec?.parameters?.model, "mod");
+  assert.equal(spec?.parameters?.contextWindow, 128000);
+  assert.deepEqual(spec?.parameters?.usage, { inputTokens: 10, outputTokens: 5 });
+});
+
+test("without request/context the Run keeps the configured route and no contextWindow", () => {
+  const spec = behavior().projectRun!(settleCtx(freshState(), {}));
+  assert.equal(spec?.parameters?.provider, "p");
+  assert.equal(spec?.parameters?.model, "m");
+  assert.equal(spec?.parameters?.contextWindow, undefined);
 });

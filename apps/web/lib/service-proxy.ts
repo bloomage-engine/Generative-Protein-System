@@ -28,8 +28,8 @@ export interface ServiceHop {
   /** The upstream path AND its query, e.g. `/api/transport/watch?threadId=s1`. */
   path: string;
   method?: "GET" | "POST";
-  /** The request body, as text: these payloads are small and already buffered. */
-  body?: string;
+  /** The request body: text for the small JSON hops, or raw bytes for an upload. */
+  body?: string | Uint8Array;
   /** Request headers for the upstream call (`accept`, `content-type`). */
   headers?: Record<string, string>;
   /** Response headers to relay, by name. Defaults to {@link DEFAULT_FORWARD}. */

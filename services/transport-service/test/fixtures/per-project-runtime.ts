@@ -20,6 +20,8 @@ export interface AdapterInitObservation {
   agentRoot: string;
   /** A workspace-relative path mapped through the agent view. */
   samplePath: string;
+  /** The record-owned Project identity handed to `init`, when there was one. */
+  project?: { id: string; name: string; createdAt: string };
 }
 
 /** The fixture's adapter: the seam surface plus what it was initialized with. */
@@ -51,6 +53,7 @@ export const runtimePlugins: RuntimePlugin[] = [
             inits.push({
               agentRoot: opts.workspace?.toAgentPath("") ?? "",
               samplePath: opts.workspace?.toAgentPath("notes.md") ?? "",
+              ...(opts.project === undefined ? {} : { project: opts.project }),
             });
           },
           run: async function* () {},

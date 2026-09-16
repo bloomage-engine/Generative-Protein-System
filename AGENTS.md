@@ -18,20 +18,21 @@ apps/web                          Next.js frontend (assistant-ui Thread UI, port
   components/workspace              workspace browser/viewer panel
   components/ui + hooks + lib       shadcn/ui base, registry helpers
   (Tailwind v4 + shadcn/ui styling stack: postcss.config.mjs, components.json)
+apps/desktop                      Electron desktop app (docs/adr/0013). Main owns window/menu/lifecycle and forks `build/host/host.mjs` — one Node child that runs the transport-service (dsh runtime, plugins INJECTED into createBackend so the esbuild bundle needs no dynamic import) and spawns the Next standalone server as a grandchild, both loopback/ephemeral, reporting ports over IPC. The config window writes `<userData>/config.env` (DSH_PROVIDER/DSH_MODEL + credential vars), which main turns into the child env. Its `test/*.ts` ARE type-checked by the root build's last step (`tsconfig.tests.json`), but the app is not in the root `build` chain; `apps/desktop` has its own build/test/pack scripts.
 packages/record                   RECORD SEAM PACKAGE: v1 vocabulary is Project/Session/Run only (Study/Task/Artifact/Evidence/Conclusion/AgentBlueprint deferred — docs/adr/0007) + the RecordStore contract + implementations (in-memory for tests; dependency-free JSONL used by default via RECORD_STORE_PATH). transport depends on it for Id/Run/RunStatus
 packages/transport                SEAM PACKAGE, two entries. `./seams` = the contract only: every RUNTIME seam interface (RuntimeAdapter/StateDelta, RuntimeBinding/RuntimeFactory/RuntimePlugin/RuntimeCapabilities, Principal/PrincipalResolver, Environment/EnvironmentProvider, Workspace + limits + QuotaPolicy) plus their error classes and limit constants. `.` = that contract + the shared adapter kit (`SessionRuntime` + its `SessionBehavior` / `RunFlow` queue / `foldState` / attachment helpers / `createApplyContext`, the constructor for the transcript primitives so a behavior test drives the SAME merge rules the runtime does) + pure single-user defaults (LocalPrincipalResolver, LocalEnvironmentProvider, NullWorkspace, NoopQuotaPolicy). Exports are explicit (no `export *`); pinned by test/seams.test.ts
 packages/workspace                Workspace implementations (FsWorkspace + containment/symlink/size invariants); depends on transport
 packages/contract-tests          the SHARED seam conformance suites (testPrincipalResolver/testWorkspace/testRuntimeFactory/testAdapterLifecycle/testQuotaPolicy/testResolveSessionKey) every implementation runs, plus the published `sessionState()` fixture a runtime's tests drive (fixtures drift silently otherwise — no test file was type-checked); the OSS reference impls self-test here, the private module and third-party runtimes run the same suites in their CI. Imports the contract from `@science-studio/transport/seams` (never the kit)
 packages/transport-client         assistant-ui client boundary (single `useTransport` session hook = history probe + standing watch + guarded import; state converter; command catalog + slash-menu / reasoning-trace helpers)
 packages/transport-openclaw       openclaw runtime adapter — owns its OWN launch surface (`GatewayBinding`), factory, capabilities and `runtimePlugins`; ports gateway WS
-packages/transport-dsh            dsh runtime adapter — owns `DshBinding` + factory + `runtimePlugins` (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC). The SDK wire has no command plane, so the adapter answers `/status` and `/new` itself — and reaches the harness's OWN registry (`/compact`, `/plan`, `/goal`, `/feedback`, `/permission`) through `bridge-plugin.ts`, a dependency-free cordis plugin it ships into that child via a per-launch profile patch (`--patch`, a private UNIX socket; docs/adr/0011). The registry is agent-scoped, so a session with no agent yet sends the line as its FIRST PROMPT, which the plugin intercepts at `agent/pre-step` (registry runs it, the step is rejected, the model never sees it) — that is what makes `/plan` and `/goal` work before the first message; while the child is cold the adapter serves a CURATED list of the pinned profile's own commands instead (so the menu is complete from the first page load). A catalog request never starts the child; a user-issued command does
+packages/transport-dsh            dsh runtime adapter — owns `DshBinding` + factory + `runtimePlugins` (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC). The SDK wire has no command plane, so the adapter answers `/status` and `/new` itself — and reaches the harness's OWN registry (`/compact`, `/plan`, `/goal`, `/feedback`, `/permission`) through `bridge-plugin.ts`, a dependency-free cordis plugin it ships into that child via a per-launch profile patch (`--patch`, a private UNIX socket; docs/adr/0011). The registry is agent-scoped, so a session with no agent yet sends the line as its FIRST PROMPT, which the plugin intercepts at `agent/pre-step` (registry runs it, the step is rejected, the model never sees it) — that is what makes `/plan` and `/goal` work before the first message; while the child is cold the adapter serves a CURATED list of the pinned profile's own commands instead (so the menu is complete from the first page load). A catalog request never starts the child; a user-issued command does. A SECOND dependency-free child plugin (`project-plugin.ts`, docs/adr/0012) rides another per-launch patch: for a real Project (its patch config carries the identity) it lays down the research layout (idempotent, create-only) and keeps the Project Brief `PROJECT.md` current — scaffolded on `agent/session-start` and by a `/project` command (also curated into the cold menu), maintained by the model through `project_update` / `project_log` tools plus a `systemPrompt` section; the record stays authoritative, and the adapter renders its Project identity from `RuntimeInitOptions.project` (the service fills it from `records.getProject`)
 services/transport-service        backend assistant-transport service — Fastify, port 3001. Composition root: `src/composition.ts`. `TRANSPORT_RUNTIME` picks the runtime product; runtime modules are loaded DYNAMICALLY by specifier, so the service statically imports NO runtime package. The DEFAULT module list is DATA — `scienceStudio.runtimeModules` in this package's own `package.json` — and `SS_RUNTIME_MODULES` overrides it entirely, so adding a runtime edits no core code. `SS_ENTERPRISE_MODULE` swaps in the private multi-user backend; unset = the complete single-user product.
 examples/transport-openclaw-example  minimal assistant-ui example app over the openclaw adapter (Vite + core primitives; dev-only, not in the root build)
 examples/transport-dsh-example     minimal assistant-ui example app over the dsh adapter (local harness; dev-only, not in the root build)
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/design/                      design specs (research-agent-framework EN/ZH + implementation-plan)
-docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned)
+docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete)
 CONTEXT.md                        domain glossary (authoritative vocabulary)
 ```
 
@@ -54,12 +55,39 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `deepseek-official`/`deepseek-v4-flash` and the agent's cwd becomes this
   package's source directory. The route's credential NAME (`apiKeyEnv`, e.g.
   `OLLAMA_LOCAL_API_KEY`) is a legal `.env` line and is inherited by the child.
+- `npm run dev:desktop` — the Electron shell against the already-running dev pair
+  (`DESKTOP_DEV_URL`, default http://localhost:3000). The packaged app instead
+  builds `apps/web` with `NEXT_OUTPUT=standalone` (`npm run build:web:standalone`)
+  and hosts both servers itself. Packaging: `npm run pack -w @science-studio/desktop`
+  (electron-builder; `dmg` on macOS, `AppImage`/`deb` on Linux). In dev the shell
+  only loads `DESKTOP_DEV_URL`, so a real turn depends on the already-running dev
+  pair's own `.env` route — the Settings page and `<userData>/config.env` are a
+  packaged-app path only. The packaged app needs `dsh` on PATH and a route
+  configured in Settings. On a host whose setuid `chrome-sandbox` helper is not
+  root-owned (containers, most CI/dev boxes), Electron aborts with
+  "The SUID sandbox helper binary ... is not configured correctly"; the `dev`/
+  `start` scripts default to `--no-sandbox` for this (`DESKTOP_ELECTRON_FLAGS=`
+  opts out, and the secure alternative is
+  `sudo chown root:root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 ...`).
 - Record layer: the v1 record is `Project` → `Session` → `Run` (docs/adr/0007).
   Project/Session/Run routes live on the same service (`/api/projects*`), and the
   store is persistent by default — `RECORD_STORE_PATH` (default
   `$XDG_DATA_HOME/science-studio/record.jsonl`) — with `RECORD_STORE=memory` to
   opt out. A `project-default` row is auto-ensured so a request that names no
   Project still works.
+- Project/Session lifecycle (docs/adr/0014): a Project renames its `name` /
+  a Session its `title` (ids are immutable; a Project id names its directory);
+  `POST /api/projects/:id/{rename,archive,unarchive,delete}` and
+  `POST /api/projects/:id/sessions/:sid/{rename,archive,unarchive,delete}` drive
+  it (all POST, so the GET/POST web proxy is unchanged). Archive is a reversible
+  flag (`archivedAt`; listings exclude it unless `?includeArchived=1`). Delete is
+  irreversible in the UI: the record rows go (a Project cascades its Sessions +
+  Runs, a Session its Runs) and the Project Workspace is MOVED to a sibling
+  `.recycle/<id>-<ts>/` under `PROJECT_ROOT` via `Workspace.recycle?()` — bytes
+  recoverable by hand, no restore endpoint. The bootstrap `project-default` row
+  (or `PROJECT_ID`) cannot be renamed/archived/deleted (403); `GET /api/projects`
+  returns its id so the UI locks those actions. Deleting a Project also releases
+  its cached `Environment` (`EnvironmentProvider.release?()`).
 - Workspace file access is **opt-in** and served per **Project**: `PROJECT_ROOT`
   is the host-side parent of every project directory (each Project's workspace is
   `<PROJECT_ROOT>/<projectId>/`, shared flatly by all its Sessions — docs/adr/0006),
@@ -341,6 +369,17 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   (the symptom of docs/adr/0009's scope switching). `apps/web/test/scope-switch-sockets.test.mjs`
   is the regression guard: it serves the watch over a real socket, switches
   Projects repeatedly, and asserts a same-origin request still starts.
+- **Open file tabs stay MOUNTED; only the active one is shown.**
+  `FilePreviewPane` (`apps/web/components/studio/file-preview-pane.tsx`) renders
+  EVERY tab's `Preview` and hides the inactive ones with `invisible`
+  (`visibility:hidden`) + `inert` + `aria-hidden` — never `display:none`/`hidden`,
+  which drops the layout box and can reset a scroll container's `scrollTop`. That
+  is what preserves per-tab state (scroll position, and any component state a
+  future renderer holds) across a tab switch, and why each tab fetches its file
+  once instead of on every switch. Scope: same Session only — a Session switch
+  remounts the shell (`StudioHost` keys `SessionView` by
+  `projectId/sessionId`), and a Project switch clears `tabs`. The regression
+  guard is `apps/web/test/tab-state.test.mjs`.
 - **Adapters compose one shared run lifecycle** in `@science-studio/transport`
   (docs/adr/0005): `SessionRuntime` owns the run loop (reconcile-first, probe
   termination, user echo, flow drain), the settle pipeline (project →

@@ -51,6 +51,10 @@ No delete in v1 (archiving a Project is a flag; cascade delete is deferred). No
 SQL/Postgres for the OSS store while the entity count is three.
 
 - **Status**: accepted
+- **Superseded in part by ADR-0014**: the "No delete in v1" consequence below is
+  revised — Projects and Sessions now rename, archive (reversibly) and delete
+  (cascading, with a Project Workspace moved to a recycle bin). Everything else
+  here stands.
 - **Considered options**:
   - *Drop `Run` entirely in v1 (Project/Session only)* — the most consistent
     application of "only what is read", and it would also delete the settle

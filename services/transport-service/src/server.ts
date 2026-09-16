@@ -17,7 +17,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import { posix } from "node:path";
 import { Readable } from "node:stream";
-import { createInMemoryRecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore, type Session } from "@science-studio/record";
 import type {
   AttachmentRef,
   CommandDescriptor,
@@ -85,6 +85,15 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     defaultProjectId,
   });
   const activeRuns = new Set<string>();
+  /** The bootstrap row every unscoped request falls back to (docs/adr/0014). */
+  const isDefaultProject = (id: string): boolean => id === defaultProjectId;
+  const DEFAULT_PROJECT_IMMUTABLE =
+    "the default project cannot be renamed, archived or deleted";
+  /** The Session, only when it actually belongs to `projectId` (guards the routes). */
+  const sessionInProject = async (projectId: string, sessionId: string): Promise<Session | null> => {
+    const session = await records.getSession(sessionId);
+    return session && session.projectId === projectId ? session : null;
+  };
 
   // -- Project / Session / Run record surface --------------------------------
   app.post("/api/projects", async (request, reply) => {
@@ -97,16 +106,79 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
 
   app.get("/api/projects", async (request) => {
     const includeArchived = (request.query as { includeArchived?: string }).includeArchived === "1";
-    return { projects: await directory.listProjects({ includeArchived }) };
+    return {
+      projects: await directory.listProjects({ includeArchived }),
+      // The UI hides rename/archive/delete on the immutable bootstrap Project.
+      defaultProjectId,
+    };
+  });
+
+  app.post("/api/projects/:id/rename", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { name?: unknown };
+    if (typeof body.name !== "string" || body.name.trim() === "") {
+      return reply.code(400).send({ error: "name is required" });
+    }
+    if (isDefaultProject(id)) {
+      return reply.code(403).send({ error: DEFAULT_PROJECT_IMMUTABLE });
+    }
+    try {
+      return { project: await directory.renameProject(id, body.name.trim()) };
+    } catch {
+      return reply.code(404).send({ error: `project not found: ${id}` });
+    }
   });
 
   app.post("/api/projects/:id/archive", async (request, reply) => {
     const { id } = request.params as { id: string };
+    if (isDefaultProject(id)) {
+      return reply.code(403).send({ error: DEFAULT_PROJECT_IMMUTABLE });
+    }
     try {
       return { project: await directory.archiveProject(id) };
     } catch {
       return reply.code(404).send({ error: `project not found: ${id}` });
     }
+  });
+
+  app.post("/api/projects/:id/unarchive", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (isDefaultProject(id)) {
+      return reply.code(403).send({ error: DEFAULT_PROJECT_IMMUTABLE });
+    }
+    try {
+      return { project: await directory.unarchiveProject(id) };
+    } catch {
+      return reply.code(404).send({ error: `project not found: ${id}` });
+    }
+  });
+
+  // Irreversible in the UI: the record goes, the workspace is recycled (moved to
+  // a sibling `.recycle/` bin, recoverable only by hand — docs/adr/0014). Recycle
+  // BEFORE dropping the record so a failed move leaves the Project intact.
+  app.post("/api/projects/:id/delete", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (isDefaultProject(id)) {
+      return reply.code(403).send({ error: DEFAULT_PROJECT_IMMUTABLE });
+    }
+    if (!(await records.getProject(id))) {
+      return reply.code(404).send({ error: `project not found: ${id}` });
+    }
+    const principal = request.principal!;
+    try {
+      const { environment } = await scope.acquireProject(principal, id);
+      await environment.workspace.recycle?.();
+    } catch (err) {
+      console.error(`[transport-service] recycling project "${id}" failed`, err);
+      return reply.code(500).send({ error: "failed to recycle the project workspace" });
+    }
+    await directory.deleteProject(id);
+    try {
+      await backend.environments.release?.(principal, id);
+    } catch (err) {
+      console.error(`[transport-service] releasing project "${id}" failed`, err);
+    }
+    return { ok: true };
   });
 
   app.post("/api/projects/:id/sessions", async (request, reply) => {
@@ -125,13 +197,53 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
 
   app.get("/api/projects/:id/sessions", async (request) => {
     const { id } = request.params as { id: string };
-    return { sessions: await directory.listSessions(id) };
+    const includeArchived = (request.query as { includeArchived?: string }).includeArchived === "1";
+    return { sessions: await directory.listSessions(id, { includeArchived }) };
+  });
+
+  app.post("/api/projects/:id/sessions/:sessionId/rename", async (request, reply) => {
+    const { id, sessionId } = request.params as { id: string; sessionId: string };
+    const body = (request.body ?? {}) as { title?: unknown };
+    if (typeof body.title !== "string" || body.title.trim() === "") {
+      return reply.code(400).send({ error: "title is required" });
+    }
+    if (!(await sessionInProject(id, sessionId))) {
+      return reply.code(404).send({ error: `session not found: ${sessionId}` });
+    }
+    return { session: await directory.renameSession(sessionId, body.title.trim()) };
+  });
+
+  app.post("/api/projects/:id/sessions/:sessionId/archive", async (request, reply) => {
+    const { id, sessionId } = request.params as { id: string; sessionId: string };
+    if (!(await sessionInProject(id, sessionId))) {
+      return reply.code(404).send({ error: `session not found: ${sessionId}` });
+    }
+    return { session: await directory.archiveSession(sessionId) };
+  });
+
+  app.post("/api/projects/:id/sessions/:sessionId/unarchive", async (request, reply) => {
+    const { id, sessionId } = request.params as { id: string; sessionId: string };
+    if (!(await sessionInProject(id, sessionId))) {
+      return reply.code(404).send({ error: `session not found: ${sessionId}` });
+    }
+    return { session: await directory.unarchiveSession(sessionId) };
+  });
+
+  app.post("/api/projects/:id/sessions/:sessionId/delete", async (request, reply) => {
+    const { id, sessionId } = request.params as { id: string; sessionId: string };
+    if (!(await sessionInProject(id, sessionId))) {
+      return reply.code(404).send({ error: `session not found: ${sessionId}` });
+    }
+    await directory.deleteSession(sessionId);
+    return { ok: true };
   });
 
   // The Project-level result rollup: the turns of ALL its Sessions (docs/adr/0007).
   app.get("/api/projects/:id/runs", async (request) => {
     const { id } = request.params as { id: string };
-    return { runs: await directory.listRuns(id) };
+    const { sessionId } = request.query as { sessionId?: string };
+    const runs = await directory.listRuns(id);
+    return { runs: sessionId ? runs.filter((run) => run.sessionId === sessionId) : runs };
   });
 
   // -- Conversation path -----------------------------------------------------
@@ -279,13 +391,10 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       const content = download
         ? await environment.workspace.open(path, { maxBytes: Number.POSITIVE_INFINITY })
         : await environment.workspace.open(path);
-      const name = posix.basename(path).replace(/"/g, "");
+      const name = posix.basename(path);
       reply.header("content-type", content.mime);
       reply.header("content-length", String(content.size));
-      reply.header(
-        "content-disposition",
-        `${download ? "attachment" : "inline"}; filename="${name}"`,
-      );
+      reply.header("content-disposition", contentDisposition(download ? "attachment" : "inline", name));
       reply.header("cache-control", "no-store");
       return reply.send(Readable.fromWeb(content.body as Parameters<typeof Readable.fromWeb>[0]));
     });
@@ -329,6 +438,20 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     });
   });
 
+  app.post("/api/workspace/delete", async (request, reply) => {
+    const { path } = request.query as { path?: string };
+    if (!path) return reply.code(400).send({ error: "path is required" });
+    return scope.withWorkspace(request, reply, async ({ environment }) => {
+      // `delete` is optional in the seam (a read-only or NullWorkspace omits it);
+      // the seam's own failures (not found, path error) are mapped by withWorkspace.
+      if (typeof environment.workspace.delete !== "function") {
+        return reply.code(501).send({ error: "this workspace does not support delete" });
+      }
+      await environment.workspace.delete(path);
+      return { ok: true };
+    });
+  });
+
   return app;
 }
 
@@ -343,6 +466,24 @@ function attachmentFor(stat: FileStat): AttachmentRef {
     size: stat.size,
     entryKind: stat.kind === "dir" ? "dir" : "file",
   };
+}
+
+/**
+ * Build a `Content-Disposition` value Node will accept.
+ *
+ * Node rejects any header value with a character outside Latin-1
+ * (`ERR_INVALID_CHAR`), and a file name is agent/user-authored — a Chinese
+ * report title turned every `open` into a 500. The ASCII fallback keeps legacy
+ * clients working; the RFC 5987 `filename*` carries the real name. `attr-char`
+ * (RFC 5987) excludes `'`, `(`, `)`, `*`, so percent-encode those too.
+ */
+function contentDisposition(kind: "inline" | "attachment", name: string): string {
+  const ascii = name.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+  const encoded = encodeURIComponent(name).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `${kind}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
 function sseHeaders(): Record<string, string> {
