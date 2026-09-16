@@ -4,16 +4,12 @@ import { buildChildEnv, parseConfigEnv, serializeConfigEnv } from "../src/shared
 import { resolveDesktopPaths } from "../src/shared/paths.js";
 
 test("parseConfigEnv reads KEY=VALUE, ignoring blanks and comments", () => {
-  const config = parseConfigEnv("# route\nDSH_PROVIDER=ollama-local\n\nDSH_MODEL=qwen3.8:latest\nOLLAMA_LOCAL_API_KEY=secret\n");
-  assert.deepEqual(config, {
-    provider: "ollama-local",
-    model: "qwen3.8:latest",
-    vars: { OLLAMA_LOCAL_API_KEY: "secret" },
-  });
+  const config = parseConfigEnv("# route\nOLLAMA_LOCAL_API_KEY=secret\n\nEXTRA=1\n");
+  assert.deepEqual(config, { vars: { OLLAMA_LOCAL_API_KEY: "secret", EXTRA: "1" } });
 });
 
 test("serializeConfigEnv round-trips through parseConfigEnv", () => {
-  const config = { provider: "deepseek-official", model: "deepseek-v4-flash", vars: { DEEPSEEK_API_KEY: "k" } };
+  const config = { vars: { DEEPSEEK_API_KEY: "k", A: "b" } };
   assert.deepEqual(parseConfigEnv(serializeConfigEnv(config)), config);
 });
 
@@ -25,13 +21,15 @@ test("buildChildEnv pins dsh and the app's directories", () => {
   const paths = resolveDesktopPaths({ userDataDir: "/ud", homeDir: "/home/me" });
   const env = buildChildEnv({
     base: { PATH: "/bin", SS_ENTERPRISE_MODULE: "x" },
-    config: { provider: "p", model: "m" },
+    config: { vars: { OLLAMA_LOCAL_API_KEY: "k" } },
     paths,
   });
   assert.equal(env.PATH, "/bin");
   assert.equal(env.TRANSPORT_RUNTIME, "dsh");
-  assert.equal(env.DSH_PROVIDER, "p");
-  assert.equal(env.DSH_MODEL, "m");
+  assert.equal(env.DSH_PROVIDER, undefined);
+  assert.equal(env.DSH_MODEL, undefined);
+  assert.equal(env.OLLAMA_LOCAL_API_KEY, "k");
+  assert.equal(env.SS_SETTINGS_PATH, "/ud/settings.json");
   assert.equal(env.DSH_DEFAULT_SESSION, "science-studio");
   assert.equal(env.DSH_HOME, "/ud/dsh");
   assert.equal(env.DSH_TRANSCRIPT_DIR, "/ud/transcripts");

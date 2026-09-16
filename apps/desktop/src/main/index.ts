@@ -249,7 +249,7 @@ function registerIpc(): void {
   });
   ipcMain.handle("desktop:detectDsh", () => detectDsh({ pathEnv: pathEnv() }));
   ipcMain.handle("desktop:runtimeStatus", async () =>
-    runtimeStatus({ dshPath: detectDsh({ pathEnv: pathEnv() }), config: await readConfig() }),
+    runtimeStatus({ dshPath: detectDsh({ pathEnv: pathEnv() }) }),
   );
   ipcMain.handle("desktop:openWorkbench", async () => {
     try {

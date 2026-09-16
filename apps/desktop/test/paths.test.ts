@@ -5,6 +5,7 @@ import { resolveDesktopPaths } from "../src/shared/paths.js";
 test("internal state lives under userData", () => {
   const p = resolveDesktopPaths({ userDataDir: "/ud", homeDir: "/home/me" });
   assert.equal(p.configPath, "/ud/config.env");
+  assert.equal(p.settingsPath, "/ud/settings.json");
   assert.equal(p.recordStorePath, "/ud/record.jsonl");
   assert.equal(p.dshHome, "/ud/dsh");
   assert.equal(p.transcriptDir, "/ud/transcripts");
