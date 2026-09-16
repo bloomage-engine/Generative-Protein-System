@@ -9,7 +9,6 @@
     "types": ["node"]
   },
   "include": ["src/**/*.ts", "src/**/*.mts", "src/**/*.cts"],
-  "exclude": ["src/renderer"],
   "references": [
     { "path": "../../packages/transport" },
     { "path": "../../services/transport-service" }

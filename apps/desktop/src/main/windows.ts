@@ -18,19 +18,3 @@ export function createWorkbenchWindow(): BrowserWindow {
     },
   });
 }
-
-export function createConfigWindow(appRoot: string): BrowserWindow {
-  const win = new BrowserWindow({
-    width: 720,
-    height: 640,
-    title: "Science Studio — Settings",
-    webPreferences: {
-      preload: join(here, "..", "preload", "index.mjs"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-    },
-  });
-  void win.loadFile(join(appRoot, "dist", "renderer", "config.html"));
-  return win;
-}

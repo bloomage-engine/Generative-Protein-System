@@ -1,24 +1,23 @@
 import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ChildProcess } from "node:child_process";
 import { resolveDesktopPaths, type DesktopPaths } from "../shared/paths.js";
-import { buildChildEnv, parseConfigEnv, serializeConfigEnv, type DesktopConfig } from "../shared/config.js";
+import { buildChildEnv, parseConfigEnv, type DesktopConfig } from "../shared/config.js";
 import { detectDsh } from "../shared/dsh.js";
 import { runtimeStatus } from "../shared/runtime-status.js";
 import { singleFlight } from "../shared/single-flight.js";
 import { augmentPath } from "../shared/env-path.js";
 import { forkHost, type HostPorts } from "./host-child.js";
 import { resolveResourcePaths } from "./resource-paths.js";
-import { createConfigWindow, createWorkbenchWindow } from "./windows.js";
+import { createWorkbenchWindow } from "./windows.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(here, "..", "..");
 
 let workbench: BrowserWindow | null = null;
-let settings: BrowserWindow | null = null;
 let host: ChildProcess | null = null;
 let hostPorts: HostPorts | null = null;
 let quitting = false;
@@ -38,12 +37,6 @@ async function readConfig(): Promise<DesktopConfig> {
   } catch {
     return {};
   }
-}
-
-async function writeConfig(config: DesktopConfig): Promise<void> {
-  const p = paths();
-  await mkdir(p.userDataDir, { recursive: true });
-  await writeFile(p.configPath, serializeConfigEnv(config), "utf8");
 }
 
 async function boot(): Promise<HostPorts> {
@@ -202,17 +195,6 @@ async function doOpenWorkbench(): Promise<void> {
 
 const openWorkbench = singleFlight(doOpenWorkbench);
 
-function openSettings(): void {
-  if (settings) {
-    settings.focus();
-    return;
-  }
-  settings = createConfigWindow(appRoot);
-  settings.on("closed", () => {
-    settings = null;
-  });
-}
-
 function installMenu(): void {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
@@ -222,7 +204,7 @@ function installMenu(): void {
       {
         label: "Science Studio",
         submenu: [
-          { label: "Settings…", accelerator: "CmdOrCtrl+,", click: () => openSettings() },
+          { label: "Settings…", accelerator: "CmdOrCtrl+,", click: () => { void openWorkbench(); } },
           {
             label: "Open Projects Folder",
             click: () => {
@@ -242,12 +224,6 @@ function installMenu(): void {
 }
 
 function registerIpc(): void {
-  ipcMain.handle("desktop:getConfig", () => readConfig());
-  ipcMain.handle("desktop:setConfig", async (_event, config: DesktopConfig) => {
-    await writeConfig(config);
-    return readConfig();
-  });
-  ipcMain.handle("desktop:detectDsh", () => detectDsh({ pathEnv: pathEnv() }));
   ipcMain.handle("desktop:runtimeStatus", async () =>
     runtimeStatus({ dshPath: detectDsh({ pathEnv: pathEnv() }) }),
   );
@@ -269,12 +245,7 @@ void app
   .then(async () => {
     registerIpc();
     installMenu();
-    const missingConfig = (await readFile(paths().configPath, "utf8").catch(() => "")).length === 0;
-    if (!devUrl() && (missingConfig || !detectDsh({ pathEnv: pathEnv() }))) {
-      openSettings();
-    } else {
-      await openWorkbench();
-    }
+    await openWorkbench();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length > 0) return;
       if (host && hostPorts) {
