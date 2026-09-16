@@ -45,16 +45,16 @@ in a second Session of the same Project is a no-op.
 | `data/processed/` | analysis-ready datasets |
 | `scripts/` | analysis code and pipelines |
 | `notebooks/` | interactive / exploratory analyses |
-| `experiments/` | one directory per experiment (its config and outputs) |
-| `results/figures/` | derived tables, figures, metrics |
 | `models/` | trained models and checkpoints |
 | `reports/` | written reports, manuscripts, slides |
 | `logs/` | run and tool logs |
 | `config/` | environment and parameter manifests |
-| `scratch/` | throwaway work |
 
 The layout is a convention over the filesystem, not a record entity: it is never
 enforced, and an Agent that renames or removes a directory gets no correction.
+The Brief's `工作区结构` section indexes every entry above (plus `PROJECT.md`
+itself) with its purpose, generated from the same `SCAFFOLD_ENTRIES` list the
+scaffold creates, so the documentation cannot drift from the layout.
 
 ## The Project Brief (`PROJECT.md`)
 
@@ -62,7 +62,7 @@ A Markdown document at the workspace root, in this section order:
 
 `背景与动机` · `研究目标与科学问题` · `范围与非目标` · `方法与技术路线` ·
 `关键节点` · `进度日志` · `当前状态与下一步` · `关键决策` · `数据与来源` ·
-`结果与发现` · `未决问题与风险` · `参考资料`
+`结果与发现` · `未决问题与风险` · `工作区结构` · `参考资料`
 
 The template renders the record-owned identity (`id`, `name`, `createdAt`) and a
 bootstrap entry in the progress log. **The record is the authority**; the Brief

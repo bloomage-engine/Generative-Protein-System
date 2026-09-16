@@ -18,23 +18,35 @@ import { join } from "node:path";
 /** The Brief's file name at the Project Workspace root. */
 export const PROJECT_FILE = "PROJECT.md";
 
-/** The research layout, relative to the Project Workspace root (docs/adr/0012). */
-export const SCAFFOLD_DIRECTORIES: readonly string[] = [
-  "docs",
-  "references",
-  "data/raw",
-  "data/interim",
-  "data/processed",
-  "scripts",
-  "notebooks",
-  "experiments",
-  "results/figures",
-  "models",
-  "reports",
-  "logs",
-  "config",
-  "scratch",
+/** One directory of the research layout and the purpose rendered into the Brief. */
+export interface ScaffoldEntry {
+  /** Path relative to the Project Workspace root. */
+  path: string;
+  /** One-line purpose, indexed in the Brief's `工作区结构` section. */
+  purpose: string;
+}
+
+/**
+ * The research layout, relative to the Project Workspace root (docs/adr/0012).
+ * Paths and purposes live together so the created directories and the Brief's
+ * structure index can never drift apart.
+ */
+export const SCAFFOLD_ENTRIES: readonly ScaffoldEntry[] = [
+  { path: "docs", purpose: "工作笔记、方法与实验方案" },
+  { path: "references", purpose: "文献、书目与阅读笔记" },
+  { path: "data/raw", purpose: "原始数据，只读不改" },
+  { path: "data/interim", purpose: "清洗、切分中的中间数据" },
+  { path: "data/processed", purpose: "可供分析的数据集" },
+  { path: "scripts", purpose: "分析代码与流水线" },
+  { path: "notebooks", purpose: "交互式探索分析" },
+  { path: "models", purpose: "训练好的模型与检查点" },
+  { path: "reports", purpose: "报告、论文与演示文稿" },
+  { path: "logs", purpose: "运行与工具日志" },
+  { path: "config", purpose: "环境与参数清单" },
 ];
+
+/** The layout's directory paths, derived from {@link SCAFFOLD_ENTRIES}. */
+export const SCAFFOLD_DIRECTORIES: readonly string[] = SCAFFOLD_ENTRIES.map((entry) => entry.path);
 
 /** The Brief's section headings, in document order. */
 export const PROJECT_SECTIONS = [
@@ -49,6 +61,7 @@ export const PROJECT_SECTIONS = [
   "数据与来源",
   "结果与发现",
   "未决问题与风险",
+  "工作区结构",
   "参考资料",
 ] as const;
 
@@ -79,9 +92,25 @@ export function today(now?: string): string {
   return now ?? new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * The `工作区结构` index: every entry the scaffold lays down, plus the Brief
+ * itself, as a path/purpose table. Built from {@link SCAFFOLD_ENTRIES}, so the
+ * convention stays documented exactly as it is applied.
+ */
+export function renderScaffoldIndex(entries: readonly ScaffoldEntry[] = SCAFFOLD_ENTRIES): string {
+  return [
+    "| 路径 | 用途 |",
+    "| --- | --- |",
+    `| \`${PROJECT_FILE}\` | 项目简报（本文件），记录背景、目标、方法与进度 |`,
+    ...entries.map((entry) => `| \`${entry.path}/\` | ${entry.purpose} |`),
+  ].join("\n");
+}
+
 /** The body of a section, or `undefined` when only its heading is intended. */
 function sectionBody(section: ProjectSection, now: string): string | undefined {
   switch (section) {
+    case "工作区结构":
+      return renderScaffoldIndex();
     case "关键节点":
       return [
         "| 节点 | 目标日期 | 状态 |",

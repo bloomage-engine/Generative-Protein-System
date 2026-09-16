@@ -37,7 +37,7 @@ test("ensureScaffold lays down the research layout and the brief", async () => {
   const root = await tempRoot();
   try {
     const report = ensureScaffold(root, META, { now: NOW });
-    for (const dir of ["docs", "references", "data/raw", "data/interim", "data/processed", "scripts", "notebooks", "experiments", "results/figures", "models", "reports", "logs", "config", "scratch"]) {
+    for (const dir of ["docs", "references", "data/raw", "data/interim", "data/processed", "scripts", "notebooks", "models", "reports", "logs", "config"]) {
       assert.ok(existsSync(join(root, dir)), `missing ${dir}`);
     }
     assert.ok(report.createdDirectories.includes("data/raw"));
@@ -46,6 +46,28 @@ test("ensureScaffold lays down the research layout and the brief", async () => {
     assert.equal(brief, renderProjectDocument(META, NOW));
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("ensureScaffold does not lay down experiments, results or scratch", async () => {
+  const root = await tempRoot();
+  try {
+    ensureScaffold(root, META, { now: NOW });
+    for (const dir of ["experiments", "results", "scratch"]) {
+      assert.equal(existsSync(join(root, dir)), false, `${dir} must not be created`);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the brief indexes the workspace structure and its purpose", () => {
+  const brief = renderProjectDocument(META, NOW);
+  assert.match(brief, /## 工作区结构\n\n\| 路径 \| 用途 \|/);
+  assert.match(brief, /\| `data\/raw\/` \| 原始数据，只读不改 \|/);
+  assert.match(brief, /\| `PROJECT\.md` \| 项目简报/);
+  for (const absent of ["experiments", "results", "scratch"]) {
+    assert.doesNotMatch(brief, new RegExp(`\`${absent}/?\``), `${absent} must not be indexed`);
   }
 });
 

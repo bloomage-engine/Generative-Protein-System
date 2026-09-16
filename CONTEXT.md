@@ -106,11 +106,12 @@ Project dir
 **Project Scaffold**:
 The conventional directory layout a Project Workspace starts with — `docs/`,
 `references/`, `data/{raw,interim,processed}`, `scripts/`, `notebooks/`,
-`experiments/`, `results/`, `models/`, `reports/`, `logs/`, `config/`,
-`scratch/` — laid down the first time an agent works in the Project, so a
-research project has a predictable shape from its first turn. A convention over
-the filesystem, not a record entity: it is never enforced, and laying it down
-only ever ADDS what is missing.
+`models/`, `reports/`, `logs/`, `config/` — laid down the first time an agent
+works in the Project, so a research project has a predictable shape from its
+first turn. The Project Brief's `工作区结构` section indexes each entry (and
+`PROJECT.md` itself) with its purpose. A convention over the filesystem, not a
+record entity: it is never enforced, and laying it down only ever ADDS what is
+missing.
 _Avoid_: Template, Skeleton, Folder structure
 
 **Project Brief** (the `PROJECT.md` file):
