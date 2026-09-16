@@ -365,6 +365,7 @@ test("a saved route credential reaches the launch client env", async () => {
       recordStore: { addRun: async () => {} },
     });
     assert.equal(seenEnv?.OLLAMA_LOCAL_API_KEY, "secret-key");
+    assert.equal(seenEnv?.PATH, process.env.PATH, "the child env keeps the parent environment");
     const settings = await readFile(join(home, "settings.yaml"), "utf8");
     assert.match(settings, /baseURL: http:\/\/h\/v1/);
   } finally {

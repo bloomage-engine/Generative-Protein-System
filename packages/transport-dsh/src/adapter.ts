@@ -278,7 +278,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       provider,
       model,
       maxTokens,
-      ...(routeEnv === undefined ? {} : { env: routeEnv }),
+      ...(routeEnv === undefined ? {} : { env: { ...process.env, ...routeEnv } }),
       ...(patches.length > 0 ? { patches } : {}),
     });
     this.mirror = new TranscriptMirror(dir);
