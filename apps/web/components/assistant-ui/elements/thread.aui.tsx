@@ -1,17 +1,14 @@
 "use client";
 
 import { UserMessageAttachments } from "@/components/assistant-ui/elements/attachment.aui";
+import { ConversationMapAui } from "@/components/assistant-ui/elements/conversation-map.aui";
 import { File } from "@/components/assistant-ui/elements/file";
 import { ThreadFollowupSuggestions } from "@/components/assistant-ui/elements/follow-up-suggestions.aui";
 import { Image } from "@/components/assistant-ui/elements/image";
 import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
-import {
-  Reasoning,
-  ReasoningContent,
-  ReasoningRoot,
-  ReasoningText,
-  ReasoningTrigger,
-} from "@/components/assistant-ui/elements/reasoning.aui";
+import { Reasoning } from "@/components/assistant-ui/elements/reasoning.aui";
+import { ReasoningPanel } from "@/components/assistant-ui/elements/reasoning-panel";
+import { buildReasoningTrace } from "@science-studio/transport-client";
 import { ToolFallback } from "@/components/assistant-ui/elements/tool-fallback.aui";
 import {
   ToolGroupContent,
@@ -35,6 +32,7 @@ import {
   MessagePrimitive,
   SuggestionPrimitive,
   ThreadPrimitive,
+  useMessageTiming,
   type FileMessagePartComponent,
   type ImageMessagePartComponent,
   type ToolCallMessagePartComponent,
@@ -54,6 +52,8 @@ import {
 import {
   createContext,
   useContext,
+  useMemo,
+  useState,
   type ComponentType,
   type FC,
   type PropsWithChildren,
@@ -160,6 +160,13 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
         data-slot="aui_thread-viewport"
         className="relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth"
       >
+        {/* Conversation map: a direct child of the viewport so the rail lands in
+            the gutter beside the centered message column. Only present once the
+            thread has a turn — its invisible pointer-events overlay would
+            otherwise sit over the left gutter on the welcome screen. */}
+        <AuiIf condition={(s) => !s.thread.isEmpty}>
+          <ConversationMapAui className="max-sm:hidden" />
+        </AuiIf>
         <div
           className={cn(
             "mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-4 pt-4",
@@ -273,6 +280,51 @@ const MessageError: FC = () => {
   );
 };
 
+/**
+ * The static-variant reasoning disclosure (assistant-ui "Reasoning" element,
+ * step-panel design — docs /elements/reasoning#the-step-panel-design): one
+ * titled step per `reasoning` part of the group. Auto-expanded while the
+ * reasoning is still streaming; the reader's first manual toggle sticks.
+ * The part → step mapping comes from the shared `buildReasoningTrace` so the
+ * web app and the examples read the same fields and fallbacks.
+ */
+const ReasoningGroupPanel: FC<{ indices: readonly number[] }> = ({
+  indices,
+}) => {
+  const parts = useAuiState((s) => s.message.parts);
+  const status = useAuiState((s) => s.message.status);
+  const trace = useMemo(
+    () =>
+      buildReasoningTrace(
+        indices.flatMap((i) => {
+          const part = parts[i];
+          return part ? [part] : [];
+        }),
+        status,
+      ),
+    [parts, indices, status],
+  );
+  const timing = useMessageTiming();
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+
+  if (trace.steps.length === 0) return null;
+
+  return (
+    <ReasoningPanel
+      steps={trace.steps}
+      visibleSteps={trace.steps.length}
+      streaming={trace.streaming}
+      open={userOpen ?? trace.streaming}
+      onOpenChange={setUserOpen}
+      restingLabel={
+        timing?.totalStreamTime
+          ? `Thought for ${Math.round(timing.totalStreamTime / 1000)}s`
+          : "Done thinking"
+      }
+    />
+  );
+};
+
 const AssistantMessage: FC = () => {
   const {
     ToolFallback: ToolFallbackComponent = ToolFallback,
@@ -324,15 +376,7 @@ const AssistantMessage: FC = () => {
                     <ReasoningGroup group={part}>{children}</ReasoningGroup>
                   );
                 }
-                const running = part.status.type === "running";
-                return (
-                  <ReasoningRoot streaming={running}>
-                    <ReasoningTrigger active={running} />
-                    <ReasoningContent aria-busy={running}>
-                      <ReasoningText>{children}</ReasoningText>
-                    </ReasoningContent>
-                  </ReasoningRoot>
-                );
+                return <ReasoningGroupPanel indices={part.indices} />;
               }
               case "text":
                 return <MarkdownText />;
