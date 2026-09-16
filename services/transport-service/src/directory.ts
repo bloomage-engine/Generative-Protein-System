@@ -29,9 +29,24 @@ export interface RecordDirectory {
   /** Create a Project; its id is a slug of `name` (unique-suffixed). */
   createProject(name: string): Promise<Project>;
   listProjects(opts?: { includeArchived?: boolean }): Promise<Project[]>;
+  /** Rename a Project (its id, and thus its workspace directory, is immutable). */
+  renameProject(id: Id, name: string): Promise<Project>;
   archiveProject(id: Id): Promise<Project>;
+  /** Clear a Project's archived flag. */
+  unarchiveProject(id: Id): Promise<Project>;
+  /**
+   * Remove a Project's record (cascading its Sessions and their Runs). The
+   * caller recycles the Project Workspace separately, before or after this.
+   */
+  deleteProject(id: Id): Promise<void>;
   createSession(projectId: Id, opts?: { agentId?: Id; title?: string }): Promise<Session>;
-  listSessions(projectId: Id): Promise<Session[]>;
+  listSessions(projectId: Id, opts?: { includeArchived?: boolean }): Promise<Session[]>;
+  /** Rename a Session (its `title`). */
+  renameSession(id: Id, title: string): Promise<Session>;
+  archiveSession(id: Id): Promise<Session>;
+  unarchiveSession(id: Id): Promise<Session>;
+  /** Remove a Session's record (cascading its Runs). */
+  deleteSession(id: Id): Promise<void>;
   /** The Session a canonical runtime session key belongs to, or null. */
   resolveSession(sessionKey: string): Promise<Session | null>;
   /**
@@ -71,8 +86,17 @@ export function createRecordDirectory(opts: RecordDirectoryOptions): RecordDirec
       return opts.store.createProject(project);
     },
     listProjects: (o) => opts.store.listProjects(o),
+    async renameProject(id: Id, name: string): Promise<Project> {
+      return opts.store.updateProject(id, { name });
+    },
     async archiveProject(id: Id): Promise<Project> {
       return opts.store.archiveProject(id, now());
+    },
+    async unarchiveProject(id: Id): Promise<Project> {
+      return opts.store.unarchiveProject(id);
+    },
+    async deleteProject(id: Id): Promise<void> {
+      await opts.store.deleteProject(id);
     },
     async createSession(projectId: Id, o: { agentId?: Id; title?: string } = {}): Promise<Session> {
       const project = await opts.store.getProject(projectId);
@@ -87,7 +111,19 @@ export function createRecordDirectory(opts: RecordDirectoryOptions): RecordDirec
         updatedAt: timestamp,
       });
     },
-    listSessions: (projectId) => opts.store.listSessions(projectId),
+    listSessions: (projectId, o) => opts.store.listSessions(projectId, o),
+    async renameSession(id: Id, title: string): Promise<Session> {
+      return opts.store.updateSession(id, { title, updatedAt: now() });
+    },
+    async archiveSession(id: Id): Promise<Session> {
+      return opts.store.archiveSession(id, now());
+    },
+    async unarchiveSession(id: Id): Promise<Session> {
+      return opts.store.unarchiveSession(id);
+    },
+    async deleteSession(id: Id): Promise<void> {
+      await opts.store.deleteSession(id);
+    },
     resolveSession: (sessionKey) => opts.store.getSession(sessionKey),
     async resolveOrCreateSession(projectId: Id, sessionKey: Id): Promise<Session> {
       const existing = await opts.store.getSession(sessionKey);

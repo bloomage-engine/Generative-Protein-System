@@ -15,15 +15,28 @@ export { createJsonlRecordStore } from "./jsonl.js";
  *
  * Listing methods return insertion order (the order rows were recorded), which
  * is stable and cheap for both implementations; callers that want "newest
- * first" reverse. There is no delete in v1 — a Project is archived, not removed.
+ * first" reverse.
+ *
+ * Lifecycle (docs/adr/0014): a rename updates the mutable label (`Project.name`,
+ * `Session.title`) while the id stays immutable — a Project's id names its
+ * workspace directory. Archiving is a reversible flag; deleting removes the row
+ * and cascades (a Project removes its Sessions and their Runs, a Session removes
+ * its Runs). The default Project's immutability is enforced at the service, not
+ * here: the store just stores.
  */
 export interface RecordStore {
   createProject(project: Project): Promise<Project>;
   getProject(id: Id): Promise<Project | null>;
   /** Insertion order. Archived projects are excluded unless asked for. */
   listProjects(opts?: { includeArchived?: boolean }): Promise<Project[]>;
+  /** Rename a Project (its id is immutable). Returns the updated row. */
+  updateProject(id: Id, patch: { name: string }): Promise<Project>;
   /** Mark a Project archived; returns the updated row. */
   archiveProject(id: Id, archivedAt: string): Promise<Project>;
+  /** Clear a Project's archived flag; returns the updated row. */
+  unarchiveProject(id: Id): Promise<Project>;
+  /** Remove a Project and every Session/Run under it. */
+  deleteProject(id: Id): Promise<void>;
 
   /**
    * Record a conversation. A Session's id IS its canonical runtime session key,
@@ -31,8 +44,16 @@ export interface RecordStore {
    */
   addSession(session: Session): Promise<Session>;
   getSession(id: Id): Promise<Session | null>;
-  /** A Project's Sessions, insertion order. */
-  listSessions(projectId: Id): Promise<Session[]>;
+  /** A Project's Sessions, insertion order. Archived sessions excluded unless asked for. */
+  listSessions(projectId: Id, opts?: { includeArchived?: boolean }): Promise<Session[]>;
+  /** Rename a Session (its `title`). Returns the updated row. */
+  updateSession(id: Id, patch: { title: string; updatedAt: string }): Promise<Session>;
+  /** Mark a Session archived; returns the updated row. */
+  archiveSession(id: Id, archivedAt: string): Promise<Session>;
+  /** Clear a Session's archived flag; returns the updated row. */
+  unarchiveSession(id: Id): Promise<Session>;
+  /** Remove a Session and every Run under it. */
+  deleteSession(id: Id): Promise<void>;
 
   addRun(run: Run): Promise<Run>;
   /** A Project's Runs (the turns of all its Sessions), insertion order. */

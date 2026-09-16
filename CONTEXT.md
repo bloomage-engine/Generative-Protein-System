@@ -71,8 +71,30 @@ _Avoid_: Workspace (collides with Project Workspace), Sandbox, Home
 The top-level container owned by a Researcher or team. A Project owns one Project
 Workspace and any number of Sessions, and everything its Sessions produce is
 shared at the Project level. Managers view Project-level aggregates. The
-platform's coarsest unit of oversight.
+platform's coarsest unit of oversight. The auto-ensured bootstrap Project cannot
+be renamed, archived or deleted (docs/adr/0014).
 _Avoid_: Space, Organization, Folder
+
+**Delete**:
+The irreversible-from-the-UI removal of a Project or Session: the record rows go
+(a Project cascades its Sessions and their Runs; a Session cascades its Runs) and
+a Project's Project Workspace is moved to the Recycle Bin. The default Project
+cannot be deleted (docs/adr/0014).
+_Avoid_: Archive, Remove, Trash
+
+**Archive**:
+The reversible hiding of a Project or Session: the record keeps an `archivedAt`
+timestamp, the row leaves the default listing, and clearing the timestamp brings
+it back. Files are untouched.
+_Avoid_: Delete, Remove, Trash
+
+**Recycle Bin**:
+Where a deleted Project's Project Workspace is physically moved (a sibling
+`.recycle/` directory under `PROJECT_ROOT`) when the Project is deleted
+(docs/adr/0014). A filesystem safety net for manual recovery, never a product
+surface: the UI offers no restore for delete.
+_Avoid_: Trash, Backup, Archive
+
 
 **Project Workspace**:
 The one filesystem workspace a Project owns, shared flatly by every Session under

@@ -62,6 +62,12 @@ export interface ProjectScopes {
   /** The request's Principal, its Project and that Project's Environment. */
   acquire(request: FastifyRequest): Promise<ProjectScope>;
   /**
+   * Acquire a NAMED Project's environment, ignoring the request's claim. For
+   * routes that act on the Project in their path rather than a claim (e.g.
+   * delete, which recycles its workspace — docs/adr/0014).
+   */
+  acquireProject(principal: Principal, projectId: Id): Promise<ProjectScope>;
+  /**
    * `acquire`, plus the record's Session for the claimed threadId — found, or
    * first-use recorded under the Project (docs/adr/0007).
    */
@@ -119,6 +125,15 @@ export function createProjectScopes(opts: ProjectScopeOptions): ProjectScopes {
 
   return {
     acquire,
+
+    async acquireProject(principal, projectId) {
+      return {
+        principal,
+        projectId,
+        threadId: null,
+        environment: await environments.acquire(principal, projectId),
+      };
+    },
 
     async sessionOf(request) {
       const scope = await acquire(request);

@@ -27,12 +27,35 @@ export function createInMemoryRecordStore(): RecordStore {
     async listProjects(opts: { includeArchived?: boolean } = {}): Promise<Project[]> {
       return ordered(projects, (p) => opts.includeArchived === true || p.archivedAt === undefined);
     },
+    async updateProject(id: Id, patch: { name: string }): Promise<Project> {
+      const prev = projects.get(id);
+      if (!prev) throw new Error(`project not found: ${id}`);
+      const next = { ...prev, name: patch.name };
+      projects.set(id, clone(next));
+      return clone(next);
+    },
     async archiveProject(id: Id, archivedAt: string): Promise<Project> {
       const prev = projects.get(id);
       if (!prev) throw new Error(`project not found: ${id}`);
       const next = { ...prev, archivedAt };
       projects.set(id, clone(next));
       return clone(next);
+    },
+    async unarchiveProject(id: Id): Promise<Project> {
+      const prev = projects.get(id);
+      if (!prev) throw new Error(`project not found: ${id}`);
+      const { archivedAt: _dropped, ...rest } = prev;
+      projects.set(id, clone(rest));
+      return clone(rest);
+    },
+    async deleteProject(id: Id): Promise<void> {
+      projects.delete(id);
+      for (const session of [...sessions.values()]) {
+        if (session.projectId === id) sessions.delete(session.id);
+      }
+      for (const run of [...runs.values()]) {
+        if (run.projectId === id) runs.delete(run.id);
+      }
     },
     async addSession(session: Session): Promise<Session> {
       sessions.set(session.id, clone(session));
@@ -42,8 +65,41 @@ export function createInMemoryRecordStore(): RecordStore {
       const s = sessions.get(id);
       return s ? clone(s) : null;
     },
-    async listSessions(projectId: Id): Promise<Session[]> {
-      return ordered(sessions, (s) => s.projectId === projectId);
+    async listSessions(
+      projectId: Id,
+      opts: { includeArchived?: boolean } = {},
+    ): Promise<Session[]> {
+      return ordered(
+        sessions,
+        (s) => s.projectId === projectId && (opts.includeArchived === true || s.archivedAt === undefined),
+      );
+    },
+    async updateSession(id: Id, patch: { title: string; updatedAt: string }): Promise<Session> {
+      const prev = sessions.get(id);
+      if (!prev) throw new Error(`session not found: ${id}`);
+      const next = { ...prev, title: patch.title, updatedAt: patch.updatedAt };
+      sessions.set(id, clone(next));
+      return clone(next);
+    },
+    async archiveSession(id: Id, archivedAt: string): Promise<Session> {
+      const prev = sessions.get(id);
+      if (!prev) throw new Error(`session not found: ${id}`);
+      const next = { ...prev, archivedAt };
+      sessions.set(id, clone(next));
+      return clone(next);
+    },
+    async unarchiveSession(id: Id): Promise<Session> {
+      const prev = sessions.get(id);
+      if (!prev) throw new Error(`session not found: ${id}`);
+      const { archivedAt: _dropped, ...rest } = prev;
+      sessions.set(id, clone(rest));
+      return clone(rest);
+    },
+    async deleteSession(id: Id): Promise<void> {
+      sessions.delete(id);
+      for (const run of [...runs.values()]) {
+        if (run.sessionId === id) runs.delete(run.id);
+      }
     },
     async addRun(run: Run): Promise<Run> {
       runs.set(run.id, clone(run));

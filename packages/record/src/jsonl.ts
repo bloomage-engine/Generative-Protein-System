@@ -20,7 +20,13 @@ import type { Id, Project, Run, Session } from "./types.js";
 type Row =
   | { t: "project"; v: Project }
   | { t: "session"; v: Session }
-  | { t: "run"; v: Run };
+  | { t: "run"; v: Run }
+  /**
+   * A deletion tombstone. Deletes must be durable, and the log is append-only,
+   * so a removed row leaves a drop behind; the loader applies it and compaction
+   * simply never writes it (it serializes the in-memory tables).
+   */
+  | { t: "drop"; table: "project" | "session" | "run"; id: Id };
 
 interface Tables {
   projects: Map<Id, Project>;
@@ -39,6 +45,11 @@ function apply(tables: Tables, row: Row): void {
     case "run":
       tables.runs.set(row.v.id, row.v);
       break;
+    case "drop":
+      if (row.table === "project") tables.projects.delete(row.id);
+      else if (row.table === "session") tables.sessions.delete(row.id);
+      else tables.runs.delete(row.id);
+      break;
   }
 }
 
@@ -47,7 +58,13 @@ function parseLine(line: string): Row | null {
   if (trimmed === "") return null;
   try {
     const parsed = JSON.parse(trimmed) as Row;
-    if (parsed && (parsed.t === "project" || parsed.t === "session" || parsed.t === "run")) {
+    if (
+      parsed &&
+      (parsed.t === "project" ||
+        parsed.t === "session" ||
+        parsed.t === "run" ||
+        parsed.t === "drop")
+    ) {
       return parsed;
     }
     return null;
@@ -103,6 +120,8 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
   const clone = <T>(v: T): T => structuredClone(v);
   const ordered = <T>(map: Map<Id, T>, matches: (v: T) => boolean): T[] =>
     [...map.values()].filter(matches).map(clone);
+  const drop = (table: "project" | "session" | "run", id: Id): Promise<void> =>
+    append({ t: "drop", table, id });
 
   return {
     async createProject(project: Project): Promise<Project> {
@@ -117,6 +136,14 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
     async listProjects(opts: { includeArchived?: boolean } = {}): Promise<Project[]> {
       return ordered(tables.projects, (p) => opts.includeArchived === true || p.archivedAt === undefined);
     },
+    async updateProject(id: Id, patch: { name: string }): Promise<Project> {
+      const prev = tables.projects.get(id);
+      if (!prev) throw new Error(`project not found: ${id}`);
+      const next = { ...prev, name: patch.name };
+      await append({ t: "project", v: next });
+      tables.projects.set(id, clone(next));
+      return clone(next);
+    },
     async archiveProject(id: Id, archivedAt: string): Promise<Project> {
       const prev = tables.projects.get(id);
       if (!prev) throw new Error(`project not found: ${id}`);
@@ -124,6 +151,30 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
       await append({ t: "project", v: next });
       tables.projects.set(id, clone(next));
       return clone(next);
+    },
+    async unarchiveProject(id: Id): Promise<Project> {
+      const prev = tables.projects.get(id);
+      if (!prev) throw new Error(`project not found: ${id}`);
+      const { archivedAt: _dropped, ...rest } = prev;
+      await append({ t: "project", v: rest });
+      tables.projects.set(id, clone(rest));
+      return clone(rest);
+    },
+    async deleteProject(id: Id): Promise<void> {
+      for (const session of [...tables.sessions.values()]) {
+        if (session.projectId === id) {
+          await drop("session", session.id);
+          tables.sessions.delete(session.id);
+        }
+      }
+      for (const run of [...tables.runs.values()]) {
+        if (run.projectId === id) {
+          await drop("run", run.id);
+          tables.runs.delete(run.id);
+        }
+      }
+      await drop("project", id);
+      tables.projects.delete(id);
     },
     async addSession(session: Session): Promise<Session> {
       await append({ t: "session", v: session });
@@ -134,8 +185,48 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
       const s = tables.sessions.get(id);
       return s ? clone(s) : null;
     },
-    async listSessions(projectId: Id): Promise<Session[]> {
-      return ordered(tables.sessions, (s) => s.projectId === projectId);
+    async listSessions(
+      projectId: Id,
+      opts: { includeArchived?: boolean } = {},
+    ): Promise<Session[]> {
+      return ordered(
+        tables.sessions,
+        (s) => s.projectId === projectId && (opts.includeArchived === true || s.archivedAt === undefined),
+      );
+    },
+    async updateSession(id: Id, patch: { title: string; updatedAt: string }): Promise<Session> {
+      const prev = tables.sessions.get(id);
+      if (!prev) throw new Error(`session not found: ${id}`);
+      const next = { ...prev, title: patch.title, updatedAt: patch.updatedAt };
+      await append({ t: "session", v: next });
+      tables.sessions.set(id, clone(next));
+      return clone(next);
+    },
+    async archiveSession(id: Id, archivedAt: string): Promise<Session> {
+      const prev = tables.sessions.get(id);
+      if (!prev) throw new Error(`session not found: ${id}`);
+      const next = { ...prev, archivedAt };
+      await append({ t: "session", v: next });
+      tables.sessions.set(id, clone(next));
+      return clone(next);
+    },
+    async unarchiveSession(id: Id): Promise<Session> {
+      const prev = tables.sessions.get(id);
+      if (!prev) throw new Error(`session not found: ${id}`);
+      const { archivedAt: _dropped, ...rest } = prev;
+      await append({ t: "session", v: rest });
+      tables.sessions.set(id, clone(rest));
+      return clone(rest);
+    },
+    async deleteSession(id: Id): Promise<void> {
+      for (const run of [...tables.runs.values()]) {
+        if (run.sessionId === id) {
+          await drop("run", run.id);
+          tables.runs.delete(run.id);
+        }
+      }
+      await drop("session", id);
+      tables.sessions.delete(id);
     },
     async addRun(run: Run): Promise<Run> {
       await append({ t: "run", v: run });

@@ -13,7 +13,7 @@
  */
 import { createReadStream, type Stats } from "node:fs";
 import { lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promises";
-import { dirname, join, posix, resolve, sep } from "node:path";
+import { dirname, join, basename, posix, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import type {
   DirListing,
@@ -225,6 +225,17 @@ export class FsWorkspace implements Workspace {
   }
 
   /**
+   * Move the whole workspace into a sibling `.recycle/` bin (docs/adr/0014):
+   * delete is irreversible from the UI, but the bytes stay on disk for manual
+   * recovery. A distinct agent root is moved alongside it; a root that does not
+   * exist is already gone, so this is a no-op.
+   */
+  async recycle(): Promise<void> {
+    await moveToRecycle(this.root);
+    if (this.agentRoot !== this.root) await moveToRecycle(this.agentRoot);
+  }
+
+  /**
    * Resolve a workspace path to the real filesystem location, enforcing
    * containment. Both the root and the target are `realpath`'d (the root matters
    * on platforms where the temp/state dir is itself a symlink), and a symlink
@@ -270,6 +281,24 @@ async function lstatOrNull(abs: string): Promise<Stats | null> {
     return await lstat(abs);
   } catch {
     return null;
+  }
+}
+
+/**
+ * Move `target` into `<parent>/.recycle/<name>-<ts>/`. A missing target is a
+ * no-op (there is nothing to remove); the `.recycle` bin is created on demand.
+ * Same-parent keeps the rename on one filesystem, which is what makes it a
+ * cheap atomic move rather than a copy.
+ */
+async function moveToRecycle(target: string): Promise<void> {
+  if (!(await lstatOrNull(target))) return;
+  const bin = join(dirname(target), ".recycle");
+  await mkdir(bin, { recursive: true });
+  const dest = join(bin, `${basename(target)}-${Date.now().toString(36)}`);
+  try {
+    await rename(target, dest);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
 }
 

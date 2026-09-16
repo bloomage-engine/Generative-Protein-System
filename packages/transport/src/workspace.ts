@@ -63,6 +63,16 @@ export interface Workspace {
   toAgentPath(relPath: string): string;
   /** Agent-emitted path -> workspace-relative path, or null if outside. */
   toWorkspacePath(agentPath: string): string | null;
+
+  /**
+   * Move the whole workspace out of the way when its Project is deleted
+   * (docs/adr/0014). The bytes are NOT destroyed — an implementation moves them
+   * to a recycle bin (a sibling `.recycle/` for `FsWorkspace`) so they remain
+   * recoverable by hand, but the product offers no restore. Optional: a
+   * deployment with no filesystem surface omits it, and the delete is then a
+   * no-op for files. Returns once the move has settled.
+   */
+  recycle?(): Promise<void>;
 }
 
 /** Options for `Workspace.write`. */

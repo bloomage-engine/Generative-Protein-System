@@ -32,7 +32,7 @@ examples/transport-dsh-example     minimal assistant-ui example app over the dsh
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/design/                      design specs (research-agent-framework EN/ZH + implementation-plan)
-docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers)
+docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete)
 CONTEXT.md                        domain glossary (authoritative vocabulary)
 ```
 
@@ -75,6 +75,19 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `$XDG_DATA_HOME/science-studio/record.jsonl`) — with `RECORD_STORE=memory` to
   opt out. A `project-default` row is auto-ensured so a request that names no
   Project still works.
+- Project/Session lifecycle (docs/adr/0014): a Project renames its `name` /
+  a Session its `title` (ids are immutable; a Project id names its directory);
+  `POST /api/projects/:id/{rename,archive,unarchive,delete}` and
+  `POST /api/projects/:id/sessions/:sid/{rename,archive,unarchive,delete}` drive
+  it (all POST, so the GET/POST web proxy is unchanged). Archive is a reversible
+  flag (`archivedAt`; listings exclude it unless `?includeArchived=1`). Delete is
+  irreversible in the UI: the record rows go (a Project cascades its Sessions +
+  Runs, a Session its Runs) and the Project Workspace is MOVED to a sibling
+  `.recycle/<id>-<ts>/` under `PROJECT_ROOT` via `Workspace.recycle?()` — bytes
+  recoverable by hand, no restore endpoint. The bootstrap `project-default` row
+  (or `PROJECT_ID`) cannot be renamed/archived/deleted (403); `GET /api/projects`
+  returns its id so the UI locks those actions. Deleting a Project also releases
+  its cached `Environment` (`EnvironmentProvider.release?()`).
 - Workspace file access is **opt-in** and served per **Project**: `PROJECT_ROOT`
   is the host-side parent of every project directory (each Project's workspace is
   `<PROJECT_ROOT>/<projectId>/`, shared flatly by all its Sessions — docs/adr/0006),

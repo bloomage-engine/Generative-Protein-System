@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -232,6 +232,37 @@ try {
 } finally {
   await dispose();
 }
+});
+
+test("recycle moves the workspace into a sibling .recycle bin", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "ss-recycle-"));
+  const root = join(parent, "metabolism");
+  try {
+    await mkdir(root, { recursive: true });
+    await writeFile(join(root, "data.csv"), "a,b\n1,2\n");
+    const ws = new FsWorkspace(root, { agentRoot: "/agent/metabolism" });
+    await ws.recycle();
+
+    assert.ok(!(await readdir(parent)).includes("metabolism"), "the workspace root is gone");
+    const bin = join(parent, ".recycle");
+    const moved = await readdir(bin);
+    assert.equal(moved.length, 1);
+    assert.ok(moved[0]!.startsWith("metabolism-"));
+    assert.equal(await readFile(join(bin, moved[0]!, "data.csv"), "utf8"), "a,b\n1,2\n");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("recycle of a never-created root is a no-op", async () => {
+  const parent = await makeRoot();
+  try {
+    const ws = new FsWorkspace(join(parent, "absent"), { agentRoot: "/agent/absent" });
+    await ws.recycle();
+    assert.deepEqual(await readdir(parent), []);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
 });
 
 test("write refuses escaping paths, the root itself, and overwrite:false", async () => {
