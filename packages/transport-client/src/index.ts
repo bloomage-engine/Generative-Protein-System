@@ -79,3 +79,16 @@ export {
   type TokenUsage,
 } from "./session-metrics.js";
 export { useSessionMetrics, type UseSessionMetricsOptions } from "./use-session-metrics.js";
+export {
+  DEFAULT_SETTINGS_API,
+  SettingsRequestError,
+  fetchSettings,
+  updateSettings,
+} from "./settings.js";
+export type {
+  ModelSettings,
+  ModelSettingsPatch,
+  RuntimeSettings,
+  RuntimeSettingsView,
+  RuntimeSettingsPatch,
+} from "@science-studio/transport";
