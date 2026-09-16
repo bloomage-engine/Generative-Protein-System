@@ -53,6 +53,12 @@ type State = {
   leftView: LeftView;
   leftPanel: boolean;
   rightPanel: boolean;
+  /**
+   * Bumped when a run finishes, so the status bar refetches its Session metrics
+   * from the record. A counter, not the metrics themselves: the record stays the
+   * source and the hook owns the fetch.
+   */
+  runsRevision: number;
 
   setProjects: (list: Project[]) => void;
   setDefaultProjectId: (id: string | null) => void;
@@ -86,6 +92,8 @@ type State = {
   /** Pure assignment — for seeding the shell (a fresh install lands on the panel). */
   setLeftView: (view: LeftView) => void;
   toggleRight: () => void;
+  /** Signal that a run finished; the status bar's metrics hook depends on it. */
+  bumpRunsRevision: () => void;
 };
 
 export const useStudioStore = create<State>()((set) => ({
@@ -101,6 +109,7 @@ export const useStudioStore = create<State>()((set) => ({
   leftView: "thread",
   leftPanel: true,
   rightPanel: true,
+  runsRevision: 0,
 
   setProjects: (projects) => set({ projects }),
   setDefaultProjectId: (defaultProjectId) => set({ defaultProjectId }),
@@ -208,4 +217,5 @@ export const useStudioStore = create<State>()((set) => ({
   setLeftView: (leftView) => set({ leftView }),
 
   toggleRight: () => set((s) => ({ rightPanel: !s.rightPanel })),
+  bumpRunsRevision: () => set((s) => ({ runsRevision: s.runsRevision + 1 })),
 }));

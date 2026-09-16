@@ -241,7 +241,9 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
   // The Project-level result rollup: the turns of ALL its Sessions (docs/adr/0007).
   app.get("/api/projects/:id/runs", async (request) => {
     const { id } = request.params as { id: string };
-    return { runs: await directory.listRuns(id) };
+    const { sessionId } = request.query as { sessionId?: string };
+    const runs = await directory.listRuns(id);
+    return { runs: sessionId ? runs.filter((run) => run.sessionId === sessionId) : runs };
   });
 
   // -- Conversation path -----------------------------------------------------

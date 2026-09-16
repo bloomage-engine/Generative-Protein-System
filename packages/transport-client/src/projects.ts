@@ -201,3 +201,15 @@ export async function fetchProjectRuns(api: string, projectId: string): Promise<
   );
   return body.runs;
 }
+
+/** The Runs of ONE Session (the status bar's metrics source). */
+export async function fetchSessionRuns(
+  api: string,
+  projectId: string,
+  sessionId: string,
+): Promise<Run[]> {
+  const body = await request<{ runs: Run[] }>(
+    `${base(api)}/${encodeURIComponent(projectId)}/runs?sessionId=${encodeURIComponent(sessionId)}`,
+  );
+  return body.runs;
+}

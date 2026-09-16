@@ -65,7 +65,15 @@ export {
   unarchiveSession,
   deleteSession,
   fetchProjectRuns,
+  fetchSessionRuns,
   type Project,
   type Run,
   type Session,
 } from "./projects.js";
+export {
+  formatTokens,
+  summarizeSessionRuns,
+  type SessionMetrics,
+  type TokenUsage,
+} from "./session-metrics.js";
+export { useSessionMetrics, type UseSessionMetricsOptions } from "./use-session-metrics.js";

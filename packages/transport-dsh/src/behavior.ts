@@ -122,6 +122,17 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
   >();
 
   /**
+   * The latest `request/context` route per Session — the harness's authoritative
+   * provider/model pair plus the model's context window, when it advertises one.
+   * Captured so the settled `Run` can record the model context its usage is
+   * measured against; absent on a harness build that never logs the event.
+   */
+  const modelContexts = new Map<
+    string,
+    { provider?: string; model?: string; contextWindow?: number }
+  >();
+
+  /**
    * Drive one prompt on this Session's harness conversation, minting the id on
    * first use and re-minting once if the harness home already holds it (a
    * collision the pin makes possible in the same instant — docs/adr/0004).
@@ -347,9 +358,24 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
         return;
       }
 
+      case "request/context": {
+        // Informational, never rendered: the harness's resolved route for this
+        // conversation, carrying the model's context window. Kept per Session so
+        // the Run projected at settle records the model its usage belongs to.
+        const data = event.data;
+        modelContexts.set(ctx.sessionKey, {
+          ...(typeof data.provider === "string" ? { provider: data.provider } : {}),
+          ...(typeof data.model === "string" ? { model: data.model } : {}),
+          ...(typeof data.contextWindow === "number" && Number.isFinite(data.contextWindow)
+            ? { contextWindow: data.contextWindow }
+            : {}),
+        });
+        return;
+      }
+
       default:
-        // system/message, user/message, step/*, assistant/attempt, request/* —
-        // no seam rendering.
+        // system/message, user/message, step/*, assistant/attempt, other
+        // request/* events — no seam rendering.
         return;
     }
   }
@@ -408,10 +434,16 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
       // row is the Run's input, so it is exactly the marker to project nothing.
       if (isCommandText(ctx.input)) return null;
       const usage = ctx.directive.usage;
+      const captured = modelContexts.get(ctx.sessionKey);
       return {
         // A turn that never reported a terminal reason is an error Run.
         status: ctx.directive.status ?? "error",
-        parameters: { provider, model, ...(usage !== undefined ? { usage } : {}) },
+        parameters: {
+          provider: captured?.provider ?? provider,
+          model: captured?.model ?? model,
+          ...(captured?.contextWindow !== undefined ? { contextWindow: captured.contextWindow } : {}),
+          ...(usage !== undefined ? { usage } : {}),
+        },
       };
     },
 

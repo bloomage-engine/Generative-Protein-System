@@ -7,6 +7,7 @@ import {
   deleteSession,
   fetchProjectSessions,
   fetchProjectsOverview,
+  fetchSessionRuns,
   renameProject,
   renameSession,
   unarchiveProject,
@@ -111,5 +112,13 @@ test("fetchProjectSessions can include archived Sessions", async () => {
     await fetchProjectSessions(API, "p1", { includeArchived: true });
     assert.equal(calls[0]!.url, `${API}/p1/sessions`);
     assert.equal(calls[1]!.url, `${API}/p1/sessions?includeArchived=1`);
+  });
+});
+
+test("fetchSessionRuns scopes the runs request to one Session", async () => {
+  await withFetch({ runs: [] }, async (calls) => {
+    const runs = await fetchSessionRuns(API, "p 1", "s/1");
+    assert.deepEqual(runs, []);
+    assert.equal(calls[0]!.url, `${API}/p%201/runs?sessionId=s%2F1`);
   });
 });

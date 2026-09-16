@@ -147,6 +147,38 @@ test("GET /api/projects/:id/runs rolls up the Runs of all its Sessions", async (
   });
 });
 
+test("GET /api/projects/:id/runs can filter to one Session", async () => {
+  const records = createInMemoryRecordStore();
+  const run = (id: string, sessionId: string): Run => ({
+    id,
+    sessionId,
+    projectId: "p1",
+    status: "completed",
+    agentId: "main",
+    parameters: {},
+    input: "q",
+    output: "a",
+  });
+  await records.createProject({ id: "p1", name: "P1", createdAt: "2026-01-01T00:00:00.000Z" });
+  await records.addRun(run("r1", "s1"));
+  await records.addRun(run("r2", "s2"));
+
+  await withServer(backendWith(records), async (base) => {
+    const scoped = (await (
+      await fetch(`${base}/api/projects/p1/runs?sessionId=s1`)
+    ).json()) as { runs: Run[] };
+    assert.deepEqual(
+      scoped.runs.map((r) => r.id),
+      ["r1"],
+    );
+    const all = (await (await fetch(`${base}/api/projects/p1/runs`)).json()) as { runs: Run[] };
+    assert.deepEqual(
+      all.runs.map((r) => r.id),
+      ["r1", "r2"],
+    );
+  });
+});
+
 test("the transport route first-use records a Session under the named Project", async () => {
   const records = createInMemoryRecordStore();
   await withServer(backendWith(records), async (base) => {
