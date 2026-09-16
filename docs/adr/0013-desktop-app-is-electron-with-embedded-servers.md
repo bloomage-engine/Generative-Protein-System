@@ -57,11 +57,20 @@ model route the Researcher configures in an in-app Settings page.
     launcher env). The provider ROUTE — its endpoint and models — stays
     harness-side in `settings.yaml`; there is no `baseURL` field. `openclaw`
     remains configurable, not defaulted.
+    *Superseded in part by ADR 0015*: the workbench settings dialog is now the
+    editor, persisting to the service settings file (`SS_SETTINGS_PATH` =
+    `<userData>/settings.json`), and `transport-dsh` writes the route's
+    `baseURL` into `<dshHome>/settings.yaml`; `config.env` carries only
+    paths/extra env vars.
   - **Detect `dsh`, degrade friendly.** At startup the app probes `dsh` on PATH;
     when it is missing or `config.env` is empty, the app opens the Settings
     window instead of the workbench. Reachability is not probed and sending is
     not blocked — both are explicit deferrals, signalled by the workbench's
     runtime chip.
+    *Superseded in part by ADR 0015*: there is no standalone Settings window; a
+    missing/empty `config.env` no longer opens one, the app always opens the
+    workbench, and the settings dialog (one gear-click away) configures the
+    route into the service settings file.
   - **Data directories are the app's, with Projects user-visible.** Project Root
     defaults to `~/Documents/Science Studio/projects/<projectId>/` so research
     files are findable and backable-up; app-internal state (the JSONL record

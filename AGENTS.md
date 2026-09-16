@@ -18,7 +18,7 @@ apps/web                          Next.js frontend (assistant-ui Thread UI, port
   components/workspace              workspace browser/viewer panel
   components/ui + hooks + lib       shadcn/ui base, registry helpers
   (Tailwind v4 + shadcn/ui styling stack: postcss.config.mjs, components.json)
-apps/desktop                      Electron desktop app (docs/adr/0013). Main owns window/menu/lifecycle and forks `build/host/host.mjs` — one Node child that runs the transport-service (dsh runtime, plugins INJECTED into createBackend so the esbuild bundle needs no dynamic import) and spawns the Next standalone server as a grandchild, both loopback/ephemeral, reporting ports over IPC. The config window writes `<userData>/config.env` (DSH_PROVIDER/DSH_MODEL + credential vars), which main turns into the child env. Its `test/*.ts` ARE type-checked by the root build's last step (`tsconfig.tests.json`), but the app is not in the root `build` chain; `apps/desktop` has its own build/test/pack scripts.
+apps/desktop                      Electron desktop app (docs/adr/0013, 0015). Main owns window/menu/lifecycle and forks `build/host/host.mjs` — one Node child that runs the transport-service (dsh runtime, plugins INJECTED into createBackend so the esbuild bundle needs no dynamic import) and spawns the Next standalone server as a grandchild, both loopback/ephemeral, reporting ports over IPC. The standalone Settings window is RETIRED: the workbench dialog (Model/Plugins/Agent) is the one editor, persisting to the service settings file (`SS_SETTINGS_PATH` = `<userData>/settings.json`, docs/adr/0015); `<userData>/config.env` is narrowed to paths/extra env vars and main turns it into the child env. Its `test/*.ts` ARE type-checked by the root build's last step (`tsconfig.tests.json`), but the app is not in the root `build` chain; `apps/desktop` has its own build/test/pack scripts.
 packages/record                   RECORD SEAM PACKAGE: v1 vocabulary is Project/Session/Run only (Study/Task/Artifact/Evidence/Conclusion/AgentBlueprint deferred — docs/adr/0007) + the RecordStore contract + implementations (in-memory for tests; dependency-free JSONL used by default via RECORD_STORE_PATH). transport depends on it for Id/Run/RunStatus
 packages/transport                SEAM PACKAGE, two entries. `./seams` = the contract only: every RUNTIME seam interface (RuntimeAdapter/StateDelta, RuntimeBinding/RuntimeFactory/RuntimePlugin/RuntimeCapabilities, Principal/PrincipalResolver, Environment/EnvironmentProvider, Workspace + limits + QuotaPolicy) plus their error classes and limit constants. `.` = that contract + the shared adapter kit (`SessionRuntime` + its `SessionBehavior` / `RunFlow` queue / `foldState` / attachment helpers / `createApplyContext`, the constructor for the transcript primitives so a behavior test drives the SAME merge rules the runtime does) + pure single-user defaults (LocalPrincipalResolver, LocalEnvironmentProvider, NullWorkspace, NoopQuotaPolicy). Exports are explicit (no `export *`); pinned by test/seams.test.ts
 packages/workspace                Workspace implementations (FsWorkspace + containment/symlink/size invariants); depends on transport
@@ -32,7 +32,7 @@ examples/transport-dsh-example     minimal assistant-ui example app over the dsh
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/design/                      design specs (research-agent-framework EN/ZH + implementation-plan)
-docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete)
+docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete, 0015 deployment settings are service-owned)
 CONTEXT.md                        domain glossary (authoritative vocabulary)
 ```
 
@@ -61,9 +61,11 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   and hosts both servers itself. Packaging: `npm run pack -w @science-studio/desktop`
   (electron-builder; `dmg` on macOS, `AppImage`/`deb` on Linux). In dev the shell
   only loads `DESKTOP_DEV_URL`, so a real turn depends on the already-running dev
-  pair's own `.env` route — the Settings page and `<userData>/config.env` are a
-  packaged-app path only. The packaged app needs `dsh` on PATH and a route
-  configured in Settings. On a host whose setuid `chrome-sandbox` helper is not
+  pair's own `.env` route — the workbench settings dialog reaches the service on
+  3001 through the web proxy in dev too. In the packaged app the dialog persists
+  to `<userData>/settings.json` (`SS_SETTINGS_PATH`), and `<userData>/config.env`
+  now carries only paths/extra env vars (docs/adr/0015). The packaged app needs
+  `dsh` on PATH and a route configured in the dialog. On a host whose setuid `chrome-sandbox` helper is not
   root-owned (containers, most CI/dev boxes), Electron aborts with
   "The SUID sandbox helper binary ... is not configured correctly"; the `dev`/
   `start` scripts default to `--no-sandbox` for this (`DESKTOP_ELECTRON_FLAGS=`
