@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Activity, Cpu, Folder, FolderTree } from "lucide-react";
+import { Activity, Cpu, Folder, FolderTree, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -11,30 +11,23 @@ import {
   useWorkspaceAvailability,
 } from "@science-studio/transport-client";
 import { useStudioStore } from "@/store/studio-store";
+import { SettingsDialog } from "./settings-dialog";
+import { desktopBridge } from "@/lib/desktop-bridge";
 
 const PROJECTS_API = process.env.NEXT_PUBLIC_PROJECTS_URL ?? DEFAULT_PROJECTS_API;
 
 interface DesktopRuntimeStatus {
   dshPath: string | null;
-  provider: string | null;
-  model: string | null;
+  provider?: string | null;
+  model?: string | null;
   ready: boolean;
-}
-
-interface DesktopBridge {
-  runtimeStatus?: () => Promise<DesktopRuntimeStatus>;
-}
-
-declare global {
-  interface Window {
-    scienceStudioDesktop?: DesktopBridge;
-  }
 }
 
 export function StatusBar() {
   return (
     <footer className="flex h-7 items-center justify-between border-t bg-background px-3 text-xs text-muted-foreground">
       <div className="flex flex-1 items-center justify-start">
+        <SettingsButton />
         <WorkspaceChip />
         <RuntimeChip />
       </div>
@@ -44,6 +37,7 @@ export function StatusBar() {
       <div className="flex flex-1 items-center justify-end">
         <ProjectChip />
       </div>
+      <SettingsDialog />
     </footer>
   );
 }
@@ -81,7 +75,7 @@ function RuntimeChip() {
   const [present, setPresent] = React.useState(false);
 
   React.useEffect(() => {
-    const bridge = window.scienceStudioDesktop;
+    const bridge = desktopBridge();
     if (!bridge?.runtimeStatus) return;
     setPresent(true);
     let active = true;
@@ -263,5 +257,20 @@ function ProjectChip() {
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function SettingsButton() {
+  const openSettings = useStudioStore((s) => s.openSettings);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-5 gap-1.5 px-1.5"
+      aria-label="Settings"
+      onClick={() => openSettings()}
+    >
+      <Settings className="size-3.5" />
+    </Button>
   );
 }
