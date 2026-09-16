@@ -57,6 +57,8 @@ export interface Backend {
   recordDefaults?: RecordDefaults;
   /** Declared traits of the selected runtime (drives `/approve`, UI hints). */
   capabilities?: RuntimeCapabilities;
+  /** The deployment settings file the `/api/settings` routes read and write. */
+  settingsPath?: string;
 }
 
 /** The out-of-tree contract a private enterprise module implements. */

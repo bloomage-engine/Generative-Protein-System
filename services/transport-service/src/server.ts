@@ -34,6 +34,14 @@ import {
 import type { Backend, CorsConfig } from "./composition.js";
 import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS } from "./directory.js";
 import { canonicalSessionKey, createProjectScopes } from "./project-scope.js";
+import {
+  loadSettings,
+  mergeSettings,
+  parseSettingsPatch,
+  resolveSettingsPath,
+  saveSettings,
+  viewOf,
+} from "./settings.js";
 import { encodeOp, parseClaimedState, WireOpsBuilder } from "./wire.js";
 
 declare module "fastify" {
@@ -78,6 +86,7 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     ...(backend.recordDefaults ? { defaults: backend.recordDefaults } : {}),
   });
   const defaultProjectId = backend.recordDefaults?.projectId ?? DEFAULT_RECORD_DEFAULTS.projectId;
+  const settingsPath = backend.settingsPath ?? resolveSettingsPath(process.env);
   /** Which Project each request is serving — and its adapter + Project Workspace. */
   const scope = createProjectScopes({
     environments: backend.environments,
@@ -94,6 +103,19 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     const session = await records.getSession(sessionId);
     return session && session.projectId === projectId ? session : null;
   };
+
+  // -- Deployment settings ---------------------------------------------------
+  app.get("/api/settings", async () =>
+    viewOf(await loadSettings(settingsPath), settingsPath, process.env),
+  );
+
+  app.put("/api/settings", async (request, reply) => {
+    const parsed = parseSettingsPatch(request.body);
+    if ("error" in parsed) return reply.code(400).send({ error: parsed.error });
+    const next = mergeSettings(await loadSettings(settingsPath), parsed.patch);
+    await saveSettings(settingsPath, next);
+    return viewOf(next, settingsPath, process.env);
+  });
 
   // -- Project / Session / Run record surface --------------------------------
   app.post("/api/projects", async (request, reply) => {
