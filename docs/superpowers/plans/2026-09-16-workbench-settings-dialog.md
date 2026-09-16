@@ -1663,6 +1663,7 @@ test("applyRouteSettings updates baseURL and preserves the rest", async () => {
     assert.match(text, /# my harness settings/, "unrelated content survives");
     assert.match(text, /# the LAN endpoint/, "the route's comment survives");
     assert.match(text, /other:\n  keep: me/);
+    assert.doesNotMatch(text, /^\s*(items|range):/m, "no leaked yaml node internals");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -1751,27 +1752,27 @@ export async function applyRouteSettings(
     if ((err as { code?: string }).code !== "ENOENT") throw err;
   }
   const doc = parseDocument(text);
-  const providersPath = ["llm-pi-ai", "providers", input.provider];
-  const existing = doc.getIn(providersPath) as unknown;
-  const route: Record<string, unknown> =
-    typeof existing === "object" && existing !== null && !Array.isArray(existing)
-      ? { ...(existing as Record<string, unknown>) }
-      : {};
+  const routePath = ["llm-pi-ai", "providers", input.provider];
 
-  if (input.endpoint) route.baseURL = input.endpoint;
-  if (!("api" in route)) route.api = "openai-completions";
-  if (!route.models && input.model) route.models = [{ id: input.model }];
-  if (!("apiKeyEnv" in route) || typeof route.apiKeyEnv !== "string" || route.apiKeyEnv === "") {
-    route.apiKeyEnv = credentialEnvName(input.provider);
+  if (input.endpoint) doc.setIn([...routePath, "baseURL"], input.endpoint);
+  if (doc.getIn([...routePath, "api"]) === undefined) {
+    doc.setIn([...routePath, "api"], "openai-completions");
   }
-  doc.setIn(providersPath, route);
+  if (doc.getIn([...routePath, "models"]) === undefined && input.model) {
+    doc.setIn([...routePath, "models"], [{ id: input.model }]);
+  }
+  const existingKeyEnv = doc.getIn([...routePath, "apiKeyEnv"]);
+  const credentialName =
+    typeof existingKeyEnv === "string" && existingKeyEnv !== ""
+      ? existingKeyEnv
+      : credentialEnvName(input.provider);
+  if (credentialName !== existingKeyEnv) doc.setIn([...routePath, "apiKeyEnv"], credentialName);
 
   await mkdir(dirname(file), { recursive: true });
   const tmp = `${file}.tmp`;
   await writeFile(tmp, doc.toString(), "utf8");
   await rename(tmp, file);
 
-  const credentialName = route.apiKeyEnv as string;
   return input.apiKey ? { env: { [credentialName]: input.apiKey } } : { env: {} };
 }
 ```
