@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Every artifact (this plan, commit messages, code identifiers) is in English; conversation is Chinese.
-- No code comments anywhere (repo rule).
+- Match the existing comment style: source files carry a brief purpose comment where the shape is non-obvious; `apps/web/test/*.mjs` files open with a short "what this guards" comment (see `workspace-panel-history.test.mjs`). Do not over-comment.
 - Dependencies are pinned EXACTLY: `@headless-tree/core@1.7.0`, `@headless-tree/react@1.7.0`. Do NOT add `@base-ui/react`.
 - Follow the existing shadcn/ui + Tailwind v4 conventions (`cn` from `@/lib/utils`, `data-slot` attributes).
 - The real type gate is the root `npm run build`; the root `npm run typecheck` is known-broken (TS6310). Use `npm run typecheck -w @science-studio/web` for the app, after `npm run build -w @science-studio/transport-client`.
