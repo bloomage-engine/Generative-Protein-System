@@ -1,12 +1,18 @@
 import type { BundledLanguage } from "shiki";
+import { isStructureFile } from "@science-studio/molql-viewer/formats";
 
 /**
  * Infer a renderer + code language from a file name / mime (the workspace API
  * gives us a `mime` and a basename; there is no explicit kind field).
+ *
+ * `structure` is detected by NAME, not mime: molecular structure files are
+ * served as `application/octet-stream` (their extensions are not in the
+ * workspace mime map), so the extension is the only signal.
  */
-export type FileKind = "markdown" | "json" | "code" | "text";
+export type FileKind = "markdown" | "json" | "code" | "text" | "structure";
 
 export function kindFor(name: string, mime?: string | null): FileKind {
+  if (isStructureFile(name)) return "structure";
   const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
   if (mime?.startsWith("text/markdown") || ext === "md" || ext === "markdown" || ext === "mdx")
     return "markdown";

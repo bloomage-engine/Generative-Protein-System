@@ -11,9 +11,10 @@ apps/web                          Next.js frontend (assistant-ui Thread UI, port
   app/page.tsx                      the SPA home — seeds the Project/Session scope, then renders the workbench
   app/projects/[projectId]/sessions/[sessionId]/page.tsx  the same workbench, scoped by the route
   app/api/{transport,workspace,projects}  proxies to the service (streaming ones MUST NOT be next.config rewrites — they buffer — nor `fetch`, whose 300 s body deadline kills an idle stream; see lib/stream-proxy.ts)
-  components/studio                 the workbench shell: top bar (its two switch buttons give the LEFT slot to the conversation or the Projects pane), Projects pane (create/switch Project + Session over `/api/projects*`), file tree/preview panes, tab strip, status bar
+  components/studio                 the workbench shell: top bar (its two switch buttons give the LEFT slot to the conversation or the Projects pane), Projects pane (create/switch Project + Session over `/api/projects*`), file tree/preview panes, tab strip, status bar. `renderers/StructureRenderer.tsx` is the molecular-structure preview (dynamic `ssr:false` Mol* viewer + a manual MolQL console)
   store/studio-store.ts             the shell's scope + chrome state (projects list, active Project/Session, left view + panel visibility, open tabs)
-  components/session-view.tsx       providers + the memoized runtime owner; with no scope it renders the chrome alone
+  components/session-view.tsx       providers + the memoized runtime owner; with no scope it renders the chrome alone. Mounts `components/assistant-ui/frontend-bridge.tsx` (the agent tool-call → UI bridge) just inside `AssistantRuntimeProvider`
+  lib/frontend-actions              app-local registry mapping a tool name (e.g. `molql`) to a UI handler; `molql.ts` dynamically imports `@science-studio/molql-viewer` so molstar never enters the chat bundle
   components/assistant-ui/elements  Thread UI registered from the assistant-ui registry
   components/workspace              workspace browser/viewer panel
   components/ui + hooks + lib       shadcn/ui base, registry helpers
@@ -25,6 +26,10 @@ packages/contract-tests          the SHARED seam conformance suites (testPrincip
 packages/transport-client         assistant-ui client boundary (single `useTransport` session hook = history probe + standing watch + guarded import; state converter; command catalog + slash-menu / reasoning-trace helpers)
 packages/transport-openclaw       openclaw runtime adapter — owns its OWN launch surface (`GatewayBinding`), factory, capabilities and `runtimePlugins`; ports gateway WS
 packages/transport-dsh            dsh runtime adapter — owns `DshBinding` + factory + `runtimePlugins` (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC)
+packages/molql-viewer             structure preview + Mol* integration. Compiles the agent's MolQL (Mol* `mol-script`) into a Selection and selects/highlights/focuses it. Entries `./formats` and `./directive` are molstar-runtime-free (Node-testable); `.` imports molstar and is browser-only (dynamic `ssr:false`). Exposes `MolqlViewer`/`MolqlViewerPanel`, `applyMolqlSelection`, `applyMolqlToolResult`, `parseMolqlToolResult`, and the active-viewer registry. Pinned to molstar 5.9.0
+packages/plugins/molql-tool-dsh   dsh harness plugin registering the `molql` tool (`ctx.tools.register(defineTool(...))`) and an embedded MolQL skill. Agent-side deployable — deliberately NOT a root workspace and NOT in the root build (own `scripts/sync-skill.mjs` + `tsc`)
+packages/plugins/molql-tool-openclaw  openclaw gateway plugin registering the same `molql` tool (`defineToolPlugin`; `openclaw.plugin.json`). Needs the large `openclaw` package (absent from the root install) — built/deployed on its own; NOT a root workspace/build
+packages/skills/molql             the canonical MolQL skill (`SKILL.md` + `references/molql-syntax.md`); the single source of truth, copied into each plugin's `skill/` by its `sync-skill.mjs`. Not an npm package (workspaces negations exclude `packages/skills` and `packages/plugins`)
 services/transport-service        backend assistant-transport service — Fastify, port 3001. Composition root: `src/composition.ts`. `TRANSPORT_RUNTIME` picks the runtime product; runtime modules are loaded DYNAMICALLY by specifier, so the service statically imports NO runtime package. The DEFAULT module list is DATA — `scienceStudio.runtimeModules` in this package's own `package.json` — and `SS_RUNTIME_MODULES` overrides it entirely, so adding a runtime edits no core code. `SS_ENTERPRISE_MODULE` swaps in the private multi-user backend; unset = the complete single-user product.
 examples/transport-openclaw-example  minimal assistant-ui example app over the openclaw adapter (Vite + core primitives; dev-only, not in the root build)
 examples/transport-dsh-example     minimal assistant-ui example app over the dsh adapter (local harness; dev-only, not in the root build)
@@ -90,7 +95,7 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 - `npm run dev -w @science-studio/transport-openclaw-example` — the example app: Vite (5173, proxies `/api`) + the openclaw adapter behind `@science-studio/transport-service` (3200). Needs `examples/transport-openclaw-example/.env` (see its `.env.example`) and a live gateway, and `npm run build` first (imports deps from dist). Dev-only — intentionally NOT in the root build gate; its `npm run test` drives the same wiring against a scripted gateway (no live gateway needed).
 - `npm run dev -w @science-studio/transport-dsh-example` — the same shape over the dsh adapter: Vite (5173) + `@science-studio/transport-service` (3300); the adapter spawns `dsh --profile sdk` locally (needs `examples/transport-dsh-example/.env` with `DEEPSEEK_API_KEY`, the model route `HARNESS_PROVIDER`/`HARNESS_MODEL`, and that route's `apiKeyEnv` name — `server.ts` promotes those two `HARNESS_*` names to the launch-only `DSH_PROVIDER`/`DSH_MODEL` before the adapter reads it, because the harness child runs with that folder as cwd and the dsh CLI reads that same `.env` and hard-refuses any `DSH_*` key in it; the route itself — endpoint/models — is declared harness-side in `<harness home>/settings.yaml`, and the default example route is the LAN ollama `ollama-local`/`qwen3.8:latest`; defaults when `HARNESS_*` is unset: profile `sdk`, home `~/.dsh`, workspace = the example dir, transcript mirror under the service tmp dir, adapter provider/model `deepseek-official`/`deepseek-v4-flash` — override `DSH_HOME`/`DSH_TRANSCRIPT_DIR`/`DSH_MODEL`… via exported env). Its `npm run test` drives the wiring against a scripted turn client (no dsh process needed).
 - `npm run test:e2e -w @science-studio/web` — the web app's browser regression test: mocks the transport + workspace HTTP surface, loads history, clicks the Files panel and asserts the history survives (the re-render invariant above). Needs a Chromium (auto-detected; the test SKIPS without one) and `npm run build -w @science-studio/transport-client` first. Dev-only — NOT part of the root `npm test`.
-- `npm run build` — build record → transport → workspace → contract-tests → transport-client → transport-openclaw → transport-dsh → transport-service; this is the real type gate
+- `npm run build` — build record → transport → workspace → contract-tests → transport-client → molql-viewer → transport-openclaw → transport-dsh → transport-service; this is the real type gate. The two `packages/plugins/molql-tool-*` agent-side packages are NOT in this gate (they are built/deployed independently; `packages/plugins`/`packages/skills` are excluded from the root workspaces)
 - `npm run typecheck` — **known-broken**: fails in transport-service with pre-existing TS6310 (composite refs + `--noEmit`). Other workspaces pass; use `npm run build` for the service.
 - `npm run smoke:adapter` — connect a real openclaw adapter to a live gateway and drive one `chat.send` (sends a real message to `OPENCLAW_DEFAULT_SESSION` unless `SMOKE_SESSION` overrides it). Needs `npm run build` first.
 - `npm run smoke:replay -- <file>` — fold recorded SSE frames through the client decoder/accumulator (verifies a stream terminates with `[DONE]` and only uses `set` ops).
@@ -216,6 +221,44 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   streams. Run control reaches the adapter through `POST /api/transport/abort` and
   `POST /api/transport/approve`; `/approve` answers **501** when the runtime has
   no approval surface (`RuntimeAdapter.approve` is optional).
+
+## Molecular-structure preview and the `molql` tool
+
+- **The structure preview is a renderer, not a package change.** The workspace
+  center pane (`components/studio/file-preview-pane.tsx`) detects a structure
+  file BY NAME (`kindFor` → `"structure"`; the workspace mime map does not know
+  PDB/CIF, so they arrive as `application/octet-stream`) and lazily mounts
+  `renderers/StructureRenderer.tsx` (`dynamic(..., {ssr:false})`, since Mol* is
+  browser-only). It loads the file through the workspace URL and embeds Mol* via
+  `PluginUIContext` (`@science-studio/molql-viewer`). `packages/workspace` is
+  untouched.
+- **`@science-studio/molql-viewer` is the browser boundary.** `applyMolqlSelection`
+  compiles the expression with `Script.toLoci({expression, language:'mol-script'}, structure)`
+  and, by default, applies a PERSISTENT selection (`interactivity.lociSelects.selectOnly`)
+  plus a camera focus (`managers.camera.focusLoci`); `mode:"highlight"` uses the
+  transient `lociHighlights.highlightOnly`. `molstar` is pinned exactly `5.9.0`
+  and its skin is imported by the app (which owns `sass`), so the package stays a
+  pure `tsc` build and its `./formats` + `./directive` entries stay
+  molstar-runtime-free (and thus Node-testable).
+- **The agent drives it through one tool, `molql`**, registered by BOTH plugins
+  (`packages/plugins/molql-tool-dsh`, `packages/plugins/molql-tool-openclaw`).
+  The tool output is the JSON contract
+  `{ type:"molql-selection", molql, description?, focus?, mode? }`; the model does
+  the natural-language translation, the tool only structures/forwards it. Syntax
+  validation is FRONTEND-only (the browser has the structure); the server-side
+  tool does not import Mol*.
+- **The wire already carries the result.** Both adapters merge a tool's output
+  into its `tool-call` part's `result` string, so no adapter/service change is
+  needed. The bridge (`components/assistant-ui/frontend-bridge.tsx`, mounted in
+  `session-view.tsx`) registers a tool-call renderer for `molql`, dispatches each
+  completed call exactly once (keyed by `toolCallId`), and hands the raw result to
+  the app-local handler (`lib/frontend-actions/molql.ts`), which dynamically
+  imports `molql-viewer` and applies it. The chat bundle never imports molstar.
+- **The skill is the manual, the tool is the channel.** `packages/skills/molql`
+  is the single source (cheat-sheet → tool description; full
+  `references/molql-syntax.md` → embedded skill). Each plugin's
+  `scripts/sync-skill.mjs` copies it into its own `skill/` at build time; the
+  plugin packages are agent-side deployables and are NOT in the root build.
 
 ## Architecture rules
 

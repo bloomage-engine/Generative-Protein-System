@@ -1,0 +1,39 @@
+{
+  "name": "@science-studio/molql-tool-dsh",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DeepSeek Harness plugin registering the `molql` tool: the agent emits a Mol* mol-script selection as structured JSON that the Science Studio viewer applies.",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    }
+  },
+  "files": [
+    "lib",
+    "skill"
+  ],
+  "scripts": {
+    "sync-skill": "node scripts/sync-skill.mjs",
+    "build": "node scripts/sync-skill.mjs && tsc -b",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-llm": "^0.1.5-alpha.1",
+    "@deepseek-ai/dsh-skill": "^0.1.5-alpha.1",
+    "@deepseek-ai/dsh-tools": "^0.1.5-alpha.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-skill": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@deepseek-ai/schemastery": "^3.18.2",
+    "typescript": "^5.5.0"
+  }
+}

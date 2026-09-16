@@ -101,6 +101,39 @@ gateway's `commands.list`) and fetched over `GET /api/transport/commands`, so
 the frontend never hardcodes a runtime's command set.
 _Avoid_: Menu config, Slash list, Command registry
 
+## Structure Viewing (MolQL)
+
+Vocabulary for the molecular-structure preview and the agent's ability to drive
+it. The viewer is a renderer over a Project Workspace file, not a record entity.
+
+**Structure File**:
+A molecular structure in a file the Project Workspace holds — PDB, mmCIF/BCIF,
+MOL/MOL2, SDF, XYZ, GRO, … Detected by file name (their MIME types are not in the
+workspace map); opened in the center pane's structure preview.
+_Avoid_: Model file, Molecule, Protein file
+
+**MolQL**:
+The selection language the agent speaks to the structure viewer. It is Mol*'s
+`mol-script` S-expression language, e.g. `(sel.atom.chains (= atom.chain A))`,
+`(sel.atom.res (in-range atom.resno 10 20))`. The model translates natural
+language into MolQL; the viewer compiles it with Mol*.
+_Avoid_: MolScript query, Selection string, SQL
+
+**Selection**:
+The set of atoms a MolQL expression resolves to against the loaded structure,
+plus how it is shown. `"select"` (default) is a persistent selection that stays
+highlighted and visible in Mol*'s selection list; `"highlight"` is a transient
+emphasis. Selecting also focuses the camera unless told otherwise.
+_Avoid_: Highlight (when the persistent mode is meant), Mark, Pick
+
+**`molql` Tool**:
+The single agent tool that carries a MolQL expression to the viewer, registered
+by both runtime plugins (`molql-tool-dsh`, `molql-tool-openclaw`). It returns the
+JSON contract `{ type:"molql-selection", molql, description?, focus?, mode? }`;
+the web app parses it and applies it. The tool does not validate against a
+structure — only the browser can.
+_Avoid_: Molstar tool, Structure tool, Viewer command
+
 **Workflow** (also **DAG**):
 A composition overlay that chains multiple steps so that one Run's output becomes
 a downstream step's input. Optional in the first version; a later structured mode

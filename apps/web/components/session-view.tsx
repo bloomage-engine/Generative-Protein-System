@@ -10,6 +10,7 @@ import {
   useTransportApi,
 } from "@science-studio/transport-client";
 import { StudioShell } from "./studio/shell";
+import { FrontendBridge } from "./assistant-ui/frontend-bridge";
 import { useStudioStore } from "@/store/studio-store";
 
 /**
@@ -66,6 +67,7 @@ const Session = memo(function Session({
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+      <FrontendBridge />
       <WorkspaceOpenProvider onOpen={(ref) => openFile(ref.workspacePath, ref.name)}>
         <StudioShell projectId={projectId} />
       </WorkspaceOpenProvider>

@@ -5,3 +5,7 @@ dist/
 .env
 .env.local
 .DS_Store
+# agent-side plugin packages (not root workspaces): generated build output and
+# the skill copy synced from packages/skills/molql
+packages/plugins/*/lib/
+packages/plugins/*/skill/

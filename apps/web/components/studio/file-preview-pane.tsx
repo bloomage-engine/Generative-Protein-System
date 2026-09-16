@@ -1,7 +1,13 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Download, FileX, Loader2, X } from "lucide-react";
-import { useWorkspaceFile } from "@science-studio/transport-client";
+import {
+  useWorkspaceApi,
+  useWorkspaceFile,
+  workspaceFileUrl,
+} from "@science-studio/transport-client";
+import { isStructureFile } from "@science-studio/molql-viewer/formats";
 import { Button } from "@/components/ui/button";
 import { kindFor, languageFor } from "./file-utils";
 import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
@@ -9,6 +15,19 @@ import { CodeRenderer } from "./renderers/CodeRenderer";
 import { JsonRenderer } from "./renderers/JsonRenderer";
 import { PlainTextRenderer } from "./renderers/PlainTextRenderer";
 import { useStudioStore } from "@/store/studio-store";
+
+/** Mol* is browser-only, so the structure renderer loads lazily (no SSR). */
+const StructureRenderer = dynamic(
+  () => import("./renderers/StructureRenderer").then((m) => m.StructureRenderer),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="text-muted-foreground size-4 animate-spin" />
+      </div>
+    ),
+  },
+);
 
 export function FilePreviewPane() {
   const tabs = useStudioStore((s) => s.tabs);
@@ -29,10 +48,9 @@ export function FilePreviewPane() {
 }
 
 function Preview({ path, name }: { path: string; name: string }) {
-  const { text, mime, isBinary, isLoading, error, downloadUrl } = useWorkspaceFile(path);
+  const { api, project } = useWorkspaceApi();
   const closeTab = useStudioStore((s) => s.closeTab);
-  const kind = kindFor(name, mime);
-  const language = kindFor(name, mime) === "code" ? languageFor(name, kind) : undefined;
+  const downloadUrl = workspaceFileUrl(api, path, { download: true, project });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -59,28 +77,44 @@ function Preview({ path, name }: { path: string; name: string }) {
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-hidden">
-        {isLoading && (
-          <div className="flex justify-center p-4">
-            <Loader2 className="text-muted-foreground size-4 animate-spin" />
-          </div>
-        )}
-        {error && <p className="text-destructive p-3 text-xs">{error}</p>}
-        {!isLoading && !error && (
-          text == null ? (
-            <p className="text-muted-foreground p-4 text-sm">
-              {mime ?? "Binary file"} — preview is not available. Use download.
-            </p>
-          ) : kind === "markdown" ? (
-            <MarkdownRenderer content={text} />
-          ) : kind === "json" ? (
-            <JsonRenderer content={text} />
-          ) : kind === "code" && language ? (
-            <CodeRenderer content={text} language={language} />
-          ) : (
-            <PlainTextRenderer content={text} />
-          )
+        {isStructureFile(name) ? (
+          <StructureRenderer path={path} name={name} />
+        ) : (
+          <TextPreview path={path} name={name} />
         )}
       </div>
     </div>
+  );
+}
+
+function TextPreview({ path, name }: { path: string; name: string }) {
+  const { text, mime, isLoading, error } = useWorkspaceFile(path);
+  const kind = kindFor(name, mime);
+  const language = kind === "code" ? languageFor(name, kind) : undefined;
+
+  return (
+    <>
+      {isLoading && (
+        <div className="flex justify-center p-4">
+          <Loader2 className="text-muted-foreground size-4 animate-spin" />
+        </div>
+      )}
+      {error && <p className="text-destructive p-3 text-xs">{error}</p>}
+      {!isLoading &&
+        !error &&
+        (text == null ? (
+          <p className="text-muted-foreground p-4 text-sm">
+            {mime ?? "Binary file"} — preview is not available. Use download.
+          </p>
+        ) : kind === "markdown" ? (
+          <MarkdownRenderer content={text} />
+        ) : kind === "json" ? (
+          <JsonRenderer content={text} />
+        ) : kind === "code" && language ? (
+          <CodeRenderer content={text} language={language} />
+        ) : (
+          <PlainTextRenderer content={text} />
+        ))}
+    </>
   );
 }
