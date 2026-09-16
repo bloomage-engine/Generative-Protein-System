@@ -265,6 +265,48 @@ test("recycle of a never-created root is a no-op", async () => {
   }
 });
 
+test("delete removes a single file", async () => {
+  const { root, dispose } = await makeFixture();
+  try {
+    const ws = workspaceFor(root);
+    await ws.delete("data.csv");
+    await assert.rejects(() => ws.stat("data.csv"), WorkspaceNotFoundError);
+    const listing = await ws.list();
+    assert.ok(!listing.entries.some((e) => e.name === "data.csv"));
+  } finally {
+    await dispose();
+  }
+});
+
+test("delete removes a whole directory tree", async () => {
+  const { root, dispose } = await makeFixture();
+  try {
+    const ws = workspaceFor(root);
+    await ws.delete("analysis");
+    await assert.rejects(() => ws.stat("analysis"), WorkspaceNotFoundError);
+    await assert.rejects(() => ws.stat("analysis/notes.md"), WorkspaceNotFoundError);
+    const listing = await ws.list();
+    assert.ok(!listing.entries.some((e) => e.name === "analysis"));
+  } finally {
+    await dispose();
+  }
+});
+
+test("delete refuses escaping paths, the root, and symlinks", async () => {
+  const { root, dispose } = await makeFixture();
+  try {
+    const ws = workspaceFor(root);
+    await assert.rejects(() => ws.delete("../evil"), WorkspacePathError);
+    await assert.rejects(() => ws.delete("/abs"), WorkspacePathError);
+    await assert.rejects(() => ws.delete(""), WorkspacePathError);
+
+    await symlink(join(root, "data.csv"), join(root, "link.csv"));
+    await assert.rejects(() => ws.delete("link.csv"), WorkspaceEscapeError);
+  } finally {
+    await dispose();
+  }
+});
+
 test("write refuses escaping paths, the root itself, and overwrite:false", async () => {
 const { root, dispose } = await makeFixture();
 try {

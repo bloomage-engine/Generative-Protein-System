@@ -225,6 +225,24 @@ export class FsWorkspace implements Workspace {
   }
 
   /**
+   * Remove a file or directory (recursively). `resolveExisting` applies the same
+   * containment and symlink rules as every other path, so this can never touch
+   * anything outside the root or follow a symlink out. A path that disappears
+   * between the resolve and the `rm` is a clean 404, not a crash.
+   */
+  async delete(relPath: string): Promise<void> {
+    const rel = normalizeWorkspacePath(relPath);
+    if (rel === "") throw new WorkspacePathError("delete requires a file or directory path");
+    const { abs } = await this.resolveExisting(rel);
+    try {
+      await rm(abs, { recursive: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new WorkspaceNotFoundError(rel);
+      throw err;
+    }
+  }
+
+  /**
    * Move the whole workspace into a sibling `.recycle/` bin (docs/adr/0014):
    * delete is irreversible from the UI, but the bytes stay on disk for manual
    * recovery. A distinct agent root is moved alongside it; a root that does not

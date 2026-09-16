@@ -32,8 +32,12 @@ export interface StreamUpstream {
 export interface StreamUpstreamOptions {
   method?: string;
   headers?: Record<string, string>;
-  /** The request body to send; these payloads are small and already read. */
-  body?: string;
+  /**
+   * The request body to send. Text for the small JSON hops; `Uint8Array` for a
+   * raw binary upload, relayed verbatim (the bytes the browser sent become the
+   * exact bytes the service receives).
+   */
+  body?: string | Uint8Array;
   /** Response headers to forward, by name (only those the upstream sent). */
   forward?: readonly string[];
 }
@@ -47,7 +51,9 @@ export async function requestStream(
   const method = options.method ?? "GET";
   const headers: Record<string, string> = { ...options.headers };
   if (options.body !== undefined) {
-    headers["content-length"] = String(Buffer.byteLength(options.body));
+    headers["content-length"] = String(
+      typeof options.body === "string" ? Buffer.byteLength(options.body) : options.body.byteLength,
+    );
   }
 
   return await new Promise<StreamUpstream>((resolve, reject) => {

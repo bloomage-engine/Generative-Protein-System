@@ -438,6 +438,20 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     });
   });
 
+  app.post("/api/workspace/delete", async (request, reply) => {
+    const { path } = request.query as { path?: string };
+    if (!path) return reply.code(400).send({ error: "path is required" });
+    return scope.withWorkspace(request, reply, async ({ environment }) => {
+      // `delete` is optional in the seam (a read-only or NullWorkspace omits it);
+      // the seam's own failures (not found, path error) are mapped by withWorkspace.
+      if (typeof environment.workspace.delete !== "function") {
+        return reply.code(501).send({ error: "this workspace does not support delete" });
+      }
+      await environment.workspace.delete(path);
+      return { ok: true };
+    });
+  });
+
   return app;
 }
 

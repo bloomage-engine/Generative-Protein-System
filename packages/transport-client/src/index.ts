@@ -34,6 +34,8 @@ export {
   fetchWorkspaceEntries,
   fetchWorkspaceStat,
   workspaceFileUrl,
+  uploadWorkspaceFile,
+  deleteWorkspaceEntry,
   useWorkspaceBrowser,
   type WorkspaceBrowser,
   useWorkspaceRoot,
