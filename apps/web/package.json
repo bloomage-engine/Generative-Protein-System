@@ -13,6 +13,7 @@
     "@assistant-ui/react": "^0.15.0",
     "@assistant-ui/react-markdown": "0.14.14",
     "@base-ui/react": "1.8.0",
+    "@embedpdf/react-pdf-viewer": "2.14.2",
     "@headless-tree/core": "1.7.0",
     "@headless-tree/react": "1.7.0",
     "@science-studio/transport": "*",
@@ -23,6 +24,7 @@
     "class-variance-authority": "0.7.1",
     "cn": "0.2.6",
     "lucide-react": "1.42.0",
+    "molstar": "5.9.0",
     "next": "^15.0.0",
     "next-themes": "0.4.6",
     "radix-ui": "1.6.7",
@@ -43,6 +45,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "playwright-core": "1.55.0",
+    "sass": "1.99.0",
     "typescript": "^5.5.0"
   }
 }

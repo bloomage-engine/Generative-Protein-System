@@ -380,6 +380,23 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   remounts the shell (`StudioHost` keys `SessionView` by
   `projectId/sessionId`), and a Project switch clears `tabs`. The regression
   guard is `apps/web/test/tab-state.test.mjs`.
+- **PDF and structure previews are by file NAME, and the viewer fetches its own
+  bytes.** `apps/web/components/studio/file-utils.ts` adds `pdf`/`molecule` to
+  `FileKind` and decides them from the name, because the workspace service
+  serves `.pdf` as `application/pdf` and every structure format
+  (`.pdb/.cif/.mmcif/.mol/.mol2/.bcif` + `.gz`) as
+  `application/octet-stream` — a MIME sniff cannot tell them apart. `Preview`
+  routes those kinds to `renderers/PdfRenderer.tsx` (EmbedPDF; external webfonts
+  disabled) and `renderers/MoleculeRenderer.tsx` (Mol*, browser-only via
+  `next/dynamic(... ssr:false)`), handing them the inline
+  `workspaceFileUrl(api, path, { project })`; ONLY text kinds call
+  `useWorkspaceFile`, so a viewer never downloads the file twice. The Mol* port
+  lives in `renderers/molecule-viewer.ts`. The routing is pinned by
+  `apps/web/test/file-kinds.test.mjs`. **The Mol* init/dispose is async and
+  race-guarded** (`MolstarViewer.disposed`): dev StrictMode double-invokes the
+  effect, and a dispose that runs before `createPluginUI` resolves would
+  otherwise leave the orphaned plugin's blank canvas stacked above the loaded
+  one — the "plugin loads but the structure is blank" symptom.
 - **Adapters compose one shared run lifecycle** in `@science-studio/transport`
   (docs/adr/0005): `SessionRuntime` owns the run loop (reconcile-first, probe
   termination, user echo, flow drain), the settle pipeline (project →
