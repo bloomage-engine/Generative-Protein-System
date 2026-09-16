@@ -11,7 +11,7 @@
  * Best-effort by contract: a caller catches failures and lets `init` continue
  * on whatever route was already configured.
  */
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseDocument } from "yaml";
 
@@ -47,24 +47,37 @@ export async function applyRouteSettings(
   const doc = parseDocument(text);
   const routePath = ["llm-pi-ai", "providers", input.provider];
 
-  if (input.endpoint) doc.setIn([...routePath, "baseURL"], input.endpoint);
+  // An endpoint-only call must not invent a credential name: the route may get
+  // its key from an ambient env var whose NAME this function cannot know. Only a
+  // supplied key resolves (and, if new, writes) `apiKeyEnv`.
+  const routeMissing = doc.getIn(routePath) === undefined;
+  const changesEndpoint =
+    input.endpoint !== undefined && (routeMissing || input.endpoint !== doc.getIn([...routePath, "baseURL"]));
+  if (!changesEndpoint && !input.apiKey) return null;
+
+  if (input.endpoint !== undefined) doc.setIn([...routePath, "baseURL"], input.endpoint);
   if (doc.getIn([...routePath, "api"]) === undefined) {
     doc.setIn([...routePath, "api"], "openai-completions");
   }
   if (doc.getIn([...routePath, "models"]) === undefined && input.model) {
     doc.setIn([...routePath, "models"], [{ id: input.model }]);
   }
-  const existingKeyEnv = doc.getIn([...routePath, "apiKeyEnv"]);
-  const credentialName =
-    typeof existingKeyEnv === "string" && existingKeyEnv !== ""
-      ? existingKeyEnv
-      : credentialEnvName(input.provider);
-  if (credentialName !== existingKeyEnv) doc.setIn([...routePath, "apiKeyEnv"], credentialName);
+
+  let credentialName: string | undefined;
+  if (input.apiKey) {
+    const existingKeyEnv = doc.getIn([...routePath, "apiKeyEnv"]);
+    credentialName =
+      typeof existingKeyEnv === "string" && existingKeyEnv !== ""
+        ? existingKeyEnv
+        : credentialEnvName(input.provider);
+    if (credentialName !== existingKeyEnv) doc.setIn([...routePath, "apiKeyEnv"], credentialName);
+  }
 
   await mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  await writeFile(tmp, doc.toString(), "utf8");
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  await writeFile(tmp, doc.toString(), { encoding: "utf8", mode: 0o600 });
+  await chmod(tmp, 0o600);
   await rename(tmp, file);
 
-  return input.apiKey ? { env: { [credentialName]: input.apiKey } } : { env: {} };
+  return { env: input.apiKey && credentialName ? { [credentialName]: input.apiKey } : {} };
 }

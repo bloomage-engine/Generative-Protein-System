@@ -236,7 +236,10 @@ async function localBackend(
           binding,
           recordStore,
           workspace,
-          env: { ...runtimeEnv },
+          // The generic adapter env is the ORIGINAL launch env: a runtime's
+          // credential reaches it through its own binding (dsh: `DshBinding`),
+          // so the plaintext key must not ride along in a broadly-read object.
+          env: { ...env },
           ...(project === null
             ? {}
             : { project: { id: project.id, name: project.name, createdAt: project.createdAt } }),

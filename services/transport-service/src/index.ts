@@ -84,7 +84,9 @@ async function backendFromAdapters(options: TransportServiceOptions): Promise<Ba
     // doubles, whose init() ignores it.
     const binding = plugin ? plugin.localBinding(runtimeEnv) : { runtime: adapter.runtime, config: {} };
     try {
-      await adapter.init({ binding, recordStore, workspace, env: { ...runtimeEnv } });
+      // As in `localBackend`: the generic env stays the original launch env; a
+      // runtime's credential travels in its binding, not this shared object.
+      await adapter.init({ binding, recordStore, workspace, env: { ...env } });
     } catch (err) {
       console.error("[transport-service] adapter init failed", err);
     }

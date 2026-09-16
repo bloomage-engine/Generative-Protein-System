@@ -2,6 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as seams from "../src/seams.js";
 import * as root from "../src/index.js";
+import type {
+  ModelSettings,
+  ModelSettingsPatch,
+  RuntimeSettings,
+  RuntimeSettingsPatch,
+  RuntimeSettingsView,
+} from "../src/settings.js";
 
 /**
  * The seam split is a boundary, not a convention: `./seams` carries the contract
@@ -60,4 +67,27 @@ test("the package root still carries kit and defaults on top of the contract", (
   for (const name of [...CONTRACT_VALUES, ...NON_CONTRACT_NAMES]) {
     assert.ok(name in root, `root should export ${name}`);
   }
+});
+
+/**
+ * The settings contract is TYPE-ONLY, so the value-space loops above cannot see
+ * it. This block is the compile-time pin: each of the five types must be
+ * importable from `../src/settings.js` and usable to build a real value.
+ */
+test("the settings contract types are importable and usable", () => {
+  const model: ModelSettings = { provider: "ollama-local", model: "qwen3.8:latest", apiKey: "k" };
+  const modelPatch: ModelSettingsPatch = { provider: "ollama-local", apiKey: null };
+  const settings: RuntimeSettings = { model, plugins: {}, agent: {} };
+  const patch: RuntimeSettingsPatch = { model: modelPatch, plugins: { a: 1 } };
+  const view: RuntimeSettingsView = {
+    model: { provider: model.provider, apiKeyConfigured: true },
+    plugins: {},
+    agent: {},
+    runtime: "dsh",
+    settingsPath: "/tmp/settings.json",
+  };
+  assert.equal(settings.model.provider, "ollama-local");
+  assert.equal(patch.model?.apiKey ?? null, null);
+  assert.equal(view.model.apiKeyConfigured, true);
+  assert.equal(view.settingsPath, "/tmp/settings.json");
 });

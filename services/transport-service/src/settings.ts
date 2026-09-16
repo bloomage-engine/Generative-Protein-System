@@ -6,7 +6,7 @@
  * The key is stored plaintext (a single-user local install has no secret
  * store) but is write-only over HTTP and never logged.
  */
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
@@ -49,17 +49,28 @@ export async function loadSettings(path: string): Promise<RuntimeSettings> {
 
 export async function saveSettings(path: string, settings: RuntimeSettings): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
+  // A unique temp name keeps two writers from racing on one scratch file; the
+  // rename is atomic either way, but a shared `${path}.tmp` could be clobbered
+  // mid-write. `chmod` is explicit so an existing file's mode can never leak in.
+  const tmp = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  await writeFile(tmp, `${JSON.stringify(settings, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  await chmod(tmp, 0o600);
   await rename(tmp, path);
 }
 
 export function mergeSettings(current: RuntimeSettings, patch: RuntimeSettingsPatch): RuntimeSettings {
   const model: ModelSettings = { ...current.model };
   if (patch.model) {
-    if (patch.model.provider !== undefined) model.provider = patch.model.provider;
-    if (patch.model.model !== undefined) model.model = patch.model.model;
-    if (patch.model.endpoint !== undefined) model.endpoint = patch.model.endpoint;
+    // An empty-string provider/model/endpoint is a CLEAR: `applySettingsToEnv`
+    // uses truthiness, so persisting "" would invisibly lose to the ambient env
+    // (making `settings > env` inconsistent). `apiKey: ""` stays a value (only
+    // `null` clears) because the dialog uses it as a real, distinct input.
+    for (const key of ["provider", "model", "endpoint"] as const) {
+      const value = patch.model[key];
+      if (value === undefined) continue;
+      if (value === "") delete model[key];
+      else model[key] = value;
+    }
     if ("apiKey" in patch.model) {
       if (patch.model.apiKey === null) delete model.apiKey;
       else if (patch.model.apiKey !== undefined) model.apiKey = patch.model.apiKey;

@@ -110,6 +110,15 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
   );
 
   app.put("/api/settings", async (request, reply) => {
+    // Deployment settings are shared: in hosted mode only a manager (or the
+    // credential-less local principal) may overwrite them, so a researcher's
+    // browser cannot change every tenant's route. GET stays principal-only.
+    const principal = request.principal!;
+    if (!principal.local && !principal.roles.includes("manager")) {
+      return reply
+        .code(403)
+        .send({ error: "changing settings requires a local or manager principal" });
+    }
     const parsed = parseSettingsPatch(request.body);
     if ("error" in parsed) return reply.code(400).send({ error: parsed.error });
     const next = mergeSettings(await loadSettings(settingsPath), parsed.patch);

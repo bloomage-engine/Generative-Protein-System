@@ -84,3 +84,72 @@ test("applyRouteSettings creates a route when the file is absent", async () => {
 test("applyRouteSettings is a no-op without an endpoint or key", async () => {
   assert.equal(await applyRouteSettings({ home: "/nope", provider: "p" }), null);
 });
+
+test("applyRouteSettings reuses an existing, differently-named apiKeyEnv", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ss-route-settings-reuse-"));
+  try {
+    const file = join(dir, "settings.yaml");
+    await writeFile(
+      file,
+      `llm-pi-ai:\n  providers:\n    ollama-local:\n      api: openai-completions\n      baseURL: http://old:11434/v1\n      apiKeyEnv: CUSTOM_KEY_NAME\n`,
+    );
+    const result = await applyRouteSettings({
+      home: dir,
+      provider: "ollama-local",
+      apiKey: "secret",
+    });
+    assert.deepEqual(result, { env: { CUSTOM_KEY_NAME: "secret" } });
+    const text = await readFile(file, "utf8");
+    assert.match(text, /apiKeyEnv: CUSTOM_KEY_NAME/);
+    assert.doesNotMatch(text, /OLLAMA_LOCAL_API_KEY/, "the derived name must not overwrite the existing one");
+    assert.doesNotMatch(text, /secret/, "the raw key never appears in the file");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("an endpoint-only apply never adds an apiKeyEnv", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ss-route-settings-endpoint-"));
+  try {
+    const file = join(dir, "settings.yaml");
+    await writeFile(
+      file,
+      `llm-pi-ai:\n  providers:\n    ollama-local:\n      api: openai-completions\n      baseURL: http://old:11434/v1\n`,
+    );
+    const result = await applyRouteSettings({
+      home: dir,
+      provider: "ollama-local",
+      endpoint: "http://new:11434/v1",
+    });
+    assert.deepEqual(result, { env: {} });
+    const doc = parseYaml(await readFile(file, "utf8")) as {
+      "llm-pi-ai": { providers: Record<string, { baseURL: string; apiKeyEnv?: string }> };
+    };
+    assert.equal(doc["llm-pi-ai"].providers["ollama-local"]!.baseURL, "http://new:11434/v1");
+    assert.equal(
+      doc["llm-pi-ai"].providers["ollama-local"]!.apiKeyEnv,
+      undefined,
+      "no apiKeyEnv is fabricated for an endpoint-only call",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("an unchanged endpoint with no key writes nothing and returns null", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ss-route-settings-noop-"));
+  try {
+    const file = join(dir, "settings.yaml");
+    const fixture = `llm-pi-ai:\n  providers:\n    ollama-local:\n      baseURL: http://same:11434/v1\n`;
+    await writeFile(file, fixture);
+    const result = await applyRouteSettings({
+      home: dir,
+      provider: "ollama-local",
+      endpoint: "http://same:11434/v1",
+    });
+    assert.equal(result, null);
+    assert.equal(await readFile(file, "utf8"), fixture, "the file is left untouched");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

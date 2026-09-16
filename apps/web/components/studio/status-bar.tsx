@@ -12,7 +12,7 @@ import {
   useWorkspaceAvailability,
 } from "@science-studio/transport-client";
 import { useStudioStore } from "@/store/studio-store";
-import { SettingsDialog } from "./settings-dialog";
+import { SETTINGS_API, SettingsDialog } from "./settings-dialog";
 import { desktopBridge } from "@/lib/desktop-bridge";
 
 const PROJECTS_API = process.env.NEXT_PUBLIC_PROJECTS_URL ?? DEFAULT_PROJECTS_API;
@@ -86,8 +86,11 @@ function RuntimeChip() {
   }, []);
 
   React.useEffect(() => {
+    // The chip only exists inside the desktop app; a browser tab must not probe
+    // the settings route just to render a chip that returns null anyway.
+    if (!present) return;
     let active = true;
-    void fetchSettings()
+    void fetchSettings(SETTINGS_API)
       .then((view) => {
         if (!active) return;
         setRoute(`${view.model.provider ?? "not set"} / ${view.model.model ?? "not set"}`);
@@ -96,7 +99,7 @@ function RuntimeChip() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [present]);
 
   if (!present) return null;
   const ready = status?.ready === true;

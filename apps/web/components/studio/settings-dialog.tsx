@@ -22,7 +22,7 @@ import {
 import { useStudioStore } from "@/store/studio-store";
 import { desktopBridge } from "@/lib/desktop-bridge";
 
-const SETTINGS_API = process.env.NEXT_PUBLIC_SETTINGS_URL ?? DEFAULT_SETTINGS_API;
+export const SETTINGS_API = process.env.NEXT_PUBLIC_SETTINGS_URL ?? DEFAULT_SETTINGS_API;
 
 type Status = "idle" | "loading" | "saving" | "saved" | "error";
 
@@ -95,7 +95,17 @@ export function SettingsDialog() {
       : "not configured";
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? undefined : closeSettings())}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (next) return;
+        // Escape/backdrop/Close: drop any typed plaintext key so it cannot
+        // linger in memory until the dialog is reopened.
+        setApiKey("");
+        setClearKey(false);
+        closeSettings();
+      }}
+    >
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -120,6 +130,12 @@ export function SettingsDialog() {
               </p>
             ) : (
               <>
+                {view && view.runtime !== "dsh" ? (
+                  <p className="text-xs text-muted-foreground">
+                    The active runtime is <span className="font-medium">{view.runtime}</span>; the
+                    model route applies to dsh.
+                  </p>
+                ) : null}
                 <section className="space-y-3">
                   <h3 className="text-sm font-semibold">Model</h3>
                   <label className="grid gap-1 text-xs">

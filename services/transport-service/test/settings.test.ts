@@ -67,6 +67,19 @@ test("mergeSettings applies the absent/null/string apiKey rule", () => {
   assert.equal(mergeSettings(base, { model: { provider: "q" } }).model.provider, "q");
 });
 
+test("mergeSettings treats an empty provider/model/endpoint as a clear", () => {
+  const base = {
+    model: { provider: "p", model: "m", endpoint: "http://x/v1", apiKey: "old" },
+    plugins: {},
+    agent: {},
+  };
+  const cleared = mergeSettings(base, { model: { provider: "", model: "", endpoint: "" } });
+  assert.equal(cleared.model.provider, undefined);
+  assert.equal(cleared.model.model, undefined);
+  assert.equal(cleared.model.endpoint, undefined);
+  assert.equal(cleared.model.apiKey, "old", "clearing the route leaves the key alone");
+});
+
 test("viewOf redacts the key and reports the configured flag", () => {
   const view = viewOf(
     { model: { provider: "p", apiKey: "secret" }, plugins: {}, agent: {} },

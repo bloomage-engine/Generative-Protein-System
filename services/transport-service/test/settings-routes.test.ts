@@ -9,6 +9,8 @@ import {
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
   NullWorkspace,
+  type Principal,
+  type PrincipalResolver,
   type RuntimeAdapter,
 } from "@science-studio/transport";
 import type { Backend } from "../src/composition.js";
@@ -18,9 +20,17 @@ function fakeAdapter(): RuntimeAdapter {
   return { runtime: "fake", init: async () => {}, run: async function* () {}, abort: () => {} };
 }
 
-function backend(settingsPath: string): Backend {
+/** A fixed non-local principal, so the hosted write gate can be exercised. */
+function fixedPrincipal(principal: Principal): PrincipalResolver {
+  return { resolve: async () => principal };
+}
+
+function backend(
+  settingsPath: string,
+  principal: PrincipalResolver = new LocalPrincipalResolver(),
+): Backend {
   return {
-    principal: new LocalPrincipalResolver(),
+    principal,
     environments: new LocalEnvironmentProvider({
       environmentFor: async () => ({ adapter: fakeAdapter(), workspace: new NullWorkspace() }),
     }),
@@ -33,8 +43,9 @@ function backend(settingsPath: string): Backend {
 async function withServer(
   settingsPath: string,
   fn: (base: string) => Promise<void>,
+  principal?: PrincipalResolver,
 ): Promise<void> {
-  const app = await createTransportService({ backend: backend(settingsPath) });
+  const app = await createTransportService({ backend: backend(settingsPath, principal) });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
   try {
@@ -102,6 +113,48 @@ test("PUT /api/settings rejects a bad body with 400", async () => {
       assert.equal(res.status, 400);
       assert.deepEqual(await res.json(), { error: "model.endpoint must be an http(s) URL" });
     });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a non-local non-manager principal can GET but not PUT", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ss-settings-routes-hosted-"));
+  const researcher: Principal = {
+    id: "u-1",
+    tenant: "t-1",
+    displayName: "Researcher",
+    roles: ["researcher"],
+    local: false,
+  };
+  const manager: Principal = { ...researcher, roles: ["researcher", "manager"] };
+  try {
+    await withServer(
+      join(dir, "researcher.json"),
+      async (base) => {
+        const get = await fetch(`${base}/api/settings`);
+        assert.equal(get.status, 200, "GET stays available to any principal");
+        const put = await fetch(`${base}/api/settings`, {
+          method: "PUT",
+          headers: json,
+          body: JSON.stringify({ model: { provider: "p" } }),
+        });
+        assert.equal(put.status, 403, "a researcher cannot overwrite shared settings");
+      },
+      fixedPrincipal(researcher),
+    );
+    await withServer(
+      join(dir, "manager.json"),
+      async (base) => {
+        const put = await fetch(`${base}/api/settings`, {
+          method: "PUT",
+          headers: json,
+          body: JSON.stringify({ model: { provider: "p" } }),
+        });
+        assert.equal(put.status, 200, "a hosted manager may write");
+      },
+      fixedPrincipal(manager),
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
