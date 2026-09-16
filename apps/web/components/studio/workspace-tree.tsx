@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   asyncDataLoaderFeature,
   hotkeysCoreFeature,
@@ -40,6 +40,8 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
   const openFile = useStudioStore((s) => s.openFile);
   const activeTabPath = useStudioStore((s) => s.activeTabPath);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const rootListingRef = useRef<DirListing | null>(null);
   rootListingRef.current = root.listing;
   const rootFailedRef = useRef(false);
@@ -62,8 +64,16 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
         await new Promise<void>((resolve) => rootWaitersRef.current.push(resolve));
         return rootListingRef.current?.entries ?? [];
       }
-      const listing = await fetchWorkspaceEntries(api, id, proj);
-      return listing.entries;
+      try {
+        const listing = await fetchWorkspaceEntries(api, id, proj);
+        setLoadError(null);
+        return listing.entries;
+      } catch (error) {
+        // headless-tree neither catches a loader rejection nor clears its
+        // loading flag, which would wedge the folder. Report it and return empty.
+        setLoadError(error instanceof Error ? error.message : String(error));
+        return [];
+      }
     },
     [api, proj],
   );
@@ -110,11 +120,9 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
   useEffect(() => {
     if (!activeTabPath) return;
     const ancestors = ancestorPaths(activeTabPath);
-    if (ancestors.length === 0) return;
-    tree.setState((old) => ({
-      ...old,
-      expandedItems: Array.from(new Set([...old.expandedItems, ...ancestors])),
-    }));
+    tree.applySubStateUpdate("expandedItems", (old) =>
+      Array.from(new Set([...old, ...ancestors])),
+    );
     tree.setSelectedItems([activeTabPath]);
     tree.rebuildTree();
   }, [activeTabPath, tree]);
@@ -144,6 +152,7 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
       ) : (
         <>
           {root.error && <p className="text-destructive px-3 py-2 text-xs">{root.error}</p>}
+          {loadError && <p className="text-destructive px-3 py-2 text-xs">{loadError}</p>}
           <div className="min-h-0 flex-1 overflow-y-auto p-1">
             {root.isLoading && (
               <Loader2 className="text-muted-foreground m-2 size-4 animate-spin" />

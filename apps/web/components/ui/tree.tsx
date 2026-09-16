@@ -26,7 +26,10 @@ export function Tree<T>({
   style,
   ...props
 }: HTMLAttributes<HTMLDivElement> & { indent?: number; tree: TreeInstance<T> }) {
-  const containerProps = tree.getContainerProps();
+  // Forward the caller's label: `getContainerProps` emits `aria-label` and is
+  // spread after `props`, so without this the caller's name is overwritten.
+  const label = typeof props["aria-label"] === "string" ? props["aria-label"] : undefined;
+  const containerProps = tree.getContainerProps(label);
   return (
     <TreeIndentContext.Provider value={indent}>
       <div

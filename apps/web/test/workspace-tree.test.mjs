@@ -84,8 +84,8 @@ test(
       });
       await page.getByText(HISTORY_MARKER).waitFor({ timeout: 30_000 });
 
-      await page.getByRole("button", { name: "Files" }).click();
-
+      // The right pane is open on load (`rightPanel` defaults to true), so the
+      // tree is already mounted — no need to click the "Files" toggle.
       const tree = page.getByRole("tree");
       await tree.waitFor({ timeout: 30_000 });
       const src = tree.getByRole("treeitem", { name: "src" });
