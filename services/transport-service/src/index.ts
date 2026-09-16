@@ -29,6 +29,7 @@ import {
 } from "./composition.js";
 import { DEFAULT_RECORD_DEFAULTS } from "./directory.js";
 import { createServer } from "./server.js";
+import { applySettingsToEnv, loadSettings, resolveSettingsPath } from "./settings.js";
 
 export { createBackend, loadRuntimePlugins, localWorkspace, resolveRuntimePlugins, toRecordStoreLike } from "./composition.js";
 export type { Backend, CorsConfig, EnterpriseModule } from "./composition.js";
@@ -73,15 +74,17 @@ async function backendFromAdapters(options: TransportServiceOptions): Promise<Ba
   const records = options.recordStore ?? createInMemoryRecordStore();
   const recordStore = toRecordStoreLike(records);
   const workspace = localWorkspace(env, DEFAULT_RECORD_DEFAULTS.projectId);
+  const settingsPath = env.SS_SETTINGS_PATH ?? resolveSettingsPath(env);
+  const runtimeEnv = applySettingsToEnv(env, await loadSettings(settingsPath));
   const capabilities = plugins.find((p) => p.runtime === first.runtime)?.factory.capabilities;
 
   for (const adapter of adapters) {
     const plugin = plugins.find((p) => p.runtime === adapter.runtime);
     // No plugin for this runtime: an empty binding is still valid for test
     // doubles, whose init() ignores it.
-    const binding = plugin ? plugin.localBinding(env) : { runtime: adapter.runtime, config: {} };
+    const binding = plugin ? plugin.localBinding(runtimeEnv) : { runtime: adapter.runtime, config: {} };
     try {
-      await adapter.init({ binding, recordStore, workspace, env: { ...env } });
+      await adapter.init({ binding, recordStore, workspace, env: { ...runtimeEnv } });
     } catch (err) {
       console.error("[transport-service] adapter init failed", err);
     }
@@ -101,6 +104,7 @@ async function backendFromAdapters(options: TransportServiceOptions): Promise<Ba
     cors: options.cors ?? { origin: true },
     records,
     capabilities,
+    settingsPath,
   };
 }
 

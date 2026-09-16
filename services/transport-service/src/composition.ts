@@ -33,6 +33,7 @@ import {
   type WorkspaceLimits,
 } from "@science-studio/transport";
 import { DEFAULT_RECORD_DEFAULTS, type RecordDefaults } from "./directory.js";
+import { applySettingsToEnv, loadSettings, resolveSettingsPath } from "./settings.js";
 
 export interface CorsConfig {
   /** `true` reflects any origin (loopback single-user); a string locks to it. */
@@ -187,7 +188,10 @@ async function localBackend(
     throw new Error(`no runtime plugin registered for "${runtime}" (available: ${known})`);
   }
 
-  const binding = plugin.localBinding(env);
+  const settingsPath = env.SS_SETTINGS_PATH ?? resolveSettingsPath(env);
+  const settings = await loadSettings(settingsPath);
+  const runtimeEnv = applySettingsToEnv(env, settings);
+  const binding = plugin.localBinding(runtimeEnv);
   // One authoritative store: the adapter persists Runs through the narrowed view
   // of it, and the service resolves Project/Session identity from it.
   const records = await localRecordStore(env);
@@ -232,7 +236,7 @@ async function localBackend(
           binding,
           recordStore,
           workspace,
-          env: { ...env },
+          env: { ...runtimeEnv },
           ...(project === null
             ? {}
             : { project: { id: project.id, name: project.name, createdAt: project.createdAt } }),
@@ -258,6 +262,7 @@ async function localBackend(
       quotaBytes: positiveInt(env.WORKSPACE_QUOTA_BYTES) ?? DEFAULT_QUOTA_BYTES,
     },
     capabilities: plugin.factory.capabilities,
+    settingsPath,
   };
 }
 
