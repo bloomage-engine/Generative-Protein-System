@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DEFAULT_PROJECTS_API,
+  fetchSettings,
   formatTokens,
   useSessionMetrics,
   useWorkspaceAvailability,
@@ -15,13 +16,6 @@ import { SettingsDialog } from "./settings-dialog";
 import { desktopBridge } from "@/lib/desktop-bridge";
 
 const PROJECTS_API = process.env.NEXT_PUBLIC_PROJECTS_URL ?? DEFAULT_PROJECTS_API;
-
-interface DesktopRuntimeStatus {
-  dshPath: string | null;
-  provider?: string | null;
-  model?: string | null;
-  ready: boolean;
-}
 
 export function StatusBar() {
   return (
@@ -71,7 +65,8 @@ function WorkspaceChip() {
 }
 
 function RuntimeChip() {
-  const [status, setStatus] = React.useState<DesktopRuntimeStatus | null>(null);
+  const [status, setStatus] = React.useState<{ dshPath: string | null; ready: boolean } | null>(null);
+  const [route, setRoute] = React.useState<string | null>(null);
   const [present, setPresent] = React.useState(false);
 
   React.useEffect(() => {
@@ -90,17 +85,22 @@ function RuntimeChip() {
     };
   }, []);
 
+  React.useEffect(() => {
+    let active = true;
+    void fetchSettings()
+      .then((view) => {
+        if (!active) return;
+        setRoute(`${view.model.provider ?? "not set"} / ${view.model.model ?? "not set"}`);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
   if (!present) return null;
   const ready = status?.ready === true;
-  const label =
-    status === null
-      ? "runtime: …"
-      : ready
-        ? "runtime: ready"
-        : status.dshPath === null
-          ? "runtime: dsh missing"
-          : "runtime: route not configured";
-  const route = status?.provider && status.model ? `${status.provider} / ${status.model}` : "not set";
+  const label = status === null ? "runtime: …" : ready ? "runtime: ready" : "runtime: dsh missing";
 
   return (
     <Popover>
@@ -119,13 +119,13 @@ function RuntimeChip() {
           </div>
           <div>
             <dt className="text-muted-foreground">route</dt>
-            <dd className="break-all">{route}</dd>
+            <dd className="break-all">{route ?? "…"}</dd>
           </div>
         </dl>
         <p className="mt-2 text-xs text-muted-foreground">
           {ready
-            ? "The desktop app found dsh and a configured provider/model."
-            : "Set up dsh and the provider/model in Science Studio Settings, then restart the service. Sending is not blocked."}
+            ? "The desktop app found dsh. Configure the model route in Settings."
+            : "Install dsh, then configure the model route in Settings."}
         </p>
       </PopoverContent>
     </Popover>
