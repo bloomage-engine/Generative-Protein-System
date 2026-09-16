@@ -54,3 +54,10 @@ export {
   WorkspaceUnavailableError,
 } from "./workspace.js";
 export { RuntimeBindingError } from "./runtime.js";
+export type {
+  ModelSettings,
+  ModelSettingsPatch,
+  RuntimeSettings,
+  RuntimeSettingsView,
+  RuntimeSettingsPatch,
+} from "./settings.js";

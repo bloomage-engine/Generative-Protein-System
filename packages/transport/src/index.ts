@@ -60,6 +60,13 @@ export {
   WorkspaceUnavailableError,
 } from "./seams.js";
 export { RuntimeBindingError } from "./seams.js";
+export type {
+  ModelSettings,
+  ModelSettingsPatch,
+  RuntimeSettings,
+  RuntimeSettingsView,
+  RuntimeSettingsPatch,
+} from "./settings.js";
 
 // -- 2. Kit ------------------------------------------------------------------
 export { foldState, sameMessages, sameConversation } from "./fold.js";
