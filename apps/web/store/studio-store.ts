@@ -53,6 +53,8 @@ type State = {
   leftView: LeftView;
   leftPanel: boolean;
   rightPanel: boolean;
+  /** The deployment settings dialog. Chrome state: never keyed into SessionView. */
+  settingsOpen: boolean;
   /**
    * Bumped when a run finishes, so the status bar refetches its Session metrics
    * from the record. A counter, not the metrics themselves: the record stays the
@@ -92,6 +94,8 @@ type State = {
   /** Pure assignment — for seeding the shell (a fresh install lands on the panel). */
   setLeftView: (view: LeftView) => void;
   toggleRight: () => void;
+  openSettings: () => void;
+  closeSettings: () => void;
   /** Signal that a run finished; the status bar's metrics hook depends on it. */
   bumpRunsRevision: () => void;
 };
@@ -109,6 +113,7 @@ export const useStudioStore = create<State>()((set) => ({
   leftView: "thread",
   leftPanel: true,
   rightPanel: true,
+  settingsOpen: false,
   runsRevision: 0,
 
   setProjects: (projects) => set({ projects }),
@@ -217,5 +222,7 @@ export const useStudioStore = create<State>()((set) => ({
   setLeftView: (leftView) => set({ leftView }),
 
   toggleRight: () => set((s) => ({ rightPanel: !s.rightPanel })),
+  openSettings: () => set({ settingsOpen: true }),
+  closeSettings: () => set({ settingsOpen: false }),
   bumpRunsRevision: () => set((s) => ({ runsRevision: s.runsRevision + 1 })),
 }));
