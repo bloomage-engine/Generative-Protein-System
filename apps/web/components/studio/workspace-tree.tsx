@@ -1,105 +1,168 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
-  useWorkspaceBrowser,
+  asyncDataLoaderFeature,
+  hotkeysCoreFeature,
+  selectionFeature,
+} from "@headless-tree/core";
+import { useTree } from "@headless-tree/react";
+import {
+  fetchWorkspaceEntries,
+  useWorkspaceApi,
+  useWorkspaceRoot,
+  WORKSPACE_UNAVAILABLE_REASON,
+  type DirListing,
   type Entry,
 } from "@science-studio/transport-client";
-import { ChevronLeft, File, Folder, Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
+import { Tree, TreeItem, TreeItemLabel } from "@/components/ui/tree";
 import { cn } from "@/lib/utils";
 import { useStudioStore } from "@/store/studio-store";
+import { fileIconForName } from "./file-icons";
 
-/**
- * The right-hand file tree: one level at a time. Clicking a directory
- * navigates into it; clicking a file opens it in the center viewer.
- */
+const ROOT_ID = "";
+const INDENT = 20;
+
+function ancestorPaths(path: string): string[] {
+  const parts = path.split("/");
+  const ancestors: string[] = [];
+  for (let i = 1; i < parts.length; i += 1) ancestors.push(parts.slice(0, i).join("/"));
+  return ancestors;
+}
+
 export function WorkspaceTree({ project }: { project?: string | null }) {
-  const { path, listing, isLoading, error, unavailable, navigate, refresh } =
-    useWorkspaceBrowser({ project });
+  const scope = useWorkspaceApi();
+  const api = scope.api;
+  const proj = project ?? scope.project;
+
+  const root = useWorkspaceRoot({ project: proj });
   const openFile = useStudioStore((s) => s.openFile);
   const activeTabPath = useStudioStore((s) => s.activeTabPath);
 
-  // An externally selected file (an agent link) reveals its directory.
+  const rootListingRef = useRef<DirListing | null>(null);
+  rootListingRef.current = root.listing;
+  const rootFailedRef = useRef(false);
+  rootFailedRef.current = root.listing == null && (root.error != null || root.unavailable);
+  const rootWaitersRef = useRef<Array<() => void>>([]);
+  const entryCache = useRef(new Map<string, Entry>());
+
+  entryCache.current.set(ROOT_ID, {
+    path: "",
+    name: proj ?? "workspace",
+    kind: "dir",
+  });
+
+  const loadChildren = useCallback(
+    async (id: string): Promise<Entry[]> => {
+      if (id === ROOT_ID) {
+        const cached = rootListingRef.current;
+        if (cached) return cached.entries;
+        if (rootFailedRef.current) return [];
+        await new Promise<void>((resolve) => rootWaitersRef.current.push(resolve));
+        return rootListingRef.current?.entries ?? [];
+      }
+      const listing = await fetchWorkspaceEntries(api, id, proj);
+      return listing.entries;
+    },
+    [api, proj],
+  );
+
+  const tree = useTree<Entry>({
+    rootItemId: ROOT_ID,
+    indent: INDENT,
+    getItemName: (item) => item.getItemData()?.name ?? "",
+    isItemFolder: (item) => item.getItemData()?.kind === "dir",
+    onPrimaryAction: (item) => {
+      const entry = item.getItemData();
+      if (entry && entry.kind === "file") openFile(entry.path, entry.name);
+    },
+    dataLoader: {
+      getItem: (id) =>
+        entryCache.current.get(id) ?? {
+          path: id,
+          name: id.split("/").pop() ?? id,
+          kind: "file",
+        },
+      getChildrenWithData: async (id) => {
+        const entries = await loadChildren(id);
+        return entries.map((entry) => {
+          entryCache.current.set(entry.path, entry);
+          return { id: entry.path, data: entry };
+        });
+      },
+    },
+    features: [asyncDataLoaderFeature, selectionFeature, hotkeysCoreFeature],
+  });
+
+  useEffect(() => {
+    const waiters = rootWaitersRef.current;
+    if (root.listing) {
+      rootWaitersRef.current = [];
+      for (const resolve of waiters) resolve();
+      void tree.getItemInstance(ROOT_ID).invalidateChildrenIds(true);
+    } else if (root.error || root.unavailable) {
+      rootWaitersRef.current = [];
+      for (const resolve of waiters) resolve();
+    }
+  }, [root.listing, root.error, root.unavailable, tree]);
+
   useEffect(() => {
     if (!activeTabPath) return;
-    const parent = activeTabPath.includes("/")
-      ? activeTabPath.slice(0, activeTabPath.lastIndexOf("/"))
-      : "";
-    if (parent !== path) navigate(parent);
-  }, [activeTabPath, path, navigate]);
+    const ancestors = ancestorPaths(activeTabPath);
+    if (ancestors.length === 0) return;
+    tree.setState((old) => ({
+      ...old,
+      expandedItems: Array.from(new Set([...old.expandedItems, ...ancestors])),
+    }));
+    tree.setSelectedItems([activeTabPath]);
+    tree.rebuildTree();
+  }, [activeTabPath, tree]);
 
-  const openEntry = (entry: Entry) => {
-    if (entry.kind === "dir") navigate(entry.path);
-    else openFile(entry.path, entry.name);
-  };
+  const refreshRoot = root.refresh;
+  const refresh = useCallback(() => {
+    refreshRoot();
+    for (const item of tree.getItems()) void item.invalidateChildrenIds();
+  }, [refreshRoot, tree]);
 
   return (
     <aside className="flex h-full flex-col border-l border-border/70 bg-background">
       <header className="flex items-center gap-1 border-b border-border/70 px-3 py-2">
-        <button
-          type="button"
-          aria-label="Parent directory"
-          disabled={path === ""}
-          onClick={() => navigate(path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "")}
-          className="text-muted-foreground hover:text-foreground rounded p-1 disabled:opacity-30"
-        >
-          <ChevronLeft className="size-4" />
-        </button>
-        <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
-          {path === "" ? "/" : `/${path}`}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">Files</span>
         <button
           type="button"
           aria-label="Refresh"
           onClick={refresh}
           className="text-muted-foreground hover:text-foreground rounded p-1"
         >
-          <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
+          <RefreshCw className={cn("size-4", root.isLoading && "animate-spin")} />
         </button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        {error && (
-          <p className={cn("px-2 py-1 text-xs", unavailable ? "text-muted-foreground" : "text-destructive")}>
-            {error}
-          </p>
-        )}
-        {!error && listing?.entries.length === 0 && (
-          <p className="text-muted-foreground px-2 py-1 text-xs">Empty directory.</p>
-        )}
-        <ul className="flex flex-col">
-          {listing?.entries.map((entry) => (
-            <li key={entry.path}>
-              <button
-                type="button"
-                onClick={() => openEntry(entry)}
-                className={cn(
-                  "hover:bg-muted flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm",
-                  activeTabPath === entry.path && "bg-muted",
-                )}
-              >
-                {entry.kind === "dir" ? (
-                  <Folder className="text-muted-foreground size-4 shrink-0" />
-                ) : (
-                  <File className="text-muted-foreground size-4 shrink-0" />
-                )}
-                <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                {entry.size !== undefined && (
-                  <span className="text-muted-foreground shrink-0 text-xs">
-                    {formatSize(entry.size)}
-                  </span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
+      {root.unavailable ? (
+        <p className="text-muted-foreground p-3 text-xs">{WORKSPACE_UNAVAILABLE_REASON}</p>
+      ) : (
+        <>
+          {root.error && <p className="text-destructive px-3 py-2 text-xs">{root.error}</p>}
+          <div className="min-h-0 flex-1 overflow-y-auto p-1">
+            {root.isLoading && (
+              <Loader2 className="text-muted-foreground m-2 size-4 animate-spin" />
+            )}
+            <Tree indent={INDENT} tree={tree} aria-label="Workspace files">
+              {tree.getItems().map((item) => (
+                <TreeItem key={item.getId()} item={item}>
+                  <TreeItemLabel>
+                    <span className="flex min-w-0 items-center gap-2">
+                      {fileIconForName(item.getItemName(), item.isFolder(), item.isExpanded())}
+                      <span className="truncate">{item.getItemName()}</span>
+                    </span>
+                  </TreeItemLabel>
+                </TreeItem>
+              ))}
+            </Tree>
+          </div>
+        </>
+      )}
     </aside>
   );
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
