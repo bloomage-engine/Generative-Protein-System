@@ -20,6 +20,10 @@ export interface DshBinding {
   workspace?: string;
   provider?: string;
   model?: string;
+  /** The provider route's base URL (service settings; harness-route override). */
+  endpoint?: string;
+  /** The route's credential VALUE. Held only for this launch, never persisted. */
+  apiKey?: string;
   maxTokens?: number;
   /** Where the adapter persists its own transcript mirror. */
   transcriptDir?: string;
@@ -41,6 +45,8 @@ export function parseDshBinding(binding: RuntimeBinding): DshBinding {
     workspace: bindingOptionalString(binding, "workspace"),
     provider: bindingOptionalString(binding, "provider"),
     model: bindingOptionalString(binding, "model"),
+    endpoint: bindingOptionalString(binding, "endpoint"),
+    apiKey: bindingOptionalString(binding, "apiKey"),
     maxTokens: typeof maxTokens === "number" && Number.isFinite(maxTokens) ? maxTokens : undefined,
     transcriptDir: bindingOptionalString(binding, "transcriptDir"),
     defaultSession: bindingOptionalString(binding, "defaultSession"),
@@ -70,6 +76,8 @@ export function dshLocalBinding(
   copy("workspace", "DSH_WORKSPACE");
   copy("provider", "DSH_PROVIDER");
   copy("model", "DSH_MODEL");
+  copy("endpoint", "SS_MODEL_ENDPOINT");
+  copy("apiKey", "SS_MODEL_API_KEY");
   copy("transcriptDir", "DSH_TRANSCRIPT_DIR");
   copy("defaultSession", "DSH_DEFAULT_SESSION");
   const maxTokens = env["DSH_MAX_TOKENS"];
