@@ -1837,6 +1837,7 @@ test("a saved route credential reaches the launch client env", async () => {
       recordStore: { addRun: async () => {} },
     });
     assert.equal(seenEnv?.OLLAMA_LOCAL_API_KEY, "secret-key");
+    assert.equal(seenEnv?.PATH, process.env.PATH, "the child env keeps the parent environment");
     const settings = (await import("node:fs/promises")).readFile(join(home, "settings.yaml"), "utf8");
     assert.match(await settings, /baseURL: http:\/\/h\/v1/);
   } finally {
@@ -1918,8 +1919,13 @@ import { homedir, tmpdir } from "node:os";
 4. Inside the `createClient({ ... })` argument, after `maxTokens,`, add:
 
 ```ts
-      ...(routeEnv === undefined ? {} : { env: routeEnv }),
+      ...(routeEnv === undefined ? {} : { env: { ...process.env, ...routeEnv } }),
 ```
+
+> The SDK's `resolveDshLaunch` reads `options.env ?? process.env` and spawns with
+> exactly that object — so passing `env` REPLACES the child's environment rather
+> than overlaying it. Merge over `process.env` (as above) or the harness child
+> would lose `PATH`/`HOME`/proxies whenever a route is configured.
 
 - [ ] **Step 5: Run test to verify it passes**
 
