@@ -2117,7 +2117,7 @@ git commit -m "refactor(desktop): narrow config.env to paths, add SS_SETTINGS_PA
 
 **Files:**
 - Modify: `apps/desktop/src/main/index.ts`, `apps/desktop/src/main/windows.ts`, `apps/desktop/package.json`, `apps/desktop/tsconfig.json`
-- Delete: `apps/desktop/src/renderer/config.ts`, `apps/desktop/src/renderer/config.html`, `apps/desktop/scripts/copy-renderer.mjs`, `apps/desktop/tsconfig.renderer.json`
+- Delete: `apps/desktop/src/renderer/config.ts`, `apps/desktop/src/renderer/config.html`, `apps/desktop/scripts/copy-renderer.mjs`, `apps/desktop/tsconfig.renderer.json`, `apps/desktop/src/preload/index.mts` (the config window's preload: orphaned by removing `createConfigWindow`, and the only holder of the removed `getConfig`/`setConfig`/`detectDsh` IPC channels; the workbench keeps `preload/workbench.cts`)
 - Test: `apps/desktop/test/settings-removed.test.ts`
 
 **Interfaces:**
