@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { createInMemoryRecordStore, type Project, type Run } from "@science-studio/record";
 import {
@@ -8,6 +11,7 @@ import {
   NullWorkspace,
   type RuntimeAdapter,
 } from "@science-studio/transport";
+import { FsWorkspace } from "@science-studio/workspace";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 
@@ -143,6 +147,38 @@ test("GET /api/projects/:id/runs rolls up the Runs of all its Sessions", async (
   });
 });
 
+test("GET /api/projects/:id/runs can filter to one Session", async () => {
+  const records = createInMemoryRecordStore();
+  const run = (id: string, sessionId: string): Run => ({
+    id,
+    sessionId,
+    projectId: "p1",
+    status: "completed",
+    agentId: "main",
+    parameters: {},
+    input: "q",
+    output: "a",
+  });
+  await records.createProject({ id: "p1", name: "P1", createdAt: "2026-01-01T00:00:00.000Z" });
+  await records.addRun(run("r1", "s1"));
+  await records.addRun(run("r2", "s2"));
+
+  await withServer(backendWith(records), async (base) => {
+    const scoped = (await (
+      await fetch(`${base}/api/projects/p1/runs?sessionId=s1`)
+    ).json()) as { runs: Run[] };
+    assert.deepEqual(
+      scoped.runs.map((r) => r.id),
+      ["r1"],
+    );
+    const all = (await (await fetch(`${base}/api/projects/p1/runs`)).json()) as { runs: Run[] };
+    assert.deepEqual(
+      all.runs.map((r) => r.id),
+      ["r1", "r2"],
+    );
+  });
+});
+
 test("the transport route first-use records a Session under the named Project", async () => {
   const records = createInMemoryRecordStore();
   await withServer(backendWith(records), async (base) => {
@@ -205,4 +241,178 @@ test("a request with no ProjectId falls back to the default Project", async () =
     await res.text();
     assert.equal((await records.getSession("sess-plain"))?.projectId, "project-default");
   });
+});
+
+test("a Project can be renamed/archived/unarchived/deleted; the default is immutable", async () => {
+  const records = createInMemoryRecordStore();
+  await withServer(backendWith(records), async (base) => {
+    const created = await fetch(`${base}/api/projects`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ name: "Alpha" }),
+    });
+    const { project } = (await created.json()) as { project: Project };
+
+    const renamed = await fetch(`${base}/api/projects/${project.id}/rename`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ name: "Beta" }),
+    });
+    assert.equal(renamed.status, 200);
+    assert.equal(((await renamed.json()) as { project: Project }).project.name, "Beta");
+
+    const archived = await fetch(`${base}/api/projects/${project.id}/archive`, { method: "POST" });
+    assert.equal(archived.status, 200);
+    let listed = (await (await fetch(`${base}/api/projects`)).json()) as {
+      projects: Project[];
+      defaultProjectId: string;
+    };
+    assert.deepEqual(listed.projects.map((p) => p.id), [], "archived is hidden");
+    listed = (await (
+      await fetch(`${base}/api/projects?includeArchived=1`)
+    ).json()) as { projects: Project[]; defaultProjectId: string };
+    assert.deepEqual(
+      listed.projects.map((p) => p.id),
+      [project.id],
+    );
+    assert.equal(listed.defaultProjectId, "project-default");
+
+    const unarchived = await fetch(`${base}/api/projects/${project.id}/unarchive`, {
+      method: "POST",
+    });
+    assert.equal(unarchived.status, 200);
+    listed = (await (await fetch(`${base}/api/projects`)).json()) as {
+      projects: Project[];
+      defaultProjectId: string;
+    };
+    assert.deepEqual(
+      listed.projects.map((p) => p.id),
+      [project.id],
+    );
+
+    const guards: [string, RequestInit][] = [
+      ["rename", { method: "POST", headers: json, body: JSON.stringify({ name: "x" }) }],
+      ["archive", { method: "POST" }],
+      ["unarchive", { method: "POST" }],
+      ["delete", { method: "POST" }],
+    ];
+    for (const [action, init] of guards) {
+      const res = await fetch(`${base}/api/projects/project-default/${action}`, init);
+      assert.equal(res.status, 403, `${action} on the default project`);
+    }
+
+    const deleted = await fetch(`${base}/api/projects/${project.id}/delete`, { method: "POST" });
+    assert.equal(deleted.status, 200);
+    assert.equal(await records.getProject(project.id), null);
+  });
+});
+
+test("a Session can be renamed/archived/unarchived/deleted; a deleted Session takes its Runs", async () => {
+  const records = createInMemoryRecordStore();
+  await records.createProject({ id: "p1", name: "P1", createdAt: "2026-01-01T00:00:00.000Z" });
+  await withServer(backendWith(records), async (base) => {
+    const made = await fetch(`${base}/api/projects/p1/sessions`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ title: "First" }),
+    });
+    const { session } = (await made.json()) as { session: { id: string } };
+    await records.addRun({
+      id: "r1",
+      sessionId: session.id,
+      projectId: "p1",
+      status: "completed",
+      agentId: "main",
+      parameters: {},
+      input: "q",
+      output: "a",
+    });
+
+    const renamed = await fetch(`${base}/api/projects/p1/sessions/${session.id}/rename`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ title: "Renamed" }),
+    });
+    assert.equal(renamed.status, 200);
+    assert.equal(
+      ((await renamed.json()) as { session: { title?: string } }).session.title,
+      "Renamed",
+    );
+
+    await fetch(`${base}/api/projects/p1/sessions/${session.id}/archive`, { method: "POST" });
+    let listed = (await (
+      await fetch(`${base}/api/projects/p1/sessions`)
+    ).json()) as { sessions: { id: string }[] };
+    assert.deepEqual(listed.sessions, [], "an archived Session is hidden");
+    listed = (await (
+      await fetch(`${base}/api/projects/p1/sessions?includeArchived=1`)
+    ).json()) as { sessions: { id: string }[] };
+    assert.deepEqual(
+      listed.sessions.map((s) => s.id),
+      [session.id],
+    );
+
+    await fetch(`${base}/api/projects/p1/sessions/${session.id}/unarchive`, { method: "POST" });
+    listed = (await (
+      await fetch(`${base}/api/projects/p1/sessions`)
+    ).json()) as { sessions: { id: string }[] };
+    assert.deepEqual(
+      listed.sessions.map((s) => s.id),
+      [session.id],
+    );
+
+    // A Session that belongs to another Project is not addressable through this one.
+    const wrongProject = await fetch(`${base}/api/projects/other/sessions/${session.id}/delete`, {
+      method: "POST",
+    });
+    assert.equal(wrongProject.status, 404);
+
+    const deleted = await fetch(`${base}/api/projects/p1/sessions/${session.id}/delete`, {
+      method: "POST",
+    });
+    assert.equal(deleted.status, 200);
+    assert.equal(await records.getSession(session.id), null);
+    assert.deepEqual(await records.listRuns("p1"), [], "its Runs are cascaded");
+  });
+});
+
+test("deleting a Project recycles its workspace and releases its environment", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ss-recycle-api-"));
+  const root = join(dir, "projects");
+  await mkdir(join(root, "p1"), { recursive: true });
+  await writeFile(join(root, "p1", "data.csv"), "a,b\n1,2\n");
+  const records = createInMemoryRecordStore();
+  await records.createProject({ id: "p1", name: "P1", createdAt: "2026-01-01T00:00:00.000Z" });
+  const released: string[] = [];
+  const backend: Backend = {
+    principal: new LocalPrincipalResolver(),
+    environments: {
+      acquire: async (_principal, projectId) => ({
+        adapter: fakeAdapter(),
+        workspace: new FsWorkspace(join(root, projectId), { agentRoot: join(root, projectId) }),
+        projectId,
+      }),
+      release: async (_principal, projectId) => {
+        released.push(projectId);
+      },
+      dispose: async () => {},
+    },
+    cors: { origin: true },
+    records,
+  };
+  try {
+    await withServer(backend, async (base) => {
+      const res = await fetch(`${base}/api/projects/p1/delete`, { method: "POST" });
+      assert.equal(res.status, 200);
+      assert.equal(await records.getProject("p1"), null);
+      assert.deepEqual(released, ["p1"], "the Project's environment is released");
+
+      const bin = join(root, ".recycle");
+      const moved = await readdir(bin);
+      assert.equal(moved.length, 1);
+      assert.equal(await readFile(join(bin, moved[0]!, "data.csv"), "utf8"), "a,b\n1,2\n");
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

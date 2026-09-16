@@ -183,7 +183,7 @@ test("a request that beats the background init waits for it instead of failing",
 
     assert.deepEqual(
       catalog.map((descriptor) => descriptor.id),
-      ["status", "new", "compact", "feedback", "goal", "permission", "plan"],
+      ["status", "new", "compact", "feedback", "goal", "permission", "plan", "project"],
       "the menu answers during init, with the curated harness layer",
     );
     assert.ok(

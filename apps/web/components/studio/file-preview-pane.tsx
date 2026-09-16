@@ -1,8 +1,10 @@
 "use client";
 
+import type * as React from "react";
 import { Download, FileX, Loader2, X } from "lucide-react";
 import { useWorkspaceFile } from "@science-studio/transport-client";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { kindFor, languageFor } from "./file-utils";
 import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
 import { CodeRenderer } from "./renderers/CodeRenderer";
@@ -13,9 +15,8 @@ import { useStudioStore } from "@/store/studio-store";
 export function FilePreviewPane() {
   const tabs = useStudioStore((s) => s.tabs);
   const activeTabPath = useStudioStore((s) => s.activeTabPath);
-  const tab = tabs.find((t) => t.path === activeTabPath) ?? null;
 
-  if (!tab) {
+  if (tabs.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
         <FileX className="h-8 w-8 opacity-40" />
@@ -25,7 +26,34 @@ export function FilePreviewPane() {
     );
   }
 
-  return <Preview path={tab.path} name={tab.name} />;
+  return (
+    <div className="relative h-full min-h-0">
+      {tabs.map((tab) => (
+        <TabPanel key={tab.id} active={tab.path === activeTabPath}>
+          <Preview path={tab.path} name={tab.name} />
+        </TabPanel>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Keeps a tab's content MOUNTED across switches so per-tab state (scroll
+ * position today, any future component state) survives. Inactive panes are
+ * hidden with `visibility` — NOT `display:none`, which drops the layout box and
+ * can reset `scrollTop` — so their scroll containers keep their position.
+ * `inert` + `aria-hidden` take the hidden pane out of focus and the a11y tree.
+ */
+function TabPanel({ active, children }: { active: boolean; children: React.ReactNode }) {
+  return (
+    <div
+      className={cn("absolute inset-0 min-h-0", !active && "invisible pointer-events-none")}
+      aria-hidden={!active}
+      inert={!active}
+    >
+      {children}
+    </div>
+  );
 }
 
 function Preview({ path, name }: { path: string; name: string }) {
@@ -58,7 +86,7 @@ function Preview({ path, name }: { path: string; name: string }) {
           <X className="size-3.5" />
         </Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {isLoading && (
           <div className="flex justify-center p-4">
             <Loader2 className="text-muted-foreground size-4 animate-spin" />

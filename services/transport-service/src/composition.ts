@@ -160,17 +160,23 @@ export function toRecordStoreLike(store: RecordStore): RecordStoreLike {
  * complete single-user default. Returning here (and only here) is what makes
  * "single-user is unaffected by the absence of multi-user" true.
  */
-export async function createBackend(env: NodeJS.ProcessEnv = process.env): Promise<Backend> {
+export async function createBackend(
+  env: NodeJS.ProcessEnv = process.env,
+  plugins?: readonly RuntimePlugin[],
+): Promise<Backend> {
   const specifier = env.SS_ENTERPRISE_MODULE;
   if (specifier) {
     const mod = (await import(specifier)) as EnterpriseModule;
     return mod.createBackend(env);
   }
-  return localBackend(env);
+  return localBackend(env, plugins);
 }
 
-async function localBackend(env: NodeJS.ProcessEnv): Promise<Backend> {
-  const plugins = await resolveRuntimePlugins(env);
+async function localBackend(
+  env: NodeJS.ProcessEnv,
+  preloaded?: readonly RuntimePlugin[],
+): Promise<Backend> {
+  const plugins = preloaded && preloaded.length > 0 ? [...preloaded] : await resolveRuntimePlugins(env);
 
   const runtime = env.TRANSPORT_RUNTIME ?? DEFAULT_RUNTIME;
   const plugin = plugins.find((p) => p.runtime === runtime);
@@ -209,13 +215,26 @@ async function localBackend(env: NodeJS.ProcessEnv): Promise<Backend> {
     environmentFor: async (projectId) => {
       const workspace = localWorkspace(env, projectId);
       const adapter = plugin.factory.create(binding);
+      // The record owns Project identity; the adapter gets a read-only copy so a
+      // dsh child can render it into the Project Brief (docs/adr/0012). A
+      // Project with no row (an arbitrary session key's first use) simply has
+      // none. This lookup is cheap; the runtime launch below is not.
+      const project = await records.getProject(projectId).catch(() => null);
       // Init runs in the BACKGROUND, exactly like the pre-seam service: a slow
       // or unreachable runtime must not delay the request that first names the
       // Project. Every adapter's own entry points WAIT for it (openclaw on its
       // gateway handshake, dsh on the initialization it completes last — see
       // `awaitInit`), so a request arriving during init waits rather than fails.
       void adapter
-        .init({ binding, recordStore, workspace, env: { ...env } })
+        .init({
+          binding,
+          recordStore,
+          workspace,
+          env: { ...env },
+          ...(project === null
+            ? {}
+            : { project: { id: project.id, name: project.name, createdAt: project.createdAt } }),
+        })
         .catch((err) =>
           console.error(
             `[transport-service] adapter init failed for project "${projectId}"`,

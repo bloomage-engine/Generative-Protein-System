@@ -36,6 +36,13 @@ type State = {
   panelProjectId: string | null;
   /** The install's Projects; `null` = not loaded yet (the panel loads lazily). */
   projects: Project[] | null;
+  /**
+   * The bootstrap Project's id — the one the record auto-ensures and every
+   * unscoped request lands on. It cannot be renamed, archived or deleted
+   * (docs/adr/0014), so the panel locks those actions on it. `null` until the
+   * overview has answered.
+   */
+  defaultProjectId: string | null;
   /** The ACTIVE Project's Sessions — never another Project's list. */
   sessions: Session[];
   /** The PANE's Project's Sessions — the same list as `sessions` while the pane shows the active Project. */
@@ -46,9 +53,24 @@ type State = {
   leftView: LeftView;
   leftPanel: boolean;
   rightPanel: boolean;
+  /**
+   * Bumped when a run finishes, so the status bar refetches its Session metrics
+   * from the record. A counter, not the metrics themselves: the record stays the
+   * source and the hook owns the fetch.
+   */
+  runsRevision: number;
 
   setProjects: (list: Project[]) => void;
+  setDefaultProjectId: (id: string | null) => void;
+  /** Replace a Project in place (rename), or append it (an unarchived/resurrected row). */
+  upsertProject: (project: Project) => void;
+  /** Drop an archived/deleted Project; clears the pane and the active list for it. */
+  removeProject: (id: string) => void;
   setSessions: (list: Session[]) => void;
+  /** Replace a Session in whichever list holds it (rename). */
+  upsertSession: (session: Session) => void;
+  /** Drop an archived/deleted Session from both lists. */
+  removeSession: (id: string) => void;
   /** Expand the pane on a Project (or `null` for none); a real move drops the previous list. */
   setPanelProject: (id: string | null) => void;
   setPanelSessions: (list: Session[]) => void;
@@ -70,12 +92,15 @@ type State = {
   /** Pure assignment — for seeding the shell (a fresh install lands on the panel). */
   setLeftView: (view: LeftView) => void;
   toggleRight: () => void;
+  /** Signal that a run finished; the status bar's metrics hook depends on it. */
+  bumpRunsRevision: () => void;
 };
 
 export const useStudioStore = create<State>()((set) => ({
   projectId: null,
   panelProjectId: null,
   projects: null,
+  defaultProjectId: null,
   sessions: [],
   panelSessions: [],
   activeSessionId: null,
@@ -84,13 +109,47 @@ export const useStudioStore = create<State>()((set) => ({
   leftView: "thread",
   leftPanel: true,
   rightPanel: true,
+  runsRevision: 0,
 
   setProjects: (projects) => set({ projects }),
+  setDefaultProjectId: (defaultProjectId) => set({ defaultProjectId }),
+  upsertProject: (project) =>
+    set((s) => {
+      const list = s.projects;
+      if (!list) return { projects: [project] };
+      return {
+        projects: list.some((p) => p.id === project.id)
+          ? list.map((p) => (p.id === project.id ? project : p))
+          : [...list, project],
+      };
+    }),
+  removeProject: (id) =>
+    set((s) => ({
+      projects: (s.projects ?? []).filter((p) => p.id !== id),
+      // The pane must not stay expanded on a row that is gone; a scope move is
+      // the caller's `setScope` (the only way scope changes).
+      ...(s.panelProjectId === id ? { panelProjectId: null, panelSessions: [] } : {}),
+      ...(s.projectId === id ? { sessions: [] } : {}),
+    })),
   setSessions: (sessions) =>
     set((state) => ({
       sessions,
       // The pane shows the active Project's list while it is expanded on it.
       ...(state.panelProjectId === state.projectId ? { panelSessions: sessions } : {}),
+    })),
+  upsertSession: (session) =>
+    set((s) => ({
+      panelSessions: s.panelSessions.some((x) => x.id === session.id)
+        ? s.panelSessions.map((x) => (x.id === session.id ? session : x))
+        : s.panelSessions,
+      sessions: s.sessions.some((x) => x.id === session.id)
+        ? s.sessions.map((x) => (x.id === session.id ? session : x))
+        : s.sessions,
+    })),
+  removeSession: (id) =>
+    set((s) => ({
+      panelSessions: s.panelSessions.filter((x) => x.id !== id),
+      sessions: s.sessions.filter((x) => x.id !== id),
     })),
   setPanelProject: (panelProjectId) =>
     set((state) =>
@@ -158,4 +217,5 @@ export const useStudioStore = create<State>()((set) => ({
   setLeftView: (leftView) => set({ leftView }),
 
   toggleRight: () => set((s) => ({ rightPanel: !s.rightPanel })),
+  bumpRunsRevision: () => set((s) => ({ runsRevision: s.runsRevision + 1 })),
 }));

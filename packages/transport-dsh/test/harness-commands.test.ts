@@ -223,7 +223,7 @@ test("a curated name this harness does not resolve is still answered, not left s
     assert.deepEqual(client.prompts, ["/feedback"], "the curation is what sent it to the child");
     assert.deepEqual(bridge.calls, [], "and the bridge had nothing to run it on");
     assert.deepEqual(replies(deltas), [
-      "Unknown command `/feedback`. This runtime answers: `/status`, `/new`, `/compact`, `/feedback`, `/goal`, `/permission`, `/plan`.",
+      "Unknown command `/feedback`. This runtime answers: `/status`, `/new`, `/compact`, `/feedback`, `/goal`, `/permission`, `/plan`, `/project`.",
     ]);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -299,7 +299,7 @@ test("the catalog curates the harness's own commands while cold, then takes the 
     const cold = (await adapter.listCommands()).map((d) => d.id);
     assert.deepEqual(
       cold,
-      ["status", "new", "compact", "feedback", "goal", "permission", "plan"],
+      ["status", "new", "compact", "feedback", "goal", "permission", "plan", "project"],
       "a cold runtime still shows the harness's own commands (docs/adr/0011)",
     );
     assert.equal(client.started, false, "a menu request must never boot a harness child");
@@ -341,7 +341,7 @@ test("a bridge that cannot list falls back to the curated harness catalog", asyn
     await warmTurn(adapter, client);
     assert.deepEqual(
       (await adapter.listCommands()).map((d) => d.id),
-      ["status", "new", "compact", "feedback", "goal", "permission", "plan"],
+      ["status", "new", "compact", "feedback", "goal", "permission", "plan", "project"],
       "the adapter degrades to its own commands plus the curated harness set",
     );
   } finally {

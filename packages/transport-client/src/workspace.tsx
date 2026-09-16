@@ -132,6 +132,42 @@ export function workspaceFileUrl(
   return `${base(api)}/file?path=${encodeURIComponent(path)}${projectParam(opts.project)}${download}`;
 }
 
+/**
+ * Upload a file's bytes to `path` (a raw body — the service has no multipart
+ * parser, so the file's bytes ARE the request body and the target path rides in
+ * the query). Throws a `WorkspaceRequestError` on a non-2xx answer.
+ */
+export async function uploadWorkspaceFile(
+  api: string,
+  path: string,
+  file: Blob,
+  project: string | null = null,
+): Promise<void> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const res = await fetch(
+    `${base(api)}/upload?path=${encodeURIComponent(path)}${projectParam(project)}`,
+    {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/octet-stream" },
+      body: bytes,
+    },
+  );
+  if (!res.ok) throw await requestError(res);
+}
+
+/** Remove a file or directory (recursively) at `path`. Throws on failure. */
+export async function deleteWorkspaceEntry(
+  api: string,
+  path: string,
+  project: string | null = null,
+): Promise<void> {
+  const res = await fetch(
+    `${base(api)}/delete?path=${encodeURIComponent(path)}${projectParam(project)}`,
+    { method: "POST", headers: { accept: "application/json" } },
+  );
+  if (!res.ok) throw await requestError(res);
+}
+
 async function errorText(res: Response): Promise<string> {
   try {
     const body = (await res.json()) as { error?: string };

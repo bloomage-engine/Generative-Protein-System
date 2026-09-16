@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src/renderer",
+    "outDir": "dist/renderer",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "composite": false
+  },
+  "include": ["src/renderer/**/*.ts"],
+  "references": [{ "path": "./tsconfig.json" }]
+}

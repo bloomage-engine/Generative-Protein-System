@@ -278,6 +278,16 @@ treat command rows exactly like any other rows.
   `thread.isRunning`), because a runtime that only knows its commands once warm —
   the dsh harness child — cannot report them before the first run; only a change
   of (API base, Project) clears the list, so a refetch never blanks the menu.
+- **Project scaffold & Brief.** A SECOND dependency-free cordis plugin
+  (`project-plugin.ts`, docs/adr/0012) rides another per-launch patch. It is a
+  no-op unless its patch config carries Project metadata; when it is one, it lays
+  down the research layout — idempotent and create-only — and keeps `PROJECT.md`
+  current: on `agent/session-start`, on the `/project` command (also curated into
+  the cold menu), and through the model-callable `project_update` / `project_log`
+  tools plus a `systemPrompt` section telling the agent to maintain it. The record
+  stays the authority; the Brief template renders a read-only copy of the Project
+  identity the service passes as `RuntimeInitOptions.project`
+  (`records.getProject`).
 
 ## 5. Record layer
 

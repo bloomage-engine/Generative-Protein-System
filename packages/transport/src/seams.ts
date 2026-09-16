@@ -22,6 +22,7 @@ export type {
   CommandDescriptor,
   RuntimeAdapter,
   RuntimeInitOptions,
+  ProjectContext,
   RecordStoreLike,
 } from "./types.js";
 

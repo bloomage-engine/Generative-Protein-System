@@ -61,7 +61,15 @@ const Session = memo(function Session({
   sessionId: string;
 }) {
   const { api } = useTransportApi();
-  const runtime = useTransport({ api, projectId, threadId: sessionId });
+  const runtime = useTransport({
+    api,
+    projectId,
+    threadId: sessionId,
+    // The status bar's metrics come from the record; a finished run is the
+    // signal to refetch. Read the store imperatively so this component — which
+    // must never re-render — takes no store subscription.
+    onFinish: () => useStudioStore.getState().bumpRunsRevision(),
+  });
   const openFile = useStudioStore((s) => s.openFile);
 
   return (

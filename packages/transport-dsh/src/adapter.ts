@@ -25,7 +25,13 @@ import {
   type DshHarnessCommands,
   type HarnessCommandOutcome,
 } from "./commands.js";
-import { bridgeSocketPath, createCommandBridge, writeBridgePatch, type DshCommandBridge } from "./bridge.js";
+import {
+  bridgeSocketPath,
+  createCommandBridge,
+  writeBridgePatch,
+  writeProjectPatch,
+  type DshCommandBridge,
+} from "./bridge.js";
 import { TranscriptMirror } from "./mirror.js";
 import { createDshBehavior } from "./behavior.js";
 
@@ -60,6 +66,13 @@ export interface DshRuntimeAdapterOptions {
    * loads the plugin from the SAME release as the adapter that wrote the patch.
    */
   bridgePluginPath?: string;
+  /**
+   * The child-side project plugin this adapter's launch patch mounts — the
+   * research scaffold and the Project Brief (docs/adr/0012). Defaults to this
+   * package's own build output, so the child runs the SAME release as the
+   * adapter that wrote the patch.
+   */
+  projectPluginPath?: string;
   /** Where the socket and its launch patch live (default under the temp dir). */
   bridgeDir?: string;
   /** Test seam: inject the bridge client (defaults to the real socket client). */
@@ -112,6 +125,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private provider = DEFAULT_PROVIDER;
   private model = DEFAULT_MODEL;
   private readonly bridgePluginPath: string;
+  private readonly projectPluginPath: string;
   private readonly bridgeDir: string;
   private readonly createBridge: (endpoint: string) => DshCommandBridge;
   /** This child generation's command bridge, or `null` when it could not be set up. */
@@ -135,6 +149,8 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     this.transcriptDir = options.transcriptDir ?? "";
     this.bridgePluginPath =
       options.bridgePluginPath ?? fileURLToPath(new URL("./bridge-plugin.js", import.meta.url));
+    this.projectPluginPath =
+      options.projectPluginPath ?? fileURLToPath(new URL("./project-plugin.js", import.meta.url));
     this.bridgeDir = options.bridgeDir ?? join(tmpdir(), "science-studio", "dsh-bridge");
     this.createBridge = options.createBridge ?? createCommandBridge;
     this.initialized = new Promise<void>((resolve) => {
@@ -212,15 +228,30 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     // best-effort — if either fails (an unwritable temp dir, a socket path the
     // platform rejects) the child simply has no bridge, the adapter publishes
     // only its own two commands, and everything else behaves exactly as before.
-    let patches: string[] | undefined;
+    const patches: string[] = [];
     try {
       const socket = bridgeSocketPath(this.bridgeDir);
-      const patch = await writeBridgePatch({ dir: this.bridgeDir, pluginPath: this.bridgePluginPath, socket });
-      patches = [patch];
+      patches.push(await writeBridgePatch({ dir: this.bridgeDir, pluginPath: this.bridgePluginPath, socket }));
       this.bridge = this.createBridge(socket);
     } catch (err) {
       this.bridge = null;
       console.warn("[dsh] command bridge unavailable", err);
+    }
+    // The Project plugin rides a SECOND launch patch, best-effort like the
+    // bridge: it lays down the research layout and keeps the Project Brief,
+    // and without a record-owned Project there is nothing to manage.
+    if (opts.project) {
+      try {
+        patches.push(
+          await writeProjectPatch({
+            dir: this.bridgeDir,
+            pluginPath: this.projectPluginPath,
+            config: { project: opts.project, root: cwd },
+          }),
+        );
+      } catch (err) {
+        console.warn("[dsh] project plugin unavailable", err);
+      }
     }
 
     this.client = this.createClient({
@@ -230,7 +261,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       provider,
       model,
       maxTokens,
-      ...(patches ? { patches } : {}),
+      ...(patches.length > 0 ? { patches } : {}),
     });
     this.mirror = new TranscriptMirror(dir);
     this.provider = provider;

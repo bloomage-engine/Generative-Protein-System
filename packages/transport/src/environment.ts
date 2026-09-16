@@ -34,6 +34,14 @@ export interface EnvironmentProvider {
    * Session's `projectId` decides which environment to build.
    */
   acquire(principal: Principal, projectId: Id): Promise<Environment>;
+  /**
+   * Drop one Project's cached environment (its adapter and workspace) — e.g.
+   * after the Project is deleted (docs/adr/0014), so its runtime (for dsh, a
+   * harness child whose cwd was just recycled) is torn down. Optional: a
+   * deployment that does not cache per Project can omit it. `dispose` remains
+   * the whole-principal teardown.
+   */
+  release?(principal: Principal, projectId: Id): Promise<void>;
   /** Tear down (logout, tenant deletion, deployment shutdown). */
   dispose(principal: Principal): Promise<void>;
 }
@@ -73,6 +81,16 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
       this.inflight.set(projectId, pending);
     }
     return pending;
+  }
+
+  async release(_principal: Principal, projectId: Id): Promise<void> {
+    this.environments.delete(projectId);
+    // A build already in flight would otherwise re-cache after the drop.
+    const pending = this.inflight.get(projectId);
+    if (pending) {
+      await pending.catch(() => {});
+      this.environments.delete(projectId);
+    }
   }
 
   async dispose(_principal: Principal): Promise<void> {

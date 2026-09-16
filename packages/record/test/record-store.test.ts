@@ -92,6 +92,43 @@ async function sharedContract(store: RecordStore): Promise<void> {
   const fetched = (await store.listProjects())[0]!;
   fetched.name = "mutated";
   assert.equal((await store.getProject("p1"))?.name, "Metabolism");
+
+  // Rename is a field update; the id (and so a Project's directory) is stable.
+  await store.updateProject("p1", { name: "Renamed" });
+  assert.equal((await store.getProject("p1"))?.name, "Renamed");
+
+  await store.updateSession("s1", { title: "First", updatedAt: "2026-03-01T00:00:00.000Z" });
+  const renamed = await store.getSession("s1");
+  assert.equal(renamed?.title, "First");
+  assert.equal(renamed?.updatedAt, "2026-03-01T00:00:00.000Z");
+
+  // Archive is reversible and hides from the default listing.
+  await store.archiveSession("s2", "2026-03-02T00:00:00.000Z");
+  assert.deepEqual(
+    (await store.listSessions("p1")).map((s) => s.id),
+    ["s1"],
+  );
+  assert.deepEqual(
+    (await store.listSessions("p1", { includeArchived: true })).map((s) => s.id),
+    ["s1", "s2"],
+  );
+  await store.unarchiveSession("s2");
+  assert.equal((await store.getSession("s2"))?.archivedAt, undefined);
+  await store.unarchiveProject("p2");
+  assert.equal((await store.getProject("p2"))?.archivedAt, undefined);
+
+  // Delete cascades: a Session takes its Runs; a Project takes Sessions and Runs.
+  await store.deleteSession("s2"); // s2 owns r2
+  assert.equal(await store.getSession("s2"), null);
+  assert.deepEqual(
+    (await store.listRuns("p1")).map((r) => r.id),
+    ["r1"],
+  );
+  await store.deleteProject("p1");
+  assert.equal(await store.getProject("p1"), null);
+  assert.deepEqual(await store.listSessions("p1"), []);
+  assert.deepEqual(await store.listRuns("p1"), []);
+  assert.equal((await store.getProject("p2"))?.name, "Other", "p2 is untouched");
 }
 
 test("in-memory store satisfies the RecordStore contract", async () => {
@@ -129,6 +166,31 @@ test("jsonl store restores projects, sessions and runs after a restart", async (
       (await reopened.listRuns("p1")).map((r) => r.id),
       ["r1"],
     );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("jsonl store drops deleted rows across a restart", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ss-record-"));
+  const path = join(dir, "record.jsonl");
+  try {
+    const first = await createJsonlRecordStore(path);
+    await first.createProject(project());
+    await first.createProject(project({ id: "p2", name: "Other" }));
+    await first.addSession(session());
+    await first.addRun(run());
+    await first.deleteSession("s1");
+    await first.deleteProject("p1");
+
+    const reopened = await createJsonlRecordStore(path);
+    assert.deepEqual(
+      (await reopened.listProjects()).map((p) => p.id),
+      ["p2"],
+      "the deleted Project stays gone",
+    );
+    assert.equal(await reopened.getSession("s1"), null, "the cascaded Session stays gone");
+    assert.deepEqual(await reopened.listRuns("p1"), [], "the cascaded Run stays gone");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

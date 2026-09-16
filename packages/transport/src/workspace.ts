@@ -63,6 +63,24 @@ export interface Workspace {
   toAgentPath(relPath: string): string;
   /** Agent-emitted path -> workspace-relative path, or null if outside. */
   toWorkspacePath(agentPath: string): string | null;
+
+  /**
+   * Remove a file or directory (recursively) under the workspace root. The
+   * bytes are destroyed — the product offers no restore. Enforces the same
+   * containment and symlink rules as every other path. Optional: a read-only
+   * or `NullWorkspace` deployment omits it and the delete route answers 501.
+   */
+  delete?(relPath: string): Promise<void>;
+
+  /**
+   * Move the whole workspace out of the way when its Project is deleted
+   * (docs/adr/0014). The bytes are NOT destroyed — an implementation moves them
+   * to a recycle bin (a sibling `.recycle/` for `FsWorkspace`) so they remain
+   * recoverable by hand, but the product offers no restore. Optional: a
+   * deployment with no filesystem surface omits it, and the delete is then a
+   * no-op for files. Returns once the move has settled.
+   */
+  recycle?(): Promise<void>;
 }
 
 /** Options for `Workspace.write`. */
@@ -158,6 +176,10 @@ export class NullWorkspace implements Workspace {
   }
 
   async write(relPath: string): Promise<FileStat> {
+    throw new WorkspaceUnavailableError(relPath);
+  }
+
+  async delete(relPath: string): Promise<void> {
     throw new WorkspaceUnavailableError(relPath);
   }
 

@@ -172,3 +172,38 @@ export async function writeBridgePatch(opts: { dir: string; pluginPath: string; 
   await writeFile(file, document, "utf8");
   return file;
 }
+
+/** The config the child-side project plugin (`project-plugin.ts`) reads. */
+export interface ProjectPluginLaunchConfig {
+  project: { id: string; name: string; createdAt: string };
+  /** The Project Workspace root (the child's cwd) the scaffold and Brief live in. */
+  root: string;
+  /** Override the layout; the default lives in the plugin. */
+  directories?: readonly string[];
+}
+
+/**
+ * Write the launch patch that inserts the PROJECT plugin into the child's
+ * profile, and return its path (for `--patch`). The config is emitted as one
+ * JSON object — JSON is valid YAML flow syntax — so the nested Project identity
+ * needs no YAML dependency, and a random suffix keeps two adapters (or two
+ * Projects) from overwriting each other's patch in the shared bridge directory.
+ */
+export async function writeProjectPatch(opts: {
+  dir: string;
+  pluginPath: string;
+  config: ProjectPluginLaunchConfig;
+}): Promise<string> {
+  const { dir, pluginPath, config } = opts;
+  await mkdir(dir, { recursive: true });
+  const file = join(dir, `project-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
+  const document = [
+    "- insert:",
+    "    - id: science-studio-project",
+    `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
+    `      config: ${JSON.stringify(config)}`,
+    "",
+  ].join("\n");
+  await writeFile(file, document, "utf8");
+  return file;
+}

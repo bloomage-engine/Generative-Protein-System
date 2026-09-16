@@ -1,5 +1,6 @@
 /**
- * Dev smoke test for the dsh command bridge (docs/adr/0011).
+ * Dev smoke test for the dsh child plugins — the command bridge (docs/adr/0011)
+ * and the project plugin (docs/adr/0012).
  *
  * Drives a REAL harness child (`dsh --profile sdk`, spawned by
  * @deepseek-ai/dsh-sdk-client — a hoisted workspace dependency, like the other
@@ -8,6 +9,12 @@
  * the plugin into the child: nothing here runs in-process except the client.
  *
  *   node scripts/smoke-dsh-command-bridge.mjs
+ *
+ * It ALSO mounts the PROJECT plugin (docs/adr/0012) and drives `/project` as a
+ * cold session's first prompt: a real child must scaffold the workspace's
+ * research layout and `PROJECT.md` on the session-start hook + the command,
+ * which exercises the `--patch` mount and the `agent/session-start` listener
+ * with no model route needed.
  *
  * Expected without a prompt: the socket answers, `commands` is `[]` and
  * `/compact` is `{"status":"no-agent"}` — no agent exists until a session
@@ -27,6 +34,7 @@
  */
 import { config as loadEnv } from "dotenv";
 loadEnv({ path: "examples/transport-dsh-example/.env", quiet: true });
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,13 +44,26 @@ import {
   bridgeSocketPath,
   createCommandBridge,
   writeBridgePatch,
+  writeProjectPatch,
 } from "../packages/transport-dsh/dist/bridge.js";
+import { PROJECT_FILE } from "../packages/transport-dsh/dist/project-scaffold.js";
 
 const pluginPath = fileURLToPath(new URL("../packages/transport-dsh/dist/bridge-plugin.js", import.meta.url));
+const projectPluginPath = fileURLToPath(
+  new URL("../packages/transport-dsh/dist/project-plugin.js", import.meta.url),
+);
 const dir = await mkdtemp(join(tmpdir(), "dsh-bridge-smoke-"));
 const workspace = await mkdtemp(join(tmpdir(), "dsh-bridge-workspace-"));
 const socket = bridgeSocketPath(dir);
 const patch = await writeBridgePatch({ dir, pluginPath, socket });
+const projectPatch = await writeProjectPatch({
+  dir,
+  pluginPath: projectPluginPath,
+  config: {
+    project: { id: "smoke-project", name: "Smoke Project", createdAt: new Date().toISOString() },
+    root: workspace,
+  },
+});
 const provider = process.env.DSH_PROVIDER ?? "deepseek-official";
 const model = process.env.DSH_MODEL ?? "deepseek-v4-flash";
 
@@ -52,7 +73,7 @@ const harness = new DeepSeekHarness({
   cwd: workspace,
   provider,
   model,
-  patches: [patch],
+  patches: [patch, projectPatch],
 });
 const bridge = createCommandBridge(socket);
 
@@ -68,7 +89,8 @@ function expect(condition, description, detail) {
 
 try {
   console.log(`launching dsh · profile ${process.env.DSH_PROFILE ?? "sdk"} · ${provider}/${model}`);
-  console.log(`patch ${patch}`);
+  console.log(`bridge patch ${patch}`);
+  console.log(`project patch ${projectPatch}`);
   console.log(`socket ${socket}`);
   await harness.start();
 
@@ -80,6 +102,27 @@ try {
   console.log(`POST /execute -> ${JSON.stringify(noAgent)}`);
   expect(noAgent.status === "no-agent", "an unknown session's agent is no-agent", noAgent);
 
+  // The PROJECT plugin (docs/adr/0012): `/project` as a COLD session's first
+  // prompt creates the agent, fires `agent/session-start`, and the pre-step
+  // interception runs the command — no model route needed. A real child must
+  // then show the research layout and the Brief in the workspace.
+  const projectSession = `smoke-proj-${Date.now().toString(36)}`;
+  console.log(`sending "/project" as the FIRST prompt on "${projectSession}"...`);
+  const projectTurn = await harness.session(projectSession).run("/project", { onNotification: () => {} });
+  const projectTypes = projectTurn.events.map((event) => event.type);
+  expect(
+    projectTypes.includes("command/done"),
+    "the project plugin's /project ran in the real child",
+    projectTypes,
+  );
+  expect(existsSync(join(workspace, PROJECT_FILE)), "the Project Brief was scaffolded", workspace);
+  expect(existsSync(join(workspace, "data", "raw")), "the research layout was scaffolded", workspace);
+  expect(
+    existsSync(join(workspace, "results", "figures")),
+    "nested layout directories were scaffolded",
+    workspace,
+  );
+
   if (process.env.SS_SMOKE_TURN === "1") {
     const sessionId = `smoke-${Date.now().toString(36)}`;
     console.log(`sending one prompt on "${sessionId}" (needs a reachable model route)...`);
@@ -87,7 +130,7 @@ try {
     const warm = await bridge.list();
     console.log(`GET /commands (warm) -> ${JSON.stringify(warm)}`);
     const names = warm.map((entry) => entry.name);
-    for (const name of ["compact", "feedback", "goal", "plan"]) {
+    for (const name of ["compact", "feedback", "goal", "plan", "project"]) {
       expect(names.includes(name), `the harness's own registry exposes /${name}`, names);
     }
     const outcome = await bridge.execute(sessionId, "/compact");
@@ -139,5 +182,5 @@ try {
   await rm(workspace, { recursive: true, force: true });
 }
 
-console.log(failures === 0 ? "bridge smoke: OK" : `bridge smoke: ${failures} check(s) failed`);
+console.log(failures === 0 ? "dsh smoke: OK" : `dsh smoke: ${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);
