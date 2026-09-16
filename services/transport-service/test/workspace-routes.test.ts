@@ -108,6 +108,27 @@ test("GET /api/workspace/file streams inline content with its mime type", async 
   }
 });
 
+test("GET /api/workspace/file streams a non-ASCII filename without erroring", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ss-ws-routes-"));
+  await mkdir(join(root, "reports"));
+  const zh = "软骨素生物合成进展.md";
+  await writeFile(join(root, "reports", zh), "# progress\n");
+  try {
+    await withServer(wsFor(root), async (base) => {
+      const res = await fetch(
+        `${base}/api/workspace/file?path=${encodeURIComponent(`reports/${zh}`)}`,
+      );
+      assert.equal(res.status, 200);
+      const disposition = res.headers.get("content-disposition") ?? "";
+      assert.match(disposition, /^inline/);
+      assert.match(disposition, /filename\*=UTF-8''/);
+      assert.equal(await res.text(), "# progress\n");
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("GET /api/workspace/file?download=1 streams an oversized file as an attachment", async () => {
   const { root, dispose } = await makeFixture();
   try {
