@@ -27,7 +27,7 @@ export const SERVICE_URL = process.env.TRANSPORT_SERVICE_URL ?? "http://localhos
 export interface ServiceHop {
   /** The upstream path AND its query, e.g. `/api/transport/watch?threadId=s1`. */
   path: string;
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PUT";
   /** The request body: text for the small JSON hops, or raw bytes for an upload. */
   body?: string | Uint8Array;
   /** Request headers for the upstream call (`accept`, `content-type`). */
