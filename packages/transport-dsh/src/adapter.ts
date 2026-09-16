@@ -1,4 +1,4 @@
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -34,6 +34,7 @@ import {
 } from "./bridge.js";
 import { TranscriptMirror } from "./mirror.js";
 import { createDshBehavior } from "./behavior.js";
+import { applyRouteSettings } from "./route-settings.js";
 
 const DEFAULT_PROVIDER = "deepseek-official";
 const DEFAULT_MODEL = "deepseek-v4-flash";
@@ -254,6 +255,22 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       }
     }
 
+    let routeEnv: NodeJS.ProcessEnv | undefined;
+    if (binding.endpoint || binding.apiKey) {
+      try {
+        const route = await applyRouteSettings({
+          home: dshHome ?? join(homedir(), ".dsh"),
+          provider,
+          ...(model === undefined ? {} : { model }),
+          ...(binding.endpoint === undefined ? {} : { endpoint: binding.endpoint }),
+          ...(binding.apiKey === undefined ? {} : { apiKey: binding.apiKey }),
+        });
+        if (route) routeEnv = { ...route.env };
+      } catch (err) {
+        console.warn("[dsh] route settings unavailable", err);
+      }
+    }
+
     this.client = this.createClient({
       profile,
       dshHome,
@@ -261,6 +278,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       provider,
       model,
       maxTokens,
+      ...(routeEnv === undefined ? {} : { env: routeEnv }),
       ...(patches.length > 0 ? { patches } : {}),
     });
     this.mirror = new TranscriptMirror(dir);

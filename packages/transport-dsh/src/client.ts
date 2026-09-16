@@ -50,6 +50,8 @@ export interface DshClientLaunchOptions {
   model?: string;
   /** Optional positive output-token cap inherited by SDK-created agents. */
   maxTokens?: number;
+  /** Extra environment for the harness child (a route credential, typically). */
+  env?: NodeJS.ProcessEnv;
 }
 
 /** Real turn client over the official TypeScript SDK client. */
@@ -65,6 +67,7 @@ class SdkDshTurnClient implements DshTurnClient {
       provider: options.provider,
       model: options.model,
       maxTokens: options.maxTokens,
+      env: options.env,
       // A turn can legitimately run long (multi-step tool work). The request
       // timeout default (undefined) waits indefinitely, which is what we want.
     });

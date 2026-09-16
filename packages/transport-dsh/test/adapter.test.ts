@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
@@ -337,6 +337,59 @@ test("a harness id another process already took falls back to a fresh harness se
   } finally {
     await adapter.abort();
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a saved route credential reaches the launch client env", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ss-route-env-"));
+  try {
+    let seenEnv: NodeJS.ProcessEnv | undefined;
+    const adapter = new DshRuntimeAdapter({
+      createClient: (options): DshTurnClient => {
+        seenEnv = options.env;
+        return { start: async () => {}, close: async () => {}, runTurn: async () => {} };
+      },
+      transcriptDir: join(tmpdir(), "science-studio-route-env-test"),
+    });
+    await adapter.init({
+      binding: {
+        runtime: "dsh",
+        config: {
+          home,
+          provider: "ollama-local",
+          model: "qwen3.8:latest",
+          endpoint: "http://h/v1",
+          apiKey: "secret-key",
+        },
+      },
+      recordStore: { addRun: async () => {} },
+    });
+    assert.equal(seenEnv?.OLLAMA_LOCAL_API_KEY, "secret-key");
+    const settings = await readFile(join(home, "settings.yaml"), "utf8");
+    assert.match(settings, /baseURL: http:\/\/h\/v1/);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("a failing route write does not fail init", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ss-route-fail-"));
+  try {
+    await writeFile(join(home, "settings.yaml"), "", "utf8");
+    await mkdir(join(home, "settings.yaml.tmp"));
+    const adapter = new DshRuntimeAdapter({
+      createClient: (): DshTurnClient => ({ start: async () => {}, close: async () => {}, runTurn: async () => {} }),
+      transcriptDir: join(tmpdir(), "science-studio-route-fail-test"),
+    });
+    await adapter.init({
+      binding: {
+        runtime: "dsh",
+        config: { home, provider: "p", endpoint: "http://x/v1", apiKey: "k" },
+      },
+      recordStore: { addRun: async () => {} },
+    });
+  } finally {
+    await rm(home, { recursive: true, force: true });
   }
 });
 
