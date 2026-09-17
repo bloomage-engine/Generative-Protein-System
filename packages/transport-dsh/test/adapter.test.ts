@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
+import type { HarnessNotification } from "@deepseek-ai/dsh-sdk-client";
 import type { RecordStoreLike, SessionState, StateDelta } from "@science-studio/transport";
 import { sessionState } from "@science-studio/contract-tests";
 import type { Run } from "@science-studio/record";
@@ -19,11 +20,21 @@ class FakeDshClient implements DshTurnClient {
   started = false;
   readonly prompts: string[] = [];
   readonly sessionIds: string[] = [];
+  private listener: ((notification: HarnessNotification) => void) | null = null;
   constructor(private readonly script: (sessionId: string, text: string) => SessionEvent[]) {}
   async start(): Promise<void> {
     this.started = true;
   }
   async close(): Promise<void> {}
+  subscribeNotifications(listener: (notification: HarnessNotification) => void): () => void {
+    this.listener = listener;
+    return () => {
+      this.listener = null;
+    };
+  }
+  emit(notification: HarnessNotification): void {
+    this.listener?.(notification);
+  }
   async runTurn(
     sessionId: string,
     text: string,
@@ -414,6 +425,63 @@ test("a turn/end reason of error settles the session to error and persists an er
     assert.equal(store.runs.length, 1);
     assert.equal(store.runs[0]!.status, "error", "failed turns are still recorded as Runs");
   } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a standing subscription reports live subagent runs for the session", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-subagents-"));
+  const store = new FakeRecordStore();
+  const client = new FakeDshClient(() => completedReply("am1", "Hello from dsh."));
+  const adapter = new DshRuntimeAdapter({
+    createClient: () => client,
+    transcriptDir: dir,
+    now: () => "2026-09-17T00:00:00.000Z",
+  });
+  try {
+    await adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
+    await collect(adapter.run(session(), [
+      { type: "add-message", message: { id: "u1", role: "user", content: "delegate" } },
+    ]));
+    const parent = client.sessionIds[0]!;
+    assert.equal(await adapter.subagents("sess-1").then((l) => l.length), 0, "no subagents yet");
+
+    client.emit({
+      method: "subagent.started",
+      params: { parentSessionId: parent, childSessionId: "child-1" },
+    });
+    client.emit({
+      method: "session.event",
+      params: {
+        sessionId: "child-1",
+        event: { type: "subagent/descriptor", data: { label: "Literature review", provider: "spawn" } },
+      },
+    });
+    const running = await adapter.subagents("sess-1");
+    assert.equal(running.length, 1);
+    assert.equal(running[0]!.id, "child-1");
+    assert.equal(running[0]!.parentId, "sess-1");
+    assert.equal(running[0]!.label, "Literature review");
+    assert.equal(running[0]!.status, "running");
+    assert.equal(running[0]!.startedAt, "2026-09-17T00:00:00.000Z");
+    assert.deepEqual(await adapter.subagents("other"), [], "only the owning session lists it");
+
+    client.emit({
+      method: "subagent.finished",
+      params: {
+        parentSessionId: parent,
+        childSessionId: "child-1",
+        provider: "spawn",
+        status: "ok",
+        stopReason: "completed",
+      },
+    });
+    const done = await adapter.subagents("sess-1");
+    assert.equal(done[0]!.status, "completed");
+    assert.equal(done[0]!.stopReason, "completed");
+    assert.equal(done[0]!.finishedAt, "2026-09-17T00:00:00.000Z");
+  } finally {
+    await adapter.abort();
     await rm(dir, { recursive: true, force: true });
   }
 });

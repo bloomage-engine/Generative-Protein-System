@@ -1,4 +1,5 @@
 import { DeepSeekHarness } from "@deepseek-ai/dsh-sdk-client";
+import type { HarnessNotification } from "@deepseek-ai/dsh-sdk-client";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
 
 /**
@@ -32,6 +33,14 @@ export interface DshTurnClient {
     text: string,
     onEvent: (event: SessionEvent) => void,
   ): Promise<void>;
+  /**
+   * Subscribe to this child's notifications for the WHOLE runtime (every
+   * session), independent of any run. This is what keeps a background
+   * subagent's status live after the parent turn has gone idle, when the
+   * per-run stream has already closed. Returns an unsubscribe.
+   * OPTIONAL: gate on method presence, not on a capability flag.
+   */
+  subscribeNotifications?(listener: (notification: HarnessNotification) => void): () => void;
 }
 
 export interface DshClientLaunchOptions {
@@ -79,6 +88,18 @@ class SdkDshTurnClient implements DshTurnClient {
 
   async close(): Promise<void> {
     await this.harness.close();
+  }
+
+  subscribeNotifications(listener: (notification: HarnessNotification) => void): () => void {
+    const subscription = this.harness.client.subscribe();
+    void (async () => {
+      try {
+        for await (const notification of subscription) listener(notification);
+      } catch {
+        /* the runtime closed: the adapter is being torn down too */
+      }
+    })();
+    return () => subscription.close();
   }
 
   async runTurn(

@@ -12,10 +12,12 @@ import {
   type SessionBehavior,
   type SessionState,
   type StateDelta,
+  type SubagentRun,
   type TransportCommand,
   type WatchSnapshot,
 } from "@science-studio/transport";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
+import type { HarnessNotification } from "@deepseek-ai/dsh-sdk-client";
 import { createDshTurnClient, type DshClientLaunchOptions, type DshTurnClient } from "./client.js";
 import { DSH_CAPABILITIES, parseDshBinding, type DshBinding } from "./binding.js";
 import {
@@ -35,6 +37,7 @@ import {
 import { TranscriptMirror } from "./mirror.js";
 import { createDshBehavior } from "./behavior.js";
 import { applyRouteSettings } from "./route-settings.js";
+import { SubagentRegistry } from "./subagents.js";
 
 const DEFAULT_PROVIDER = "deepseek-official";
 const DEFAULT_MODEL = "deepseek-v4-flash";
@@ -78,6 +81,8 @@ export interface DshRuntimeAdapterOptions {
   bridgeDir?: string;
   /** Test seam: inject the bridge client (defaults to the real socket client). */
   createBridge?: (endpoint: string) => DshCommandBridge;
+  /** Test seam: deterministic timestamps for the subagent registry. */
+  now?: () => string;
 }
 
 /**
@@ -144,6 +149,8 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private markInitialized!: () => void;
   /** Why {@link init} failed, re-thrown to the requests that waited for it. */
   private initFailure: unknown = null;
+  private readonly subagentRegistry: SubagentRegistry;
+  private subagentWatchAttached = false;
 
   constructor(options: DshRuntimeAdapterOptions = {}) {
     this.createClient = options.createClient ?? createDshTurnClient;
@@ -154,6 +161,10 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       options.projectPluginPath ?? fileURLToPath(new URL("./project-plugin.js", import.meta.url));
     this.bridgeDir = options.bridgeDir ?? join(tmpdir(), "science-studio", "dsh-bridge");
     this.createBridge = options.createBridge ?? createCommandBridge;
+    this.subagentRegistry = new SubagentRegistry(
+      (harnessId) => this.sessionKeyForHarnessId(harnessId),
+      options.now,
+    );
     this.initialized = new Promise<void>((resolve) => {
       this.markInitialized = resolve;
     });
@@ -409,13 +420,76 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private ensureStarted(): Promise<void> {
     if (!this.client) return Promise.reject(new Error("dsh adapter not initialized"));
     if (!this.ready) {
-      this.ready = this.client.start().catch((err: unknown) => {
-        this.ready = null;
-        console.error("[dsh] runtime start failed (check DSH_HOME/DSH_PROFILE and the LLM credentials)", err);
-        throw new Error(`dsh runtime not ready: ${String(err)}`);
-      });
+      this.ready = (async () => {
+        try {
+          await this.client!.start();
+          this.attachSubagents();
+        } catch (err) {
+          this.ready = null;
+          this.subagentWatchAttached = false;
+          console.error("[dsh] runtime start failed (check DSH_HOME/DSH_PROFILE and the LLM credentials)", err);
+          throw new Error(`dsh runtime not ready: ${String(err)}`);
+        }
+      })();
     }
     return this.ready;
+  }
+
+  /** The Science Studio session key a harness session id belongs to, if known. */
+  private sessionKeyForHarnessId(harnessId: string): string | undefined {
+    for (const [key, id] of this.harnessSessions) if (id === harnessId) return key;
+    return undefined;
+  }
+
+  /** Attach the child-wide notification subscription ONCE per child generation.
+   *  The method is optional, so a client without it simply reports nothing. */
+  private attachSubagents(): void {
+    const client = this.client;
+    if (this.subagentWatchAttached || !client || typeof client.subscribeNotifications !== "function") return;
+    this.subagentWatchAttached = true;
+    client.subscribeNotifications((notification) => this.captureSubagent(notification));
+  }
+
+  /**
+   * Fold one harness notification into the registry. Structural and total: an
+   * unrecognized shape is ignored, never thrown — this listener sits beside the
+   * run stream and must not break a turn.
+   */
+  private captureSubagent(notification: HarnessNotification): void {
+    const params = (notification.params ?? {}) as Record<string, unknown>;
+    if (notification.method === "subagent.started") {
+      const parent = params["parentSessionId"];
+      const child = params["childSessionId"];
+      if (typeof parent === "string" && typeof child === "string") {
+        this.subagentRegistry.noteStarted(parent, child);
+      }
+      return;
+    }
+    if (notification.method === "subagent.finished") {
+      const child = params["childSessionId"];
+      if (typeof child !== "string") return;
+      this.subagentRegistry.noteFinished(child, {
+        status: params["status"] === "error" ? "error" : "ok",
+        ...(typeof params["provider"] === "string" ? { provider: params["provider"] } : {}),
+        ...(typeof params["stopReason"] === "string" ? { stopReason: params["stopReason"] } : {}),
+      });
+      return;
+    }
+    if (notification.method !== "session.event") return;
+    const child = params["sessionId"];
+    const event = params["event"] as { type?: unknown; data?: unknown } | undefined;
+    if (typeof child !== "string" || event?.type !== "subagent/descriptor") return;
+    const data = (event.data ?? {}) as Record<string, unknown>;
+    this.subagentRegistry.noteDescriptor(child, {
+      ...(typeof data["label"] === "string" ? { label: data["label"] } : {}),
+      ...(typeof data["provider"] === "string" ? { provider: data["provider"] } : {}),
+    });
+  }
+
+  async subagents(sessionKey: string): Promise<SubagentRun[]> {
+    // No init wait: the registry is constructor-owned and empty before init, so
+    // a read is always answerable (the seam read must not hang a cold adapter).
+    return this.subagentRegistry.list(sessionKey);
   }
 
   private runtimeFor(sessionKey: string): SessionRuntime<SessionEvent> {
