@@ -17,7 +17,6 @@ export function SubagentsView() {
       icon={Bot}
       open={open}
       onOpenChange={() => toggleRightSection("subagents")}
-      className="shrink-0"
       style={open ? { height } : undefined}
     >
       <ModuleEmptyState

@@ -17,7 +17,6 @@ export function CronView() {
       icon={CalendarClock}
       open={open}
       onOpenChange={() => toggleRightSection("cron")}
-      className="shrink-0"
       style={open ? { height } : undefined}
     >
       <ModuleEmptyState
