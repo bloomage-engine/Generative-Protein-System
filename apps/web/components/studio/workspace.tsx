@@ -6,7 +6,7 @@ import { Thread } from "@/components/assistant-ui/elements/thread.aui";
 import { Button } from "@/components/ui/button";
 import { FilePreviewPane } from "./file-preview-pane";
 import { ProjectPanel } from "./project-panel";
-import { WorkspaceTree } from "./workspace-tree";
+import { RightPanel } from "./right-panel";
 import { useStudioStore } from "@/store/studio-store";
 
 function Handle() {
@@ -52,7 +52,7 @@ export function StudioWorkspace({ projectId }: { projectId: string | null }) {
       {rightPanel && <Handle />}
       {rightPanel && (
         <Panel id="right" defaultSize="30" minSize="15" maxSize="60" className="h-full">
-          <WorkspaceTree project={projectId} />
+          <RightPanel project={projectId} />
         </Panel>
       )}
     </Group>

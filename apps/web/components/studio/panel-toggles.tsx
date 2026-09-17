@@ -30,12 +30,12 @@ export function PanelToggles() {
             variant={rightPanel ? "secondary" : "ghost"}
             size="icon-sm"
             onClick={toggleRight}
-            aria-label="Files"
+            aria-label="Right panel"
           >
             <PanelRight className="size-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Files</TooltipContent>
+        <TooltipContent>Right panel</TooltipContent>
       </Tooltip>
     </div>
   );
