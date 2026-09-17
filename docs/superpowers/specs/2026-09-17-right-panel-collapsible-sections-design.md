@@ -94,12 +94,14 @@ Presentation-only shell around shadcn `Collapsible`:
 The right pane container, replacing `<WorkspaceTree>` in `workspace.tsx`:
 
 - Vertical flex, `h-full min-h-0`.
-- Reads `rightSections` and `rightHeights` from the store; renders the three
-  `SidebarSection`s in order Files → Subagents → Cron.
-- Files section: `className="flex-1 min-h-0"`, body = `<WorkspaceTree>`.
-- Subagents/Cron sections: `style={{ height: rightHeights[id] }}` when open;
-  header-only when collapsed. Bodies =
-  `<SubagentsView>` / `<CronView>`.
+- Reads `rightSections` from the store and renders, in order,
+  `<WorkspaceTree>` → `<SubagentsView>` → `<CronView>`, with a `ResizeHandle`
+  between adjacent modules.
+- Each module composes its own `SidebarSection`: Files passes
+  `className="min-h-[72px] flex-1"`; Subagents/Cron read their own
+  `rightHeights[id]` and apply `style={{ height }}` only while open (header-only
+  when collapsed). The module owns its section config; `RightPanel` owns layout
+  and the handles.
 - A draggable `ResizeHandle` is rendered between a module and the next module
   **only when the next module (the one whose height it controls) is open**.
   `onPointerDown` captures the pointer; `pointermove` computes
