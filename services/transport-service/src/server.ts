@@ -24,7 +24,6 @@ import type {
   FileStat,
   Principal,
   SessionState,
-  SubagentRun,
   TransportCommand,
 } from "@science-studio/transport";
 import {
