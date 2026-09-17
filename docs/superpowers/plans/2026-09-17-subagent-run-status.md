@@ -445,7 +445,7 @@ git commit -m "feat(dsh): fold subagent notifications into a live registry"
 **Interfaces:**
 - Consumes: `SubagentRegistry` (Task 2), `SubagentRun` (Task 1).
 - Produces:
-  - `DshTurnClient.subscribeNotifications(listener: (notification: HarnessNotification) => void): () => void`
+  - `DshTurnClient.subscribeNotifications?(listener: (notification: HarnessNotification) => void): () => void`
   - `DshRuntimeAdapter.subagents(sessionKey: string): Promise<SubagentRun[]>`
   - `DshRuntimeAdapterOptions.now?: () => string`
 
@@ -552,15 +552,12 @@ test("a standing subscription reports live subagent runs for the session", async
 });
 ```
 
-Also add `subscribeNotifications` to the two other minimal ad-hoc clients in the file — the inline object clients at "a saved route credential reaches the launch client env" and "a failing route write does not fail init" (`runTurn: async () => {}` objects): add `subscribeNotifications: () => () => {},`. `HomeBackedClient` and `CollidingHomeClient` also need the method; add:
-
-```ts
-  subscribeNotifications(): () => void {
-    return () => {};
-  }
-```
-
-to each.
+`subscribeNotifications` is OPTIONAL on `DshTurnClient` (the adapter gates on
+`typeof === "function"`), so the other dsh test fakes that implement
+`DshTurnClient` (`behavior.test.ts`, `launch-cwd.test.ts`, `lifecycle-case.ts`,
+`command-case.ts`, `slash-command.test.ts`, `watch.test.ts`,
+`project-launch.test.ts`) compile unchanged. Only the `FakeDshClient` above
+needs the method, because it is the one that emits notifications.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -577,7 +574,8 @@ type-only import next to it:
 import type { HarnessNotification } from "@deepseek-ai/dsh-sdk-client";
 ```
 
-Add to the `DshTurnClient` interface:
+Add to the `DshTurnClient` interface (OPTIONAL — a test fake, or a runtime
+without the surface, may omit it; the adapter gates on the method's presence):
 
 ```ts
   /**
@@ -585,8 +583,9 @@ Add to the `DshTurnClient` interface:
    * session), independent of any run. This is what keeps a background
    * subagent's status live after the parent turn has gone idle, when the
    * per-run stream has already closed. Returns an unsubscribe.
+   * OPTIONAL: gate on method presence, not on a capability flag.
    */
-  subscribeNotifications(listener: (notification: HarnessNotification) => void): () => void;
+  subscribeNotifications?(listener: (notification: HarnessNotification) => void): () => void;
 ```
 
 Add the implementation to `SdkDshTurnClient`:
@@ -636,11 +635,13 @@ In `packages/transport-dsh/src/adapter.ts`:
     return undefined;
   }
 
-  /** Attach the child-wide notification subscription ONCE per child generation. */
+  /** Attach the child-wide notification subscription ONCE per child generation.
+   *  The method is optional, so a client without it simply reports nothing. */
   private attachSubagents(): void {
-    if (this.subagentWatchAttached || !this.client) return;
+    const client = this.client;
+    if (this.subagentWatchAttached || !client || typeof client.subscribeNotifications !== "function") return;
     this.subagentWatchAttached = true;
-    this.client.subscribeNotifications((notification) => this.captureSubagent(notification));
+    client.subscribeNotifications((notification) => this.captureSubagent(notification));
   }
 
   /**
