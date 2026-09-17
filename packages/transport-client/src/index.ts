@@ -92,3 +92,10 @@ export type {
   RuntimeSettingsView,
   RuntimeSettingsPatch,
 } from "@science-studio/transport";
+export {
+  DEFAULT_TRANSPORT_API,
+  fetchSubagents,
+  useSubagents,
+  type SubagentScope,
+  type UseSubagentsOptions,
+} from "./subagents.js";
