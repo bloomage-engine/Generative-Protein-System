@@ -266,15 +266,15 @@ test("entries are scoped to their session and newest-first", () => {
   assert.deepEqual(reg.list("sess-2").map((r) => r.id), ["b"]);
 });
 
-test("an unresolvable root is pruned and never listed", () => {
+test("an unresolvable root is not listed but is not destroyed", () => {
   let live = true;
   const reg = registry((root) => (live && root === "root-1" ? "sess-1" : undefined));
   reg.noteStarted("root-1", "child-1");
   assert.equal(reg.list("sess-1").length, 1);
   live = false;
-  assert.deepEqual(reg.list("sess-1"), []);
+  assert.deepEqual(reg.list("sess-1"), [], "an unresolved root is skipped, never shown as an orphan");
   live = true;
-  assert.deepEqual(reg.list("sess-1"), [], "a pruned entry does not come back");
+  assert.equal(reg.list("sess-1").length, 1, "a read must not delete — it raced the first turn");
 });
 ```
 
@@ -377,18 +377,17 @@ export class SubagentRegistry {
     entry.finishedAt = this.now();
   }
 
-  /** The live runs for one Session, newest first. Also prunes entries whose
-   *  root no longer resolves (a `/new` remint or a lost harness session). */
+  /** The live runs for one Session, newest first. A read is NON-destructive:
+   *  an entry whose root does not currently resolve (a `/new` remint, or the
+   *  brief window before `driveTurn` publishes a freshly minted harness id) is
+   *  skipped, never deleted — a destructive read raced the first turn and threw
+   *  an entry away before its `finished` arrived. */
   list(sessionKey: string): SubagentRun[] {
     const out: SubagentRun[] = [];
-    for (const [child, entry] of this.entries) {
+    for (const entry of this.entries.values()) {
       const root = this.rootOf(entry);
       const key = this.resolveSessionKey(root);
-      if (key === undefined) {
-        this.entries.delete(child);
-        continue;
-      }
-      if (key !== sessionKey) continue;
+      if (key === undefined || key !== sessionKey) continue;
       out.push({
         id: entry.id,
         parentId: key,
@@ -605,6 +604,43 @@ Add the implementation to `SdkDshTurnClient`:
 ```
 
 - [ ] **Step 4: Wire the adapter**
+
+Also fix `packages/transport-dsh/src/behavior.ts` `driveTurn`: it currently
+writes `harnessSessions.set(sessionKey, harnessSessionId)` only AFTER
+`client.runTurn` resolves, so a poll during the first turn cannot resolve a
+just-spawned subagent's parent and (with the old destructive read) dropped it
+for good. Publish the mapping BEFORE the prompt, restore the previous mapping on
+a non-collision failure, and update it again on the collision retry:
+
+```ts
+    const previous = harnessSessions.get(sessionKey);
+    let harnessSessionId = previous ?? nextHarnessSessionId(sessionKey);
+    // Publish the mapping for the WHOLE turn: subagent notifications arrive
+    // DURING the prompt, and the live registry resolves their parent root to
+    // this Session while it runs.
+    harnessSessions.set(sessionKey, harnessSessionId);
+    try {
+      await client.runTurn(harnessSessionId, text, (event) => run.ingest(event));
+    } catch (err) {
+      if (!isSessionAlreadyExists(err)) {
+        if (previous === undefined) harnessSessions.delete(sessionKey);
+        else harnessSessions.set(sessionKey, previous);
+        throw err;
+      }
+      const collided = harnessSessionId;
+      harnessSessionId = `${collided}-retry`;
+      harnessSessions.set(sessionKey, harnessSessionId);
+      log(
+        `harness session "${collided}" is already taken in this harness home; continuing on "${harnessSessionId}" (the agent does not carry the prior conversation across restarts — the Science Studio transcript mirror still does)`,
+        err,
+      );
+      await client.runTurn(harnessSessionId, text, (event) => run.ingest(event));
+    }
+    harnessSessions.set(sessionKey, harnessSessionId);
+```
+
+Add a regression test that emits `subagent.started` DURING the first `run()` and
+asserts both the mid-run read and the post-run read list it.
 
 In `packages/transport-dsh/src/adapter.ts`:
 - Add `SubagentRun` to the `@science-studio/transport` type imports.
