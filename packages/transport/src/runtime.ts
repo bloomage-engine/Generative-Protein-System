@@ -66,6 +66,8 @@ export interface RuntimeCapabilities {
   hostedSandbox: boolean;
   /** The runtime can pin a session's working directory (dsh: true, openclaw: false). */
   perSessionCwd: boolean;
+  /** `RuntimeAdapter.subagents()` is available (live subagent activity). */
+  subagents: boolean;
 }
 
 /** Thrown when a binding does not match the runtime's expected shape. */

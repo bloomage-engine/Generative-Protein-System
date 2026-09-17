@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as seams from "../src/seams.js";
 import * as root from "../src/index.js";
+import type { SubagentRun } from "../src/seams.js";
 import type {
   ModelSettings,
   ModelSettingsPatch,
@@ -90,4 +91,16 @@ test("the settings contract types are importable and usable", () => {
   assert.equal(patch.model?.apiKey ?? null, null);
   assert.equal(view.model.apiKeyConfigured, true);
   assert.equal(view.settingsPath, "/tmp/settings.json");
+});
+
+test("the SubagentRun view type is importable and usable", () => {
+  const run: SubagentRun = {
+    id: "child-1",
+    parentId: "sess-1",
+    label: "Literature review",
+    provider: "spawn",
+    status: "running",
+    startedAt: "2026-09-17T00:00:00.000Z",
+  };
+  assert.equal(run.status, "running");
 });

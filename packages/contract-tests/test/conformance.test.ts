@@ -79,6 +79,7 @@ testRuntimeFactory("fake runtime factory", () => {
       approvals: false,
       hostedSandbox: false,
       perSessionCwd: false,
+      subagents: false,
     },
     create: (): RuntimeAdapter => ({
       runtime: "fake",

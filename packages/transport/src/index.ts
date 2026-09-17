@@ -28,6 +28,7 @@ export type {
   StateDelta,
   TransportCommand,
   CommandDescriptor,
+  SubagentRun,
   RuntimeAdapter,
   RuntimeInitOptions,
   ProjectContext,

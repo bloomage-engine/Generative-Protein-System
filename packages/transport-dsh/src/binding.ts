@@ -96,4 +96,5 @@ export const DSH_CAPABILITIES: RuntimeCapabilities = {
   hostedSandbox: true,
   /** The adapter spawns the child and sets its cwd. */
   perSessionCwd: true,
+  subagents: true,
 };

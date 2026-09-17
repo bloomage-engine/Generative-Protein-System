@@ -1,4 +1,4 @@
-import type { Id, Run } from "@science-studio/record";
+import type { Id, Run, RunStatus } from "@science-studio/record";
 import type { RuntimeBinding } from "./runtime.js";
 import type { Workspace } from "./workspace.js";
 
@@ -151,6 +151,29 @@ export interface CommandDescriptor {
 }
 
 /**
+ * One delegated (subagent) run as a runtime reports it. LIVE state: assembled
+ * by the adapter from runtime events and never persisted, so it is gone when
+ * the adapter (or the process) is.
+ */
+export interface SubagentRun {
+  /** Runtime-assigned child identity (dsh: the child session id). */
+  id: string;
+  /** The Science Studio Session this run was delegated from. */
+  parentId: Id;
+  /** Best-effort display label (dsh: the child's descriptor label). */
+  label?: string;
+  /** Spawn mechanism / provider name (dsh: "spawn" | "fork"). */
+  provider?: string;
+  /** Reuses the record's Run status vocabulary. */
+  status: RunStatus;
+  /** Richer runtime stop reason when one exists (dsh: max-tokens, refusal, …). */
+  stopReason?: string;
+  /** ISO timestamps stamped by the adapter (the wire carries none). */
+  startedAt: string;
+  finishedAt?: string;
+}
+
+/**
  * The runtime-agnostic boundary. A concrete runtime (openclaw, codex, …)
  * implements this interface; the transport-service drives it, and the frontend
  * only ever speaks the assistant-ui transport protocol.
@@ -182,6 +205,12 @@ export interface RuntimeAdapter {
    * Optional — adapters without a command surface omit it.
    */
   listCommands?(): Promise<CommandDescriptor[]>;
+  /**
+   * Live subagent runs delegated from one canonical session key. OPTIONAL:
+   * gate on `capabilities.subagents` rather than forcing a no-op on every
+   * runtime. The list is best-effort live state, not a persisted record.
+   */
+  subagents?(sessionKey: string): Promise<SubagentRun[]>;
   /**
    * The canonical session key a client `threadId` targets. Runtimes whose
    * session namespace differs from raw client thread ids implement this and
