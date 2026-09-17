@@ -87,17 +87,16 @@ export class SubagentRegistry {
     entry.finishedAt = this.now();
   }
 
-  /** The live runs for one Session, newest first. Also prunes entries whose
-   *  root no longer resolves (a `/new` remint or a lost harness session). */
+  /** The live runs for one Session, newest first. Non-destructive: an entry
+   *  whose root does not currently resolve (a `/new` remint, a mapping not
+   *  published yet) is SKIPPED, never dropped, so it appears again once the
+   *  root resolves. */
   list(sessionKey: string): SubagentRun[] {
     const out: SubagentRun[] = [];
-    for (const [child, entry] of this.entries) {
+    for (const entry of this.entries.values()) {
       const root = this.rootOf(entry);
       const key = this.resolveSessionKey(root);
-      if (key === undefined) {
-        this.entries.delete(child);
-        continue;
-      }
+      if (key === undefined) continue;
       if (key !== sessionKey) continue;
       out.push({
         id: entry.id,

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
 import type { HarnessNotification } from "@deepseek-ai/dsh-sdk-client";
-import type { RecordStoreLike, SessionState, StateDelta } from "@science-studio/transport";
+import type { RecordStoreLike, SessionState, StateDelta, SubagentRun } from "@science-studio/transport";
 import { sessionState } from "@science-studio/contract-tests";
 import type { Run } from "@science-studio/record";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
@@ -21,6 +21,8 @@ class FakeDshClient implements DshTurnClient {
   readonly prompts: string[] = [];
   readonly sessionIds: string[] = [];
   private listener: ((notification: HarnessNotification) => void) | null = null;
+  /** Invoked after this turn's sessionId is recorded, before its scripted events run. */
+  duringTurn: ((sessionId: string) => void) | undefined;
   constructor(private readonly script: (sessionId: string, text: string) => SessionEvent[]) {}
   async start(): Promise<void> {
     this.started = true;
@@ -42,6 +44,7 @@ class FakeDshClient implements DshTurnClient {
   ): Promise<void> {
     this.prompts.push(text);
     this.sessionIds.push(sessionId);
+    this.duringTurn?.(sessionId);
     for (const event of this.script(sessionId, text)) onEvent(event);
   }
 }
@@ -480,6 +483,40 @@ test("a standing subscription reports live subagent runs for the session", async
     assert.equal(done[0]!.status, "completed");
     assert.equal(done[0]!.stopReason, "completed");
     assert.equal(done[0]!.finishedAt, "2026-09-17T00:00:00.000Z");
+  } finally {
+    await adapter.abort();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a subagent started during the first turn is listed mid-turn and after", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-subagent-first-turn-"));
+  const store = new FakeRecordStore();
+  const client = new FakeDshClient((_sid, _text) => completedReply("am1", "Hello from dsh."));
+  let adapter: DshRuntimeAdapter;
+  let pendingRead: Promise<SubagentRun[]> | undefined;
+  client.duringTurn = (sessionId) => {
+    client.emit({
+      method: "subagent.started",
+      params: { parentSessionId: sessionId, childSessionId: "child-live" },
+    });
+    pendingRead = adapter.subagents("sess-1");
+  };
+  adapter = new DshRuntimeAdapter({ createClient: () => client, transcriptDir: dir });
+  try {
+    await adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
+    await collect(adapter.run(session(), [
+      { type: "add-message", message: { id: "u1", role: "user", content: "delegate" } },
+    ]));
+
+    assert.ok(pendingRead, "the first turn must have been polled mid-run");
+    const midRun = await pendingRead;
+    assert.equal(midRun.length, 1, "the subagent is live while the parent turn is still running");
+    assert.equal(midRun[0]!.id, "child-live");
+
+    const after = await adapter.subagents("sess-1");
+    assert.equal(after.length, 1, "the subagent survives the parent turn settling");
+    assert.equal(after[0]!.id, "child-live");
   } finally {
     await adapter.abort();
     await rm(dir, { recursive: true, force: true });

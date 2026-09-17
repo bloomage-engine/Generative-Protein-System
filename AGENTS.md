@@ -32,7 +32,7 @@ examples/transport-dsh-example     minimal assistant-ui example app over the dsh
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/design/                      design specs (research-agent-framework EN/ZH + implementation-plan)
-docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete, 0015 deployment settings are service-owned)
+docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete, 0015 deployment settings are service-owned, 0016 subagent activity is an optional adapter surface)
 CONTEXT.md                        domain glossary (authoritative vocabulary)
 ```
 
@@ -500,8 +500,9 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   wires it explicitly rather than by `as any`, and the ONE `RecordStore` instance
   is deliberately shared by the adapter's sink and the service's
   `records`/project-session directory, so Runs and Sessions land together.
-- All five `apps/web` proxies (`app/api/transport/route.ts`, `transport/commands`,
-  `transport/watch`, `workspace/[...path]`, `projects/[[...path]]`) forward the
+- All six `apps/web` proxies (`app/api/transport/route.ts`, `transport/commands`,
+  `transport/subagents`, `transport/watch`, `workspace/[...path]`,
+  `projects/[[...path]]`) forward the
   caller's `Authorization` header upstream — one line in
   `lib/service-proxy.ts` (`forwardedAuth`), so a new hop cannot forget it.
   Single-user installs send none (no login); in hosted mode the enterprise

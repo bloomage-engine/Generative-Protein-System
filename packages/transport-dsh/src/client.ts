@@ -94,7 +94,14 @@ class SdkDshTurnClient implements DshTurnClient {
     const subscription = this.harness.client.subscribe();
     void (async () => {
       try {
-        for await (const notification of subscription) listener(notification);
+        for await (const notification of subscription) {
+          try {
+            listener(notification);
+          } catch (err) {
+            // One throwing listener must not end the whole notification loop.
+            console.error("[dsh] subagent notification listener failed", err);
+          }
+        }
       } catch {
         /* the runtime closed: the adapter is being torn down too */
       }

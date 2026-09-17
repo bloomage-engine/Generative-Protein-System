@@ -76,13 +76,27 @@ test("entries are scoped to their session and newest-first", () => {
   assert.deepEqual(reg.list("sess-2").map((r) => r.id), ["b"]);
 });
 
-test("an unresolvable root is pruned and never listed", () => {
+test("an unresolvable root is skipped but not destroyed", () => {
   let live = true;
   const reg = registry((root) => (live && root === "root-1" ? "sess-1" : undefined));
   reg.noteStarted("root-1", "child-1");
   assert.equal(reg.list("sess-1").length, 1);
   live = false;
-  assert.deepEqual(reg.list("sess-1"), []);
+  assert.deepEqual(reg.list("sess-1"), [], "an entry with no resolvable root is not listed");
   live = true;
-  assert.deepEqual(reg.list("sess-1"), [], "a pruned entry does not come back");
+  assert.deepEqual(
+    reg.list("sess-1").map((run) => run.id),
+    ["child-1"],
+    "the skip is non-destructive: the entry returns once its root resolves",
+  );
+});
+
+test("two children in one session are listed newest-first", () => {
+  const reg = registry(() => "sess-1");
+  reg.noteStarted("root-1", "older");
+  reg.noteStarted("root-1", "newer");
+  assert.deepEqual(
+    reg.list("sess-1").map((run) => run.id),
+    ["newer", "older"],
+  );
 });

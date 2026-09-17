@@ -138,13 +138,24 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
    * collision the pin makes possible in the same instant — docs/adr/0004).
    */
   async function driveTurn(sessionKey: string, text: string, run: RunControl<SessionEvent>): Promise<void> {
-    let harnessSessionId = harnessSessions.get(sessionKey) ?? nextHarnessSessionId(sessionKey);
+    const previous = harnessSessions.get(sessionKey);
+    let harnessSessionId = previous ?? nextHarnessSessionId(sessionKey);
+    // Publish the mapping for the WHOLE turn: subagent notifications arrive
+    // DURING the prompt, and the live registry resolves their parent root to
+    // this Session while it runs. Waiting until `runTurn` resolved made a
+    // mid-turn read treat the parent as unknown and drop the entry.
+    harnessSessions.set(sessionKey, harnessSessionId);
     try {
       await client.runTurn(harnessSessionId, text, (event) => run.ingest(event));
     } catch (err) {
-      if (!isSessionAlreadyExists(err)) throw err;
+      if (!isSessionAlreadyExists(err)) {
+        if (previous === undefined) harnessSessions.delete(sessionKey);
+        else harnessSessions.set(sessionKey, previous);
+        throw err;
+      }
       const collided = harnessSessionId;
       harnessSessionId = `${collided}-retry`;
+      harnessSessions.set(sessionKey, harnessSessionId);
       log(
         `harness session "${collided}" is already taken in this harness home; continuing on "${harnessSessionId}" (the agent does not carry the prior conversation across restarts — the Science Studio transcript mirror still does)`,
         err,

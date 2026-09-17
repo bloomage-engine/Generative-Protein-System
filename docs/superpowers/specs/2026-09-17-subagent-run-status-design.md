@@ -138,8 +138,9 @@ A small class that folds notifications into a `Map<childSessionId, Entry>`:
   `startedAt` first, mapped to `SubagentRun`. `SubagentRun.parentId` is that
   root's Science Studio session key (the Session the delegation belongs to);
   `SubagentRun.id` is the child harness id.
-- `pruneRoots(liveRoots)` — drop entries whose root no longer maps, called when
-  the adapter remints a session id (`/new`) or otherwise changes the map.
+- No destructive prune: `list(sessionKey)` non-destructively SKIPS an entry
+  whose root does not currently map (a `/new` remint, or a parent harness id
+  not published yet), so it appears again once that root resolves.
 - An injected `now()` (default `() => new Date().toISOString()`) keeps tests
   deterministic.
 
@@ -173,7 +174,8 @@ called for every notification; the registry decides what matters. The existing
   - `session.event` with `event.type === "subagent/descriptor"` → `noteDescriptor`
 - `subagents(sessionKey)` → `registry.list(sessionKey)`.
 - `DSH_CAPABILITIES.subagents = true`.
-- On `/new` (the session id remint), prune the registry with the new root set.
+- On `/new` (the session id remint), the old root stops resolving; its entries
+  are non-destructively skipped by `list()` — no prune call.
 
 ### `packages/transport/src/runtime.ts` (edit) — capabilities
 
@@ -252,7 +254,8 @@ web proxy → `useSubagents` (poll) → `SubagentsView`. The transcript path
 - A failed or aborted poll: the last good list is kept; no error UI.
 - A missing `finished` (killed child, restart): the entry stays `running` until
   the registry is dropped; no synthesized completion.
-- A stale root (`/new`, restart): pruned from `list()`, never an orphan row.
+- A stale root (`/new`, restart): skipped by `list()`, never an orphan row, and
+  never destroyed.
 - The subscription is best-effort: a child that never starts simply has no
   entries.
 
@@ -261,7 +264,7 @@ web proxy → `useSubagents` (poll) → `SubagentsView`. The transcript path
 - `packages/transport-dsh/test/subagents.test.ts` — registry unit test with
   scripted notifications: start → running, descriptor → label/provider,
   finish → status/stopReason, injected-clock timestamps, lineage →
-  session-key filtering, stale-root pruning, newest-first order. Also asserts
+  session-key filtering, stale-root skipping, newest-first order. Also asserts
   the adapter wires the subscription after start and advertises
   `capabilities.subagents`.
 - `packages/contract-tests` — a new optional suite (`testSubagents`), run by
