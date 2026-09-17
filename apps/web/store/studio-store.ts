@@ -25,6 +25,9 @@ export interface Tab {
  */
 export type LeftView = "thread" | "project";
 
+/** The right pane's three collapsible modules. */
+export type RightSectionId = "files" | "subagents" | "cron";
+
 type State = {
   projectId: string | null;
   /**
@@ -53,6 +56,10 @@ type State = {
   leftView: LeftView;
   leftPanel: boolean;
   rightPanel: boolean;
+  /** Which right-pane modules are expanded (in memory; reload returns to defaults). */
+  rightSections: Record<RightSectionId, boolean>;
+  /** Pixel heights of the two non-Files modules, kept across a collapse. */
+  rightHeights: { subagents: number; cron: number };
   /** The deployment settings dialog. Chrome state: never keyed into SessionView. */
   settingsOpen: boolean;
   /**
@@ -94,6 +101,8 @@ type State = {
   /** Pure assignment — for seeding the shell (a fresh install lands on the panel). */
   setLeftView: (view: LeftView) => void;
   toggleRight: () => void;
+  toggleRightSection: (id: RightSectionId) => void;
+  setRightSectionHeight: (id: "subagents" | "cron", height: number) => void;
   openSettings: () => void;
   closeSettings: () => void;
   /** Signal that a run finished; the status bar's metrics hook depends on it. */
@@ -113,6 +122,8 @@ export const useStudioStore = create<State>()((set) => ({
   leftView: "thread",
   leftPanel: true,
   rightPanel: true,
+  rightSections: { files: true, subagents: false, cron: false },
+  rightHeights: { subagents: 200, cron: 200 },
   settingsOpen: false,
   runsRevision: 0,
 
@@ -222,6 +233,10 @@ export const useStudioStore = create<State>()((set) => ({
   setLeftView: (leftView) => set({ leftView }),
 
   toggleRight: () => set((s) => ({ rightPanel: !s.rightPanel })),
+  toggleRightSection: (id) =>
+    set((s) => ({ rightSections: { ...s.rightSections, [id]: !s.rightSections[id] } })),
+  setRightSectionHeight: (id, height) =>
+    set((s) => ({ rightHeights: { ...s.rightHeights, [id]: height } })),
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
   bumpRunsRevision: () => set((s) => ({ runsRevision: s.runsRevision + 1 })),
