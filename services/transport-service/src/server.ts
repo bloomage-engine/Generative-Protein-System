@@ -24,6 +24,7 @@ import type {
   FileStat,
   Principal,
   SessionState,
+  SubagentRun,
   TransportCommand,
 } from "@science-studio/transport";
 import {
@@ -367,6 +368,23 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       }
     }
     return { commands };
+  });
+
+  // -- Live subagent activity (the dsh adapter's optional surface) -----------
+  app.get("/api/transport/subagents", async (request) => {
+    // Like the catalog, the subagent ledger belongs to the Project's OWN
+    // adapter (one per Project, docs/adr/0008). A runtime without the surface
+    // answers empty so the panel needs no runtime-specific branch.
+    const { environment, threadId } = await scope.acquire(request);
+    const adapter = environment.adapter;
+    if (typeof adapter.subagents !== "function") return { subagents: [] };
+    const sessionId = canonicalSessionKey(adapter, threadId);
+    try {
+      return { subagents: await adapter.subagents(sessionId) };
+    } catch (err) {
+      console.error("[transport-service] subagents.list failed", err);
+      return { subagents: [] };
+    }
   });
 
   // -- Standing watch (NDJSON, long-lived, NOT [DONE]-terminated) ------------
