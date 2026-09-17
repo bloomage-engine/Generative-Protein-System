@@ -56,6 +56,7 @@ test(
       // Files is open by default, so the tree is already mounted.
       const tree = page.getByRole("tree");
       await tree.waitFor({ timeout: 30_000 });
+      await page.locator('[data-section="files"]').waitFor({ timeout: 15_000 });
 
       const subagents = page.locator('[data-section="subagents"]');
       const cron = page.locator('[data-section="cron"]');
@@ -92,6 +93,16 @@ test(
       assert.ok(
         after.height >= before.height + 40,
         `expected the section to grow, got ${before.height} -> ${after.height}`,
+      );
+
+      // The drag is clamped to the space the other modules leave, so the
+      // sections can never sum past the pane.
+      const pane = page.locator("aside").filter({ has: page.locator('[data-section="files"]') });
+      const paneBox = await pane.boundingBox();
+      const filesBox = await page.locator('[data-section="files"]').boundingBox();
+      assert.ok(
+        filesBox.height + after.height <= paneBox.height,
+        `sections must stay within the pane, got ${filesBox.height} + ${after.height} > ${paneBox.height}`,
       );
 
       // Collapsing Files unmounts the tree; re-expanding restores it.

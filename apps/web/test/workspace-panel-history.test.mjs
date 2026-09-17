@@ -82,7 +82,8 @@ test(
         "the probe-loaded history must render before the panel opens",
       );
 
-      await page.getByRole("button", { name: "Files" }).click();
+      await page.getByRole("button", { name: "Right panel" }).click();
+      await page.locator('[data-section="files"]').waitFor({ state: "detached", timeout: 10_000 });
       await page.waitForTimeout(1_500);
 
       assert.equal(

@@ -15,7 +15,7 @@ function Handle() {
 
 /**
  * The three-pane workbench: the LEFT slot | file preview (center, always) |
- * file tree (right).
+ * Files/Subagents/Cron pane (right).
  *
  * The left slot holds ONE of two views — the conversation or the Project/Session
  * panel — picked by the top bar's switch (store `leftView`); `Thread` is
