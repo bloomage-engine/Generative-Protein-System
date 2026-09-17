@@ -1,5 +1,5 @@
 /**
- * Regression: toggling the Files panel must not wipe the chat history.
+ * Regression: toggling the Right panel must not wipe the chat history.
  *
  * `useTransport` must be called by a component that never re-renders: the
  * assistant-ui transport runtime rebuilds its internal thread-list adapter on
@@ -8,8 +8,8 @@
  * transcript, and the mount-time history probe does not re-run, so the
  * conversation stays blank until a reload. `apps/web/app/page.tsx` therefore
  * keeps state out of the runtime-owning `Session` (memoized, state-free) and in
- * `WorkspaceShell` below it. If that structure regresses, clicking Files blanks
- * the thread — this test goes red.
+ * `WorkspaceShell` below it. If that structure regresses, clicking the Right
+ * panel toggle blanks the thread — this test goes red.
  *
  * The second test guards the same invariant one level up: the left slot holds
  * EITHER the conversation OR the Projects pane (the top bar switches between
@@ -43,7 +43,7 @@ import {
 } from "./harness.mjs";
 
 test(
-  "clicking the Files panel keeps the chat history",
+  "clicking the Right panel toggle keeps the chat history",
   { timeout: 240_000 },
   async (t) => {
     const executablePath = findChromium();
@@ -89,12 +89,12 @@ test(
       assert.equal(
         await page.getByText(HISTORY_MARKER).count(),
         1,
-        "the user message must survive the Files click",
+        "the user message must survive the Right panel toggle",
       );
       assert.equal(
         await page.getByText("assistant-reply").count(),
         1,
-        "the assistant reply must survive the Files click",
+        "the assistant reply must survive the Right panel toggle",
       );
     } catch (error) {
       throw new Error(`${error.message}\n--- web server log ---\n${server.log().slice(-2000)}`);

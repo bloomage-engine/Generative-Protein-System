@@ -106,7 +106,9 @@ The right pane container, replacing `<WorkspaceTree>` in `workspace.tsx`:
   **only when the next module (the one whose height it controls) is open**.
   `onPointerDown` captures the pointer; `pointermove` computes
   `startHeight + (startY - currentY)` (drag up grows the lower module), clamps
-  to `[MIN_SECTION_PX, containerHeight * MAX_FRACTION]`, and writes through
+  to `[MIN_SECTION_PX, containerHeight - reserved]` — where `reserved` is the
+  Files floor (`FILES_MIN_PX`) plus the sibling module's preferred height (or its
+  collapsed header) plus the drag handles — and writes through
   `setRightSectionHeight`. `pointerup`/`pointercancel` releases the capture.
   The clamp bounds and constants are module-level in this file.
 
