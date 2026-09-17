@@ -28,11 +28,12 @@ import {
   type DirListing,
   type Entry,
 } from "@science-studio/transport-client";
-import { Download, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Download, FolderTree, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
 import { Tree, TreeItem, TreeItemLabel } from "@/components/ui/tree";
 import { cn } from "@/lib/utils";
 import { useStudioStore } from "@/store/studio-store";
 import { fileIconForName } from "./file-icons";
+import { SidebarSection } from "./sidebar-section";
 
 const ROOT_ID = "";
 const INDENT = 20;
@@ -60,6 +61,8 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
   const root = useWorkspaceRoot({ project: proj });
   const openFile = useStudioStore((s) => s.openFile);
   const activeTabPath = useStudioStore((s) => s.activeTabPath);
+  const filesOpen = useStudioStore((s) => s.rightSections.files);
+  const toggleRightSection = useStudioStore((s) => s.toggleRightSection);
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -294,93 +297,110 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
   const busy = uploading > 0;
 
   return (
-    <aside className="relative flex h-full flex-col border-l border-border/70 bg-background">
-      <header className="flex items-center gap-1 border-b border-border/70 px-3 py-2">
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">Files</span>
-        <button
-          type="button"
-          aria-label="Upload to workspace"
-          disabled={busy || root.unavailable}
-          onClick={() => triggerUpload("")}
-          className="text-muted-foreground hover:text-foreground rounded p-1 disabled:opacity-30"
-        >
-          {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-        </button>
-        <button
-          type="button"
-          aria-label="Refresh"
-          onClick={refresh}
-          className="text-muted-foreground hover:text-foreground rounded p-1"
-        >
-          <RefreshCw className={cn("size-4", root.isLoading && "animate-spin")} />
-        </button>
-      </header>
-
-      {actionError && <p className="text-destructive px-3 py-2 text-xs">{actionError}</p>}
-
-      {root.unavailable ? (
-        <p className="text-muted-foreground p-3 text-xs">{WORKSPACE_UNAVAILABLE_REASON}</p>
-      ) : (
+    <SidebarSection
+      section="files"
+      title="Files"
+      icon={FolderTree}
+      open={filesOpen}
+      onOpenChange={() => toggleRightSection("files")}
+      className="min-h-[72px] flex-1"
+      actions={
         <>
-          {root.error && <p className="text-muted-foreground px-3 py-2 text-xs">{root.error}</p>}
-          {loadError && <p className="text-destructive px-3 py-2 text-xs">{loadError}</p>}
-          <div className="min-h-0 flex-1 overflow-y-auto p-1">
-            {root.isLoading && (
-              <Loader2 className="text-muted-foreground m-2 size-4 animate-spin" />
-            )}
-            <Tree indent={INDENT} tree={tree} aria-label="Workspace files">
-              {tree.getItems().map((item) => (
-                <TreeItem key={item.getId()} item={item} onContextMenu={(e) => onItemContextMenu(e, item)}>
-                  <TreeItemLabel>
-                    <span className="flex min-w-0 items-center gap-2">
-                      {fileIconForName(item.getItemName(), item.isFolder(), item.isExpanded())}
-                      <span className="truncate">{item.getItemName()}</span>
-                    </span>
-                  </TreeItemLabel>
-                </TreeItem>
-              ))}
-            </Tree>
-          </div>
-        </>
-      )}
-
-      {/* A hidden input drives both the header and the per-folder "Upload files…". */}
-      <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFiles} />
-
-      {menu &&
-        createPortal(
-          <div
-            ref={menuRef}
-            role="menu"
-            style={{
-              position: "fixed",
-              left: Math.max(4, Math.min(menu.x, window.innerWidth - MENU_WIDTH - 4)),
-              top: Math.max(4, Math.min(menu.y, window.innerHeight - 140)),
-              width: MENU_WIDTH,
-            }}
-            className="z-50 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
+          <button
+            type="button"
+            aria-label="Upload to workspace"
+            disabled={busy || root.unavailable}
+            onClick={() => triggerUpload("")}
+            className="text-muted-foreground hover:text-foreground rounded p-1 disabled:opacity-30"
           >
-            <div className="text-muted-foreground truncate px-1.5 py-1 text-xs" title={menu.entry.path}>
-              {menu.entry.name}
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+          </button>
+          <button
+            type="button"
+            aria-label="Refresh"
+            onClick={refresh}
+            className="text-muted-foreground hover:text-foreground rounded p-1"
+          >
+            <RefreshCw className={cn("size-4", root.isLoading && "animate-spin")} />
+          </button>
+        </>
+      }
+    >
+      <div className="relative flex h-full min-h-0 flex-col">
+        {actionError && <p className="text-destructive px-3 py-2 text-xs">{actionError}</p>}
+
+        {root.unavailable ? (
+          <p className="text-muted-foreground p-3 text-xs">{WORKSPACE_UNAVAILABLE_REASON}</p>
+        ) : (
+          <>
+            {root.error && <p className="text-muted-foreground px-3 py-2 text-xs">{root.error}</p>}
+            {loadError && <p className="text-destructive px-3 py-2 text-xs">{loadError}</p>}
+            <div className="min-h-0 flex-1 overflow-y-auto p-1">
+              {root.isLoading && (
+                <Loader2 className="text-muted-foreground m-2 size-4 animate-spin" />
+              )}
+              <Tree indent={INDENT} tree={tree} aria-label="Workspace files">
+                {tree.getItems().map((item) => (
+                  <TreeItem
+                    key={item.getId()}
+                    item={item}
+                    onContextMenu={(e) => onItemContextMenu(e, item)}
+                  >
+                    <TreeItemLabel>
+                      <span className="flex min-w-0 items-center gap-2">
+                        {fileIconForName(item.getItemName(), item.isFolder(), item.isExpanded())}
+                        <span className="truncate">{item.getItemName()}</span>
+                      </span>
+                    </TreeItemLabel>
+                  </TreeItem>
+                ))}
+              </Tree>
             </div>
-            {menuActions.map((action) => (
-              <button
-                key={action.label}
-                type="button"
-                role="menuitem"
-                onClick={action.onClick}
-                className={cn(
-                  "hover:bg-accent flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-sm select-none",
-                  action.destructive && "text-destructive hover:bg-destructive/10 hover:text-destructive",
-                )}
-              >
-                <action.icon className="size-4 shrink-0" />
-                {action.label}
-              </button>
-            ))}
-          </div>,
-          document.body,
+          </>
         )}
-    </aside>
+
+        {/* A hidden input drives both the header and the per-folder "Upload files…". */}
+        <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFiles} />
+
+        {menu &&
+          createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              style={{
+                position: "fixed",
+                left: Math.max(4, Math.min(menu.x, window.innerWidth - MENU_WIDTH - 4)),
+                top: Math.max(4, Math.min(menu.y, window.innerHeight - 140)),
+                width: MENU_WIDTH,
+              }}
+              className="z-50 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
+            >
+              <div
+                className="text-muted-foreground truncate px-1.5 py-1 text-xs"
+                title={menu.entry.path}
+              >
+                {menu.entry.name}
+              </div>
+              {menuActions.map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  role="menuitem"
+                  onClick={action.onClick}
+                  className={cn(
+                    "hover:bg-accent flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-sm select-none",
+                    action.destructive &&
+                      "text-destructive hover:bg-destructive/10 hover:text-destructive",
+                  )}
+                >
+                  <action.icon className="size-4 shrink-0" />
+                  {action.label}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )}
+      </div>
+    </SidebarSection>
   );
 }
