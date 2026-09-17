@@ -2,6 +2,7 @@ import {
   testAdapterLifecycle,
   testResolveSessionKey,
   testRuntimeFactory,
+  testSubagents,
 } from "@science-studio/contract-tests";
 import { createDshRuntimeFactory, dshBinding, DshRuntimeAdapter } from "../src/index.js";
 import { dshLifecycleCase } from "./lifecycle-case.js";
@@ -30,3 +31,12 @@ testAdapterLifecycle("dsh adapter lifecycle", dshLifecycleCase);
  * own policy values live there.
  */
 testResolveSessionKey("dsh adapter session key", () => ({ adapter: new DshRuntimeAdapter() }));
+
+/**
+ * …and the SHARED optional subagent surface: an advertised capability must be a
+ * real method that always answers an array (dsh implements it live-only).
+ */
+testSubagents("dsh adapter subagents", () => ({
+  adapter: new DshRuntimeAdapter(),
+  sessionKey: "sess-1",
+}));

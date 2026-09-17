@@ -59,6 +59,11 @@ export function testRuntimeFactory(
       typeof adapter.approve === "function",
       "capabilities.approvals must match whether the adapter implements approve()",
     );
+    assert.equal(
+      factory.capabilities.subagents,
+      typeof adapter.subagents === "function",
+      "capabilities.subagents must match whether the adapter implements subagents()",
+    );
   });
 
   test(`${name}: refuses a binding for another runtime`, async () => {

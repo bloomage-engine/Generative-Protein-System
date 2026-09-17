@@ -32,3 +32,4 @@ export {
   testResolveSessionKey,
   type ResolveSessionKeyCase,
 } from "./resolve-session-key.js";
+export { testSubagents, type SubagentsCase } from "./subagents.js";
