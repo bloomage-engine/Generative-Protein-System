@@ -596,13 +596,16 @@ Create `apps/web/components/studio/right-panel.tsx`:
 ```tsx
 "use client";
 
+import { useEffect, useRef } from "react";
 import { CronView } from "./cron-view";
 import { SubagentsView } from "./subagents-view";
 import { WorkspaceTree } from "./workspace-tree";
 import { useStudioStore } from "@/store/studio-store";
 
 const MIN_SECTION_PX = 120;
-const MAX_FRACTION = 0.6;
+const FILES_MIN_PX = 72;
+const HANDLE_PX = 4;
+const COLLAPSED_HEADER_PX = 30;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -615,6 +618,9 @@ function clamp(value: number, min: number, max: number) {
  */
 function ResizeHandle({ section, label }: { section: "subagents" | "cron"; label: string }) {
   const setHeight = useStudioStore((s) => s.setRightSectionHeight);
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => cleanupRef.current?.(), []);
 
   return (
     <div
@@ -626,15 +632,25 @@ function ResizeHandle({ section, label }: { section: "subagents" | "cron"; label
         const handle = event.currentTarget;
         const containerHeight = handle.parentElement?.clientHeight ?? 600;
         const startY = event.clientY;
-        const startHeight = useStudioStore.getState().rightHeights[section];
-        handle.setPointerCapture(event.pointerId);
+        const state = useStudioStore.getState();
+        const startHeight = state.rightHeights[section];
+
+        const other = section === "subagents" ? "cron" : "subagents";
+        const otherOpen = state.rightSections[other];
+        const reserved =
+          FILES_MIN_PX +
+          HANDLE_PX +
+          (otherOpen ? state.rightHeights[other] + HANDLE_PX : COLLAPSED_HEADER_PX);
+        const max = Math.max(MIN_SECTION_PX, containerHeight - reserved);
+
+        try {
+          handle.setPointerCapture(event.pointerId);
+        } catch {
+          /* pointer already captured */
+        }
 
         const onMove = (moveEvent: PointerEvent) => {
-          const next = clamp(
-            startHeight + (startY - moveEvent.clientY),
-            MIN_SECTION_PX,
-            Math.round(containerHeight * MAX_FRACTION),
-          );
+          const next = clamp(startHeight + (startY - moveEvent.clientY), MIN_SECTION_PX, max);
           setHeight(section, next);
         };
         const onUp = () => {
@@ -646,12 +662,14 @@ function ResizeHandle({ section, label }: { section: "subagents" | "cron"; label
           handle.removeEventListener("pointermove", onMove);
           handle.removeEventListener("pointerup", onUp);
           handle.removeEventListener("pointercancel", onUp);
+          cleanupRef.current = null;
         };
+        cleanupRef.current = onUp;
         handle.addEventListener("pointermove", onMove);
         handle.addEventListener("pointerup", onUp);
         handle.addEventListener("pointercancel", onUp);
       }}
-      className="bg-border hover:bg-primary/40 h-1 shrink-0 cursor-row-resize"
+      className="bg-border hover:bg-primary/40 h-1 shrink-0 cursor-row-resize touch-none"
     />
   );
 }
@@ -672,6 +690,8 @@ export function RightPanel({ project }: { project: string | null }) {
   );
 }
 ```
+
+> **Amendment (final review):** the resize clamp now reserves the other module's current height (plus Files' 72 px minimum and the handles) instead of a flat `MAX_FRACTION`, so a drag cannot make the two sections overflow the pane; the handle also gained `touch-none`, guarded pointer capture, and an unmount cleanup.
 
 - [ ] **Step 4: Wire `RightPanel` into the workbench**
 
