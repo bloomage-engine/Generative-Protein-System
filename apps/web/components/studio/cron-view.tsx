@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { CalendarClock, Plus } from "lucide-react";
-import { cronTaskPath, describeSchedule, useCronTasks } from "@science-studio/transport-client";
+import {
+  WORKSPACE_UNAVAILABLE_REASON,
+  cronTaskPath,
+  describeSchedule,
+  useCronTasks,
+  useWorkspaceAvailability,
+} from "@science-studio/transport-client";
 import { Button } from "@/components/ui/button";
 import { ModuleEmptyState, SidebarSection } from "./sidebar-section";
 import { NewCronTaskDialog } from "./cron-new-task-dialog";
@@ -25,6 +31,8 @@ export function CronView() {
 
   const enabled = open && projectId !== null;
   const { tasks, invalid, error, refresh } = useCronTasks({ projectId, enabled });
+  const { available } = useWorkspaceAvailability({ project: projectId });
+  const unavailable = available === false;
 
   return (
     <SidebarSection
@@ -41,14 +49,20 @@ export function CronView() {
           size="icon-xs"
           className="h-6 w-6"
           aria-label="New scheduled task"
-          disabled={projectId === null}
+          disabled={projectId === null || unavailable}
           onClick={() => setDialogOpen(true)}
         >
           <Plus className="size-3.5" />
         </Button>
       }
     >
-      {tasks.length === 0 && invalid.length === 0 ? (
+      {unavailable ? (
+        <ModuleEmptyState
+          icon={CalendarClock}
+          message={WORKSPACE_UNAVAILABLE_REASON}
+          hint="Scheduled tasks need a Project Workspace."
+        />
+      ) : tasks.length === 0 && invalid.length === 0 ? (
         <ModuleEmptyState
           icon={CalendarClock}
           message="No scheduled tasks."
@@ -89,7 +103,7 @@ export function CronView() {
           ))}
         </ul>
       )}
-      {error ? <p className="text-destructive px-2 pb-1 text-[10px]">{error}</p> : null}
+      {error && !unavailable ? <p className="text-destructive px-2 pb-1 text-[10px]">{error}</p> : null}
       {projectId !== null ? (
         <NewCronTaskDialog
           open={dialogOpen}
