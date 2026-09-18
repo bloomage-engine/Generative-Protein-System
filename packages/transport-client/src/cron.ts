@@ -9,6 +9,7 @@ import {
   describeSchedule,
   isCronTaskPath,
   isValidSchedule,
+  parseLogEntries,
   presetToExpression,
   taskIdFromPath,
   type CronLogEntry,
@@ -25,6 +26,7 @@ export {
   describeSchedule,
   isCronTaskPath,
   isValidSchedule,
+  parseLogEntries,
   presetToExpression,
   taskIdFromPath,
 };

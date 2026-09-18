@@ -112,6 +112,7 @@ export {
   fetchCronTasks,
   isCronTaskPath,
   isValidSchedule,
+  parseLogEntries,
   presetToExpression,
   runCronTask,
   saveCronTask,

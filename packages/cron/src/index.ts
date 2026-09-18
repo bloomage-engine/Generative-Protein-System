@@ -25,6 +25,7 @@ export {
 export {
   appendLogEntry,
   latestLogEntry,
+  parseLogEntries,
   type CronLogEntry,
   type CronRunStatus,
 } from "./log.js";

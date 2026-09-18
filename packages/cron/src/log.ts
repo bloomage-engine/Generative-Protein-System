@@ -21,19 +21,32 @@ export function appendLogEntry(existing: string, entry: CronLogEntry): string {
   return `${base}${block.join("\n")}`;
 }
 
-export function latestLogEntry(existing: string): CronLogEntry | null {
-  const headers = [...existing.matchAll(new RegExp(HEADER_SOURCE, "gm"))];
-  const last = headers[headers.length - 1];
-  if (!last || last.index === undefined) return null;
-  const section = existing.slice(last.index + last[0].length).split(/^## /m)[0] ?? "";
+function entryFromSection(at: string, status: CronRunStatus, section: string): CronLogEntry {
   const sessionId = /^- session: (.+)$/m.exec(section)?.[1]?.trim();
   const runId = /^- run: (.+)$/m.exec(section)?.[1]?.trim();
   const message = section.replace(/^- (?:session|run): .+$/gm, "").trim();
   return {
-    at: last[1]!,
-    status: last[2] as CronRunStatus,
+    at,
+    status,
     ...(sessionId ? { sessionId } : {}),
     ...(runId ? { runId } : {}),
     ...(message ? { message } : {}),
   };
+}
+
+/** Every run section in the log, newest first. Malformed sections are ignored. */
+export function parseLogEntries(existing: string): CronLogEntry[] {
+  const headers = [...existing.matchAll(new RegExp(HEADER_SOURCE, "gm"))].filter(
+    (header): header is RegExpExecArray & { index: number } => header.index !== undefined,
+  );
+  const entries = headers.map((header, index) => {
+    const next = headers[index + 1];
+    const section = existing.slice(header.index + header[0].length, next ? next.index : undefined);
+    return entryFromSection(header[1]!, header[2] as CronRunStatus, section);
+  });
+  return entries.reverse();
+}
+
+export function latestLogEntry(existing: string): CronLogEntry | null {
+  return parseLogEntries(existing)[0] ?? null;
 }
