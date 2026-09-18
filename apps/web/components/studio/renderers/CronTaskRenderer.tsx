@@ -4,19 +4,31 @@ import { useEffect, useState } from "react";
 import { Loader2, Play, Trash2 } from "lucide-react";
 import {
   DEFAULT_CRON_API,
+  SCHEDULE_PRESETS,
   cronLogPath,
   deleteCronTask,
   describeSchedule,
   fetchCronTask,
+  parseLogEntries,
+  presetToExpression,
   runCronTask,
   saveCronTask,
   taskIdFromPath,
+  useWorkspaceFile,
+  type CronRunStatus,
   type CronTask,
+  type SchedulePreset,
 } from "@science-studio/transport-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useStudioStore } from "@/store/studio-store";
+
+const STATUS_CLASS: Record<CronRunStatus, string> = {
+  success: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+  "skipped-busy": "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  error: "bg-destructive/15 text-destructive",
+};
 
 export function CronTaskRenderer({ path }: { path: string }) {
   const id = taskIdFromPath(path) ?? "";
@@ -30,6 +42,10 @@ export function CronTaskRenderer({ path }: { path: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [preset, setPreset] = useState<SchedulePreset | "custom">("custom");
+
+  const log = useWorkspaceFile(id === "" ? null : cronLogPath(id), { project: projectId });
+  const runs = log.text ? parseLogEntries(log.text) : [];
 
   useEffect(() => {
     if (projectId === null || id === "") {
@@ -117,7 +133,35 @@ export function CronTaskRenderer({ path }: { path: string }) {
       </label>
       <label className="flex flex-col gap-1">
         Schedule
-        <Input value={task.schedule} onChange={(event) => patch({ schedule: event.target.value })} />
+        <select
+          aria-label="Schedule preset"
+          className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+          value={preset}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (value === "custom") {
+              setPreset("custom");
+              return;
+            }
+            const next = value as SchedulePreset;
+            setPreset(next);
+            patch({ schedule: presetToExpression(next) });
+          }}
+        >
+          <option value="custom">Custom</option>
+          {SCHEDULE_PRESETS.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <Input
+          value={task.schedule}
+          onChange={(event) => {
+            setPreset("custom");
+            patch({ schedule: event.target.value });
+          }}
+        />
         <span className="text-muted-foreground text-[10px]">{describeSchedule(task.schedule)}</span>
       </label>
       <label className="flex items-center gap-2">
@@ -165,6 +209,37 @@ export function CronTaskRenderer({ path }: { path: string }) {
       </div>
       {status ? <p className="text-muted-foreground">{status}</p> : null}
       {error ? <p className="text-destructive">{error}</p> : null}
+      <div className="flex flex-col gap-1 border-t pt-2">
+        <div className="text-muted-foreground font-medium">Recent runs</div>
+        {log.isLoading ? (
+          <Loader2 className="text-muted-foreground size-3.5 animate-spin" />
+        ) : runs.length === 0 ? (
+          <p className="text-muted-foreground text-[10px]">No runs yet.</p>
+        ) : (
+          <ul className="flex flex-col gap-1" aria-label="Recent cron runs">
+            {runs.slice(0, 5).map((entry, index) => (
+              <li key={`${entry.at}-${index}`} className="flex items-start gap-2">
+                <span
+                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${STATUS_CLASS[entry.status]}`}
+                >
+                  {entry.status}
+                </span>
+                <span className="text-muted-foreground shrink-0 text-[10px]">
+                  {new Date(entry.at).toLocaleString()}
+                </span>
+                {entry.message ? (
+                  <span
+                    className="text-muted-foreground truncate text-[10px] opacity-70"
+                    title={entry.message}
+                  >
+                    {entry.message}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

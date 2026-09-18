@@ -56,6 +56,17 @@ test(
       const puts = [];
       const isCronRequest = (url) =>
         url.pathname === "/api/cron" || url.pathname.startsWith("/api/cron/");
+      await page.route("**/api/workspace/file*", (route) => {
+        const url = new URL(route.request().url());
+        if (url.searchParams.get("path") === ".science-studio/cron/daily-digest.log.md") {
+          return route.fulfill({
+            status: 200,
+            headers: { "content-type": "text/plain" },
+            body: "## 2026-09-18T09:00:00.000Z · success\n- session: s1\n- run: run-1\n\nDigest complete.\n",
+          });
+        }
+        return route.fallback();
+      });
       await page.route(isCronRequest, (route) => {
         const request = route.request();
         if (request.method() === "PUT") puts.push(request.url());
@@ -87,6 +98,9 @@ test(
       await row.dblclick();
       const tab = page.getByRole("tab", { name: /Daily digest/ });
       await tab.waitFor({ timeout: 10_000 });
+      await page.getByLabel("Schedule preset").waitFor({ timeout: 10_000 });
+      await page.getByText("Recent runs").waitFor({ timeout: 10_000 });
+      await page.getByText("Digest complete.").waitFor({ timeout: 10_000 });
       await page.getByRole("button", { name: "Save" }).click();
       await page.waitForTimeout(500);
       assert.ok(puts.length >= 1, "Save PUTs the task");
