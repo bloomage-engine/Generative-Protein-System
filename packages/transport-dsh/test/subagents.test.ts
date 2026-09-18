@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SubagentRegistry } from "../src/subagents.js";
+import { SubagentRegistry, type SubagentLedgerEntry } from "../src/subagents.js";
 
 function registry(resolve: (id: string) => string | undefined) {
   let tick = 0;
@@ -99,4 +99,76 @@ test("two children in one session are listed newest-first", () => {
     reg.list("sess-1").map((run) => run.id),
     ["newer", "older"],
   );
+});
+
+/** An in-memory store the registry persists into (the seam's test shape). */
+class FakeLedgerStore {
+  readonly files = new Map<string, SubagentLedgerEntry[]>();
+  async listKeys() {
+    return [...this.files.keys()];
+  }
+  async load(key: string) {
+    return this.files.get(key) ?? null;
+  }
+  async save(key: string, entries: readonly SubagentLedgerEntry[]) {
+    this.files.set(key, [...entries]);
+  }
+}
+
+test("a store persists per session key on every mutation", () => {
+  const store = new FakeLedgerStore();
+  const reg = new SubagentRegistry((root) => (root === "root-1" ? "sess-1" : undefined), () => `t${Math.random()}`);
+  reg.attachStore(store);
+  reg.noteStarted("root-1", "child-1");
+  reg.noteDescriptor("child-1", { label: "Literature review", provider: "spawn" });
+  reg.noteFinished("child-1", { status: "ok", stopReason: "completed" });
+  return reg.flush().then(() => {
+    const rows = store.files.get("sess-1")!;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.id, "child-1");
+    assert.equal(rows[0]!.status, "completed");
+    assert.equal(rows[0]!.sessionKey, "sess-1");
+    assert.equal(store.files.has("sess-2"), false, "only the owning key is ever written");
+  });
+});
+
+test("a restored ledger keeps finished runs and settles stale ones to aborted", async () => {
+  const store = new FakeLedgerStore();
+  store.files.set("sess-1", [
+    { id: "old-done", parentHarnessId: "root-old", status: "completed", startedAt: "t0", finishedAt: "t1" },
+    { id: "old-run", parentHarnessId: "root-old", status: "running", startedAt: "t2" },
+  ]);
+  const reg = new SubagentRegistry(() => undefined, () => "now");
+  reg.attachStore(store);
+  await reg.ready();
+  const runs = reg.list("sess-1");
+  assert.equal(runs.length, 2);
+  assert.equal(runs.find((r) => r.id === "old-done")!.status, "completed");
+  const stale = runs.find((r) => r.id === "old-run")!;
+  assert.equal(stale.status, "aborted", "a restored running entry is settled");
+  assert.equal(stale.finishedAt, "now");
+});
+
+test("a finished run without a started notification is recorded from its own parent", () => {
+  const store = new FakeLedgerStore();
+  const reg = new SubagentRegistry((root) => (root === "root-1" ? "sess-1" : undefined), () => "t0");
+  reg.attachStore(store);
+  reg.noteFinished("child-x", { status: "ok", stopReason: "completed", parentSessionId: "root-1" });
+  const [run] = reg.list("sess-1");
+  assert.equal(run.id, "child-x");
+  assert.equal(run.status, "completed");
+  assert.equal(run.startedAt, "t0", "startedAt is stamped at observation (the wire carries none)");
+});
+
+test("a live entry wins over a restored duplicate", async () => {
+  const store = new FakeLedgerStore();
+  store.files.set("sess-1", [
+    { id: "child-1", parentHarnessId: "root-old", status: "completed", startedAt: "t0" },
+  ]);
+  const reg = new SubagentRegistry((root) => (root === "root-1" ? "sess-1" : undefined), () => "t9");
+  reg.attachStore(store);
+  reg.noteStarted("root-1", "child-1");
+  await reg.ready();
+  const [run] = reg.list("sess-1");
+  assert.equal(run.status, "running", "the live in-memory entry is not clobbered by a restore");
 });

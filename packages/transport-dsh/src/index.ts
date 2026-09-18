@@ -10,6 +10,10 @@ export { createDshTurnClient } from "./client.js";
 export type { DshTurnClient, DshClientLaunchOptions } from "./client.js";
 export { TranscriptMirror } from "./mirror.js";
 export type { MirrorFile } from "./mirror.js";
+export { FileSubagentLedger } from "./ledger.js";
+export type { LedgerFile } from "./ledger.js";
+export type { SubagentLedgerEntry, SubagentLedgerStore } from "./subagents.js";
+export type { SubagentDescriptorInfo, SubagentFinishedInfo } from "./subagents.js";
 export { applyRouteSettings } from "./route-settings.js";
 export type { RouteSettingsInput } from "./route-settings.js";
 
