@@ -96,8 +96,11 @@ export {
   DEFAULT_TRANSPORT_API,
   fetchSubagents,
   useSubagents,
+  fetchSubagentTranscript,
+  useSubagentTranscript,
   type SubagentScope,
   type UseSubagentsOptions,
+  type UseSubagentTranscriptOptions,
 } from "./subagents.js";
 export {
   CRON_DIR,
