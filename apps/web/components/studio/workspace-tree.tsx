@@ -303,7 +303,7 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
       icon={FolderTree}
       open={filesOpen}
       onOpenChange={() => toggleRightSection("files")}
-      className="min-h-[72px] flex-1"
+      className={filesOpen ? "flex-1 min-h-[72px]" : "flex-none"}
       actions={
         <>
           <button

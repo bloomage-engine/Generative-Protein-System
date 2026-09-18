@@ -60,7 +60,7 @@ export function SidebarSection({
         </CollapsibleTrigger>
         {actions ? <div className="flex items-center gap-0.5">{actions}</div> : null}
       </div>
-      <CollapsibleContent className="data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down min-h-0 flex-1 overflow-hidden">
+      <CollapsibleContent className="min-h-0 flex-1 overflow-hidden">
         {children}
       </CollapsibleContent>
     </Collapsible>

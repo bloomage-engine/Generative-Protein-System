@@ -16,8 +16,8 @@ function clamp(value: number, min: number, max: number) {
 }
 
 /**
- * A drag handle that resizes the module BELOW it by growing/shrinking the
- * pane's bottom edge. Dragging up grows the lower module; Files (`flex-1`)
+ * A drag handle that resizes the module BELOW it (sets its fixed pixel height).
+ * Dragging up/lower grows/shrinks that module; the flexible Files module above
  * absorbs the difference.
  */
 function ResizeHandle({ section, label }: { section: "subagents" | "cron"; label: string }) {
@@ -42,9 +42,7 @@ function ResizeHandle({ section, label }: { section: "subagents" | "cron"; label
         const other = section === "subagents" ? "cron" : "subagents";
         const otherOpen = state.rightSections[other];
         const reserved =
-          FILES_MIN_PX +
-          HANDLE_PX +
-          (otherOpen ? state.rightHeights[other] + HANDLE_PX : COLLAPSED_HEADER_PX);
+          FILES_MIN_PX + HANDLE_PX + (otherOpen ? state.rightHeights[other] + HANDLE_PX : COLLAPSED_HEADER_PX);
         const max = Math.max(MIN_SECTION_PX, containerHeight - reserved);
 
         try {
@@ -78,7 +76,13 @@ function ResizeHandle({ section, label }: { section: "subagents" | "cron"; label
   );
 }
 
-/** The right pane: Files (flexible) stacked above Subagents and Cron. */
+/**
+ * The right pane: Files (the flexible filler, grows to fill) stacked above
+ * Subagents and Cron (draggable fixed pixel heights). Each module is
+ * independently collapsible to its header; collapse is an instant reflow (no
+ * per-frame animation), and the freed space hands back to the open modules —
+ * Files absorbs it when it is open.
+ */
 export function RightPanel({ project }: { project: string | null }) {
   const subagentsOpen = useStudioStore((s) => s.rightSections.subagents);
   const cronOpen = useStudioStore((s) => s.rightSections.cron);

@@ -58,7 +58,11 @@ type State = {
   rightPanel: boolean;
   /** Which right-pane modules are expanded (in memory; reload returns to defaults). */
   rightSections: Record<RightSectionId, boolean>;
-  /** Pixel heights of the two non-Files modules, kept across a collapse. */
+  /**
+   * Pixel heights the user has dragged for the two non-Files modules, kept
+   * across a collapse. Files itself is the flexible filler (it grows to fill),
+   * so it has no stored height.
+   */
   rightHeights: { subagents: number; cron: number };
   /** The deployment settings dialog. Chrome state: never keyed into SessionView. */
   settingsOpen: boolean;
