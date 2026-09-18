@@ -15,6 +15,7 @@ import {
   cronLogPath,
   cronTaskPath,
   isValidSchedule,
+  isValidTaskId,
   parseTaskDoc,
   serializeTaskDoc,
   taskIdFromPath,
@@ -200,7 +201,7 @@ export function apply(ctx: CronHost, config: CronPluginConfig | undefined): void
     output: textOutput(),
     async execute(args) {
       const id = asRecord(args)?.["id"];
-      if (typeof id !== "string" || id === "") return "参数无效：需要 { id: string }。";
+      if (typeof id !== "string" || !isValidTaskId(id)) return "参数无效：id 不合法。";
       try {
         rmSync(join(root, cronTaskPath(id)), { force: true });
         rmSync(join(root, cronLogPath(id)), { force: true });
@@ -229,7 +230,8 @@ export function apply(ctx: CronHost, config: CronPluginConfig | undefined): void
       const input = asRecord(args);
       const id = input?.["id"];
       const enabled = input?.["enabled"];
-      if (typeof id !== "string" || id === "" || typeof enabled !== "boolean") {
+      if (typeof id !== "string" || !isValidTaskId(id)) return "参数无效：id 不合法。";
+      if (typeof enabled !== "boolean") {
         return "参数无效：需要 { id: string, enabled: boolean }。";
       }
       try {

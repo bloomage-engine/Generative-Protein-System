@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,7 +11,7 @@ import {
   type CronPromptSection,
   type CronToolDefinition,
 } from "../src/cron-plugin.js";
-import { parseTaskDoc } from "@science-studio/cron";
+import { parseTaskDoc, serializeTaskDoc } from "@science-studio/cron";
 
 const META = { id: "drought-screen", name: "抗旱基因筛选", createdAt: "2026-09-01T00:00:00.000Z" };
 
@@ -93,6 +93,47 @@ test("schedule_create rejects an invalid schedule", async () => {
     );
     assert.match(String(outcome), /schedule/i);
     assert.equal(existsSync(join(root, ".science-studio")), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("schedule_delete rejects a traversal id and leaves files outside the cron dir untouched", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-cron-"));
+  try {
+    const host = fakeHost();
+    apply(host.ctx, { project: META, root });
+    const outside = join(root, "PROJECT.md");
+    writeFileSync(outside, "sentinel");
+    const outcome = await tool(host, "schedule_delete").execute({ id: "../../PROJECT" }, {});
+    assert.match(String(outcome), /id/);
+    assert.ok(existsSync(outside));
+    assert.equal(readFileSync(outside, "utf8"), "sentinel");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("schedule_set_enabled rejects a traversal id and does not modify a file outside the cron dir", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dsh-cron-"));
+  try {
+    const host = fakeHost();
+    apply(host.ctx, { project: META, root });
+    const outside = join(root, "PROJECT.md");
+    const original = serializeTaskDoc({
+      id: "outside",
+      name: "Outside",
+      schedule: "0 9 * * *",
+      enabled: true,
+      prompt: "Keep me.",
+    });
+    writeFileSync(outside, original);
+    const outcome = await tool(host, "schedule_set_enabled").execute(
+      { id: "../../PROJECT", enabled: false },
+      {},
+    );
+    assert.match(String(outcome), /id/);
+    assert.equal(readFileSync(outside, "utf8"), original);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
