@@ -117,8 +117,11 @@ updatedAt: 2026-09-18T01:00:00.000Z
 - `id` is the filename stem, matching `^[a-z0-9][a-z0-9-]{0,63}$` (slug of the
   name, unique-suffixed). It never changes after creation.
 - `schedule` is the canonical 5-field expression.
-- `sessionId` is optional on disk; the UI requires it, the agent tool defaults it
-  to the invoking agent's Session. A missing/unknown Session is a per-fire error.
+- `sessionId` is optional on disk; the UI requires it. The agent tool accepts it
+  as well, but the child cannot know the Science Studio session key, so when it
+  is absent the scheduler targets the Project's most recently updated non-archived
+  Session and records the resolved id in the log. A named Session that is
+  missing, archived, or belongs to another Project is a per-fire error.
 - `enabled` defaults to `true`.
 - The body after the closing `---` is the prompt, verbatim (leading blank line
   trimmed).
