@@ -155,6 +155,7 @@ test("a finished run without a started notification is recorded from its own par
   reg.attachStore(store);
   reg.noteFinished("child-x", { status: "ok", stopReason: "completed", parentSessionId: "root-1" });
   const [run] = reg.list("sess-1");
+  assert.ok(run, "a finished run is recorded under its own parent key");
   assert.equal(run.id, "child-x");
   assert.equal(run.status, "completed");
   assert.equal(run.startedAt, "t0", "startedAt is stamped at observation (the wire carries none)");
@@ -170,5 +171,6 @@ test("a live entry wins over a restored duplicate", async () => {
   reg.noteStarted("root-1", "child-1");
   await reg.ready();
   const [run] = reg.list("sess-1");
+  assert.ok(run, "a live entry is listed under the session key");
   assert.equal(run.status, "running", "the live in-memory entry is not clobbered by a restore");
 });

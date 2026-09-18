@@ -3,8 +3,14 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { zstdCompressSync } from "node:zlib";
+import * as zlib from "node:zlib";
 import { projectKey, readChildTranscript } from "../src/child-transcript.js";
+
+// `zstdCompressSync` is present at runtime (Node >= 23.8) but not declared in
+// this repo's pinned @types/node — reached the same way as the production module.
+const zstdCompressSync = (zlib as unknown as {
+  zstdCompressSync: (buf: string | Buffer) => Buffer;
+}).zstdCompressSync;
 
 const CHILD = "f625a7c7-8708-431e-a380-0a52729da6af";
 const CWD = "/home/zhonghua/dsh-workspace/project-1";
