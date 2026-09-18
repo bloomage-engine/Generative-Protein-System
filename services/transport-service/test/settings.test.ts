@@ -144,6 +144,12 @@ test("parseSettingsPatch validates subagents.visibleWindowHours", () => {
   assert.deepEqual(parseSettingsPatch({ subagents: { visibleWindowHours: 48 } }), {
     patch: { subagents: { visibleWindowHours: 48 } },
   });
+  assert.deepEqual(parseSettingsPatch({ subagents: { visibleWindowHours: 1 } }), {
+    patch: { subagents: { visibleWindowHours: 1 } },
+  });
+  assert.deepEqual(parseSettingsPatch({ subagents: { visibleWindowHours: 720 } }), {
+    patch: { subagents: { visibleWindowHours: 720 } },
+  });
   assert.deepEqual(parseSettingsPatch({ subagents: { visibleWindowHours: null } }), {
     patch: { subagents: { visibleWindowHours: null } },
   });
@@ -153,6 +159,10 @@ test("parseSettingsPatch validates subagents.visibleWindowHours", () => {
   );
   assert.equal(
     errorOf(parseSettingsPatch({ subagents: { visibleWindowHours: 1000 } })),
+    "subagents.visibleWindowHours must be an integer between 1 and 720",
+  );
+  assert.equal(
+    errorOf(parseSettingsPatch({ subagents: { visibleWindowHours: 1.5 } })),
     "subagents.visibleWindowHours must be an integer between 1 and 720",
   );
   assert.equal(
