@@ -84,7 +84,10 @@ Out of scope (unchanged):
   time. Presets (hourly / daily / weekly) write canonical expressions.
 - **Missed fires are skipped; busy targets are skipped.** No catch-up on
   startup; if the target Session has an in-flight run, the occurrence is logged
-  `skipped-busy` and not retried.
+  `skipped-busy` and not retried. Within a tick, due tasks are awaited in order,
+  so one long run delays later due tasks for that tick (and their occurrence is
+  then skipped rather than queued); each task fires at most once per matching
+  minute.
 - **The scheduler is a controller, not an auto-start side effect.**
   `createServer()` builds it (so it shares `scope`/`activeRuns`) and exposes it
   on the Fastify instance; only the real entry point (`index.ts` `isMain`) calls
@@ -304,11 +307,13 @@ default) exactly like the workspace routes.
 | GET | `/api/cron/task?projectId=&id=` | `{ task: CronTask }` or 404 |
 | POST | `/api/cron/task?projectId=` | create; body `{name,schedule,prompt,sessionId?,enabled?}` → 201 `{task}` |
 | PUT | `/api/cron/task?projectId=&id=` | save; body is the full task → `{task}` |
-| POST | `/api/cron/task/delete?projectId=&id=` | remove task + log → `{ok:true}` |
-| POST | `/api/cron/task/run?projectId=&id=` | run once now (same path as a fire) → `{status}` |
+| POST | `/api/cron/task/delete?projectId=&id=` | remove task + log; **idempotent** — 200 `{ok:true}` even for an unknown id |
+| POST | `/api/cron/task/run?projectId=&id=` | run once now (same path as a fire) → 200 `{status}` (`success` / `skipped-busy` / `error`) |
 
-Validation: 400 on invalid schedule/name/body; 404 unknown id; 503 no workspace
-(via `withWorkspace`); 409 if the target Session is busy (run-now only).
+Validation: 400 on invalid schedule/name/body; 404 unknown id on read/update;
+503 no workspace (via `withWorkspace`). Delete is deliberately idempotent (a UI
+button may double-click or retry); run-now reports its outcome as a status rather
+than an HTTP error.
 
 ## Data flow
 
