@@ -8,6 +8,7 @@
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "references": [
+    { "path": "../cron" },
     { "path": "../record" },
     { "path": "../transport" }
   ]
