@@ -105,7 +105,7 @@
 | --- | --- |
 | #1 window | `packages/transport/src/settings.ts` — new `SubagentSettings` / `SubagentSettingsPatch` types; add to `RuntimeSettings`; `RuntimeSettingsView.subagents`; `RuntimeSettingsPatch.subagents?` |
 | #1 service | `services/transport-service/src/settings.ts` — `emptySettings` / `mergeSettings` / `viewOf` / `parseSettingsPatch` for `subagents.visibleWindowHours` |
-| #1 client | `packages/transport-client/src/subagents.ts` — `useSubagentsWindow(api?)` hook (fetches `/api/settings` once; returns hours, default 24) |
+| #1 client | `packages/transport-client/src/settings.ts` — `useSubagentsWindow(api?)` hook (fetches `/api/settings` once; returns hours, default 24) + `subagentWindowFromView` pure helper (both exported from `packages/transport-client/src/index.ts`) |
 | #1 web | `apps/web/components/studio/subagents-window.ts` (new, pure `isRecent` predicate — mirrors `file-utils.ts`); `apps/web/components/studio/{settings-dialog,subagents-view}.tsx` — a "Subagents" tab with the window input, and the panel's `visible` filter uses `isRecent` |
 | #2 plugin | `packages/transport-dsh/src/subagent-plugin.ts` (new) — `name`, `inject = ["systemPrompt"]`, `apply` registers the reporting `section` (pattern of `project-plugin.ts` / `cron-plugin.ts`) |
 | #2 adapter | `packages/transport-dsh/src/bridge.ts` — `writeSubagentPatch` (patch document, `file:` URL + empty config); `packages/transport-dsh/src/adapter.ts` — `subagentPluginPath` default + unconditional `patches.push(await writeSubagentPatch(...))` in `initialize()` |
