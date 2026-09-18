@@ -78,13 +78,16 @@ async function launchedPatches(project: { id: string; name: string; createdAt: s
 
 test("the adapter mounts the project plugin when it serves a Project", async () => {
   const patches = await launchedPatches(META);
-  assert.equal(patches.length, 3, "the bridge, project and cron patches");
+  assert.equal(patches.length, 4, "the bridge, subagent-reporting, project and cron patches");
   assert.ok(patches.some((text) => text.includes("drought-screen")), "the project identity rides the launch");
   assert.ok(patches.some((text) => text.includes("science-studio-cron")), "the cron plugin is mounted");
 });
 
 test("the adapter mounts no project plugin without a Project", async () => {
   const patches = await launchedPatches(undefined);
-  assert.equal(patches.length, 1, "only the command bridge is mounted");
-  assert.doesNotMatch(patches[0] ?? "", /science-studio-project/);
+  assert.equal(patches.length, 2, "only the command bridge and the parent-reporting patch are mounted");
+  for (const patch of patches) {
+    assert.doesNotMatch(patch, /science-studio-project/);
+    assert.doesNotMatch(patch, /science-studio-cron/);
+  }
 });

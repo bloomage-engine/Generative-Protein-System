@@ -238,3 +238,26 @@ export async function writeCronPatch(opts: {
   await writeFile(file, document, "utf8");
   return file;
 }
+
+/**
+ * Write the launch patch that inserts the SUBAGENT-REPORTING plugin into the
+ * child's profile, and return its path (for `--patch`). No business config —
+ * the plugin registers a static section (see `subagent-plugin.ts`), but a
+ * `config: {}` node is kept so the patch shape matches the bridge/project/cron
+ * siblings the harness already loads. Same shape as them: a `file:` URL name
+ * and a distinct filename (`subagent-reporting-<8hex>`).
+ */
+export async function writeSubagentPatch(opts: { dir: string; pluginPath: string }): Promise<string> {
+  const { dir, pluginPath } = opts;
+  await mkdir(dir, { recursive: true });
+  const file = join(dir, `subagent-reporting-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
+  const document = [
+    "- insert:",
+    "    - id: science-studio-subagent-reporting",
+    `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
+    "      config: {}",
+    "",
+  ].join("\n");
+  await writeFile(file, document, "utf8");
+  return file;
+}

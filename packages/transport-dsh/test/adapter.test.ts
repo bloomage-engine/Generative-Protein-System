@@ -175,6 +175,31 @@ test("run() streams user + assistant deltas, persists a Run, and writes the mirr
   }
 });
 
+test("DshAdapter mounts the parent-reporting plugin patch unconditionally", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-subagent-report-"));
+  const client = new FakeDshClient((_sid, _text) => []);
+  let captured: string[] = [];
+  const adapter = new DshRuntimeAdapter({
+    createClient: (options) => {
+      captured = options.patches ?? [];
+      return client;
+    },
+    transcriptDir: dir,
+  });
+  const store = new FakeRecordStore();
+  try {
+    await adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
+    assert.ok(
+      captured.some((p) => p.includes("subagent-reporting-")),
+      "the parent-reporting patch is present in `patches`",
+    );
+    assert.ok(captured.length >= 2, "at least the bridge + report patches (2 min) are mounted");
+  } finally {
+    await client.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a request that beats the background init waits for it instead of failing", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-init-race-"));
   const store = new FakeRecordStore();

@@ -34,6 +34,7 @@ import {
   writeBridgePatch,
   writeCronPatch,
   writeProjectPatch,
+  writeSubagentPatch,
   type DshCommandBridge,
 } from "./bridge.js";
 import { TranscriptMirror } from "./mirror.js";
@@ -85,8 +86,15 @@ export interface DshRuntimeAdapterOptions {
    * The child-side cron plugin this adapter's launch patch mounts — the
    * scheduled-task tools. Defaults to this package's own build output.
    */
-  cronPluginPath?: string;
-  /** Where the socket and its launch patch live (default under the temp dir). */
+   cronPluginPath?: string;
+   /**
+    * The child-side parent-reporting plugin this adapter's launch patch mounts
+    * — the host-scope section that steers the MAIN agent to report each
+    * delegated subagent's result (see `subagent-plugin.ts`). Defaults to this
+    * package's own build output.
+    */
+   subagentPluginPath?: string;
+   /** Where the socket and its launch patch live (default under the temp dir). */
   bridgeDir?: string;
   /** Test seam: inject the bridge client (defaults to the real socket client). */
   createBridge?: (endpoint: string) => DshCommandBridge;
@@ -146,6 +154,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private readonly bridgePluginPath: string;
   private readonly projectPluginPath: string;
   private readonly cronPluginPath: string;
+  private readonly subagentPluginPath: string;
   private readonly bridgeDir: string;
   private readonly createBridge: (endpoint: string) => DshCommandBridge;
   /** This child generation's command bridge, or `null` when it could not be set up. */
@@ -176,6 +185,8 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       options.projectPluginPath ?? fileURLToPath(new URL("./project-plugin.js", import.meta.url));
     this.cronPluginPath =
       options.cronPluginPath ?? fileURLToPath(new URL("./cron-plugin.js", import.meta.url));
+    this.subagentPluginPath =
+      options.subagentPluginPath ?? fileURLToPath(new URL("./subagent-plugin.js", import.meta.url));
     this.bridgeDir = options.bridgeDir ?? join(tmpdir(), "science-studio", "dsh-bridge");
     this.createBridge = options.createBridge ?? createCommandBridge;
     this.subagentRegistry = new SubagentRegistry(
@@ -270,6 +281,15 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     } catch (err) {
       this.bridge = null;
       console.warn("[dsh] command bridge unavailable", err);
+    }
+    // The parent-reporting plugin rides its own launch patch (unconditional,
+    // like the bridge): it steers the MAIN agent to report each delegated
+    // subagent's result — in a real Project and in `project-default` alike.
+    // Best-effort: if the write fails the child simply has no instruction.
+    try {
+      patches.push(await writeSubagentPatch({ dir: this.bridgeDir, pluginPath: this.subagentPluginPath }));
+    } catch (err) {
+      console.warn("[dsh] subagent-reporting plugin unavailable", err);
     }
     // The Project plugin rides a SECOND launch patch, best-effort like the
     // bridge: it lays down the research layout and keeps the Project Brief,
