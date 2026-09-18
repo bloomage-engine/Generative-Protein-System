@@ -50,7 +50,7 @@ test("the boundary (exactly windowMs ago) is included", () => {
   assert.equal(isRecent(at, 24 * H, now), true, "a row exactly 24h ago is recent (inclusive boundary)");
 });
 
-test("a row with no finishedAt uses startedAt as the last activity", () => {
+test("a still-running row is recent regardless of age, even past the window", () => {
   const now = Date.parse("2026-09-19T12:00:00.000Z");
   const mid = {
     id: "x",
@@ -62,7 +62,27 @@ test("a row with no finishedAt uses startedAt as the last activity", () => {
   assert.equal(isRecent(mid, 24 * H, now), true, "still running beats the time check");
 });
 
-test("windowMsFromHours truncates and clamps to 1..720", () => {
+test("a non-running row with no finishedAt uses startedAt as the last activity", () => {
+  const now = Date.parse("2026-09-19T12:00:00.000Z");
+  const fresh = {
+    id: "x",
+    parentId: "s",
+    status: "aborted",
+    startedAt: new Date(now - 2 * H).toISOString(),
+    // no finishedAt
+  };
+  const stale = {
+    id: "y",
+    parentId: "s",
+    status: "aborted",
+    startedAt: new Date(now - 30 * H).toISOString(),
+    // no finishedAt
+  };
+  assert.equal(isRecent(fresh, 24 * H, now), true, "a 2-hour-ago aborted row without finishedAt is recent");
+  assert.equal(isRecent(stale, 24 * H, now), false, "a 30-hour-ago aborted row without finishedAt is stale");
+});
+
+test("windowMsFromHours truncates fractional hours and floors to a 1h minimum", () => {
   assert.equal(windowMsFromHours(24), 24 * H);
   assert.equal(windowMsFromHours(0), 1 * H, "clamps to a minimum of 1h");
   assert.equal(windowMsFromHours(2.7), 2 * H, "truncates fractional hours");
