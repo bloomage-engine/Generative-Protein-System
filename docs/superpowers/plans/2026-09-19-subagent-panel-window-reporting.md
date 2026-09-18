@@ -55,6 +55,7 @@ dependencies.
 - Modify: `packages/transport/src/index.ts:67-73` (re-export two new types)
 - Modify: `services/transport-service/src/settings.ts` (parse/merge/view)
 - Test: `services/transport-service/test/settings.test.ts`
+- Test: `packages/transport/test/seams.test.ts:83` (the compile-time `RuntimeSettingsView` fixture gains the new required `subagents` field — add `subagents: {}`)
 
 **Interfaces:**
 - Consumes: none (pure types + service additions).
@@ -746,16 +747,17 @@ import {
 } from "./harness.mjs";
 
 const H = 3600e3;
-const now = Date.parse("2026-09-19T12:00:00.000Z");
-const ISO = (t) => new Date(t).toISOString();
+// Relative to REAL now so the "recent" row never ages out of the 24h window,
+// no matter when the test runs (the panel filters with Date.now()).
+const iso = (msAgo) => new Date(Date.now() - msAgo).toISOString();
 
 const ROWS = [
-  // still running (10 days old) → always recent via the running branch
-  { id: "c1", parentId: "s1", label: "Running long", provider: "spawn", status: "running", startedAt: ISO(now - 10 * 24 * H) },
+  // running, started 10 days ago → always recent via the running branch
+  { id: "c1", parentId: "s1", label: "Running long", provider: "spawn", status: "running", startedAt: iso(10 * 24 * H) },
   // completed 2h ago → within the 24h window → visible by default
-  { id: "c2", parentId: "s1", provider: "fork", status: "completed", stopReason: "completed", startedAt: ISO(now - 3 * H), finishedAt: ISO(now - 2 * H) },
-  // completed 3d ago → out of window → hidden until the History toggle
-  { id: "c3", parentId: "s1", provider: "spawn", status: "completed", stopReason: "completed", startedAt: ISO(now - 3 * 24 * H), finishedAt: ISO(now - 3 * 24 * H) },
+  { id: "c2", parentId: "s1", label: "Recent task", provider: "fork", status: "completed", stopReason: "completed", startedAt: iso(3 * H), finishedAt: iso(2 * H) },
+  // completed 3d ago → outside the window → hidden until the History toggle
+  { id: "c3", parentId: "s1", label: "Old task", provider: "spawn", status: "completed", stopReason: "completed", startedAt: iso(3 * 24 * H), finishedAt: iso(3 * 24 * H) },
 ];
 
 test("the subagent list shows a recent window by default (24h); the toggle opens it", { timeout: 240_000 }, async (t) => {
@@ -800,16 +802,15 @@ test("the subagent list shows a recent window by default (24h); the toggle opens
     await subagents.waitFor({ timeout: 15_000 });
 
     await subagents.getByRole("button", { name: "Subagents" }).click();
-    // The RUNNING row (always recent) + the RECENT COMPLETED row (2h ago) are both visible.
+    // The RUNNING row (always recent) + the RECENT COMPLETED row (2h ago) are visible.
     await subagents.getByText("Running long").waitFor({ timeout: 10_000 });
-    // child-2 is unlabeled → ordinal "Subagent A"
-    await subagents.getByText("Subagent A", { exact: true }).waitFor({ timeout: 10_000 });
-    // child-3 (3d ago) IS HIDDEN by default (outside the 24h window).
-    assert.equal(await subagents.getByText("Subagent B", { exact: true }).count(), 0, "a 3d-ago completed row is hidden by default");
+    await subagents.getByText("Recent task").waitFor({ timeout: 10_000 });
+    // The OLD completed row (3d ago) is HIDDEN by default (outside the 24h window).
+    assert.equal(await subagents.getByText("Old task").count(), 0, "a 3d-ago completed row is hidden by default");
 
     // Toggling History reveals the older row.
     await subagents.getByLabel("Show past subagent runs").click();
-    await subagents.getByText("Subagent B", { exact: true }).waitFor({ timeout: 10_000 });
+    await subagents.getByText("Old task").waitFor({ timeout: 10_000 });
   } catch (error) {
     throw new Error(`${error.message}\n--- web log ---\n${server.log().slice(-2000)}`);
   } finally {
@@ -831,12 +832,13 @@ Expected: PASS (or SKIP when no Chromium is found; CI has one).
 - [ ] **Step 5: Run the panel regression test to make sure the existing invariants still hold.**
 
 Run: `node --test apps/web/test/subagents-panel.test.mjs`
-Expected: PASS (or SKIP without Chromium). The existing assertions ("Running
-long" visible, "Completed" hidden by default, toggle reveals) should still
-hold because the existing fixture is `2026-09-17` (now ≈ 2026-09-19 → 2 days
-ago → within window → the "Completed" row IS recent). If the fixture is stale
-at review time, the test will tell you; update its `finishedAt` to
-`Date.now() - 3 * 864e5` to preserve the pre-window semantics.
+Expected: PASS (or SKIP without Chromium). That test's completed-row fixture is a
+fixed 2026-09-17 date which only ever AGES OLDER as real time passes, so it stays
+outside the 24h window and its "Completed hidden by default" assertion remains
+valid under the new `isRecent` filter (the running row is still always recent).
+No change to that test is normally needed — run it to confirm. If it does fail,
+the knob is that file's completed-row `finishedAt` (push it further into the past,
+e.g. `new Date(Date.now() - 3 * 864e5).toISOString()`), preserving its pre-window intent.
 
 - [ ] **Step 6: Run the web e2e suite.**
 

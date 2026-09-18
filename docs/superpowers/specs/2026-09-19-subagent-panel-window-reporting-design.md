@@ -177,7 +177,10 @@
 ## Out of scope
 
 - No record-layer change. Subagent runs remain adapter-owned best-effort state
-  (docs/adr/0002, 0007). No new `Run`-like entity, no server-side enforcement.
+  (docs/adr/0002, 0007). No new `Run`-like entity and no general
+  subagent-governance/enforcement subsystem. (D1's input validation on
+  `subagents.visibleWindowHours` — a 400 for an out-of-range / non-integer value —
+  is intentional and in scope; that is the only `settings`-side rule.)
 - No toggle to enable/disable the parent-reporting instruction this pass
   (always-on; a setting can follow).
 - No changes to `transport-openclaw` — its `subagentTranscript` capability stays
