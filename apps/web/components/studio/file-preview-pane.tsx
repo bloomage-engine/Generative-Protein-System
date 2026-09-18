@@ -4,6 +4,7 @@ import type * as React from "react";
 import dynamic from "next/dynamic";
 import { Download, FileX, Loader2, X } from "lucide-react";
 import {
+  isCronTaskPath,
   useWorkspaceApi,
   useWorkspaceFile,
   workspaceFileUrl,
@@ -11,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { kindFor, languageFor } from "./file-utils";
+import { CronTaskRenderer } from "./renderers/CronTaskRenderer";
 import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
 import { CodeRenderer } from "./renderers/CodeRenderer";
 import { JsonRenderer } from "./renderers/JsonRenderer";
@@ -117,7 +119,9 @@ function Preview({ path, name }: { path: string; name: string }) {
         </Button>
       </header>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {kind === "pdf" ? (
+        {isCronTaskPath(path) ? (
+          <CronTaskRenderer path={path} />
+        ) : kind === "pdf" ? (
           <PdfRenderer url={fileUrl} />
         ) : kind === "molecule" ? (
           <MoleculeRenderer url={fileUrl} fileName={name} />

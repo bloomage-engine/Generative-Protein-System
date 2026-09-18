@@ -3,7 +3,8 @@
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { fileIcon } from "./file-icons";
+import { isCronTaskPath } from "@science-studio/transport-client";
+import { cronIcon, fileIcon } from "./file-icons";
 import { kindFor } from "./file-utils";
 import { useStudioStore } from "@/store/studio-store";
 
@@ -39,7 +40,7 @@ export function TabStrip() {
                 : "text-muted-foreground hover:bg-accent/60 hover:text-foreground")
             }
           >
-            {fileIcon(kindFor(tab.name))}
+            {isCronTaskPath(tab.path) ? cronIcon() : fileIcon(kindFor(tab.name))}
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="max-w-[10rem] truncate">{tab.name}</span>

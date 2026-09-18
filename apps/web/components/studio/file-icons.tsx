@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import {
   Atom,
   Braces,
+  CalendarClock,
   File,
   FileCode2,
   FileText,
@@ -28,6 +29,10 @@ export function fileIcon(kind: FileKind): ReactNode {
     default:
       return <File className="size-3.5 text-muted-foreground" />;
   }
+}
+
+export function cronIcon(): ReactNode {
+  return <CalendarClock className="size-3.5 text-orange-500" />;
 }
 
 export function fileIconForName(
