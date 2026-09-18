@@ -18,10 +18,16 @@ export interface ModelSettings {
   apiKey?: string;
 }
 
+export interface SubagentSettings {
+  /** How long a finished subagent stays in the default (non-history) view, in hours. */
+  visibleWindowHours?: number;
+}
+
 export interface RuntimeSettings {
   model: ModelSettings;
   plugins: Record<string, unknown>;
   agent: Record<string, unknown>;
+  subagents?: SubagentSettings;
 }
 
 /** The `GET`/`PUT` response: `apiKey` is replaced by a configured flag. */
@@ -29,6 +35,7 @@ export interface RuntimeSettingsView {
   model: Omit<ModelSettings, "apiKey"> & { apiKeyConfigured: boolean };
   plugins: Record<string, unknown>;
   agent: Record<string, unknown>;
+  subagents: SubagentSettings;
   /** The active runtime product (`TRANSPORT_RUNTIME`). */
   runtime: string;
   /** The settings file the service read/wrote, for diagnosis. */
@@ -43,8 +50,13 @@ export interface ModelSettingsPatch {
   apiKey?: string | null;
 }
 
+export interface SubagentSettingsPatch {
+  visibleWindowHours?: number | null;
+}
+
 export interface RuntimeSettingsPatch {
   model?: ModelSettingsPatch;
   plugins?: Record<string, unknown>;
   agent?: Record<string, unknown>;
+  subagents?: SubagentSettingsPatch;
 }

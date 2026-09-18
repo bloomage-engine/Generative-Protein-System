@@ -123,3 +123,41 @@ test("parseSettingsPatch validates and normalizes", () => {
     patch: { model: { provider: "" }, plugins: { a: 1 } },
   });
 });
+
+test("viewOf reports the subagents section (empty when unset)", () => {
+  const view = viewOf({ model: {}, plugins: {}, agent: {} }, "/tmp/s.json", {});
+  assert.deepEqual(view.subagents, {});
+});
+
+test("mergeSettings sets and clears subagents.visibleWindowHours", () => {
+  const base = { model: {}, plugins: {}, agent: {} };
+  const withHour = mergeSettings(base, { subagents: { visibleWindowHours: 48 } });
+  assert.equal(withHour.subagents?.visibleWindowHours, 48);
+  const cleared = mergeSettings(withHour, { subagents: { visibleWindowHours: null } });
+  assert.equal(cleared.subagents?.visibleWindowHours, undefined);
+  // An absent subagents patch leaves the stored value alone.
+  const untouched = mergeSettings(withHour, {});
+  assert.equal(untouched.subagents?.visibleWindowHours, 48);
+});
+
+test("parseSettingsPatch validates subagents.visibleWindowHours", () => {
+  assert.deepEqual(parseSettingsPatch({ subagents: { visibleWindowHours: 48 } }), {
+    patch: { subagents: { visibleWindowHours: 48 } },
+  });
+  assert.deepEqual(parseSettingsPatch({ subagents: { visibleWindowHours: null } }), {
+    patch: { subagents: { visibleWindowHours: null } },
+  });
+  assert.equal(
+    errorOf(parseSettingsPatch({ subagents: { visibleWindowHours: 0 } })),
+    "subagents.visibleWindowHours must be an integer between 1 and 720",
+  );
+  assert.equal(
+    errorOf(parseSettingsPatch({ subagents: { visibleWindowHours: 1000 } })),
+    "subagents.visibleWindowHours must be an integer between 1 and 720",
+  );
+  assert.equal(
+    errorOf(parseSettingsPatch({ subagents: { visibleWindowHours: "x" } })),
+    "subagents.visibleWindowHours must be an integer between 1 and 720",
+  );
+  assert.equal(errorOf(parseSettingsPatch({ subagents: [] })), "subagents must be an object");
+});

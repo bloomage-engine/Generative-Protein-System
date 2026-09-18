@@ -84,6 +84,7 @@ test("the settings contract types are importable and usable", () => {
     model: { provider: model.provider, apiKeyConfigured: true },
     plugins: {},
     agent: {},
+    subagents: {},
     runtime: "dsh",
     settingsPath: "/tmp/settings.json",
   };

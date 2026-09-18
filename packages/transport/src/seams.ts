@@ -62,4 +62,6 @@ export type {
   RuntimeSettings,
   RuntimeSettingsView,
   RuntimeSettingsPatch,
+  SubagentSettings,
+  SubagentSettingsPatch,
 } from "./settings.js";

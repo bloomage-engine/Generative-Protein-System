@@ -14,6 +14,8 @@ import type {
   RuntimeSettings,
   RuntimeSettingsPatch,
   RuntimeSettingsView,
+  SubagentSettings,
+  SubagentSettingsPatch,
 } from "@science-studio/transport";
 
 export function resolveSettingsPath(env: NodeJS.ProcessEnv = process.env): string {
@@ -23,7 +25,7 @@ export function resolveSettingsPath(env: NodeJS.ProcessEnv = process.env): strin
 }
 
 export function emptySettings(): RuntimeSettings {
-  return { model: {}, plugins: {}, agent: {} };
+  return { model: {}, plugins: {}, agent: {}, subagents: {} };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -38,6 +40,7 @@ export async function loadSettings(path: string): Promise<RuntimeSettings> {
       model: isPlainObject(parsed.model) ? (parsed.model as ModelSettings) : {},
       plugins: isPlainObject(parsed.plugins) ? parsed.plugins : {},
       agent: isPlainObject(parsed.agent) ? parsed.agent : {},
+      subagents: isPlainObject(parsed.subagents) ? (parsed.subagents as SubagentSettings) : {},
     };
   } catch (err) {
     if ((err as { code?: string }).code !== "ENOENT") {
@@ -76,10 +79,17 @@ export function mergeSettings(current: RuntimeSettings, patch: RuntimeSettingsPa
       else if (patch.model.apiKey !== undefined) model.apiKey = patch.model.apiKey;
     }
   }
+  const subagents: SubagentSettings = { ...(current.subagents ?? {}) };
+  if (patch.subagents !== undefined && "visibleWindowHours" in patch.subagents) {
+    const value = patch.subagents.visibleWindowHours;
+    if (value === null) delete subagents.visibleWindowHours;
+    else if (value !== undefined) subagents.visibleWindowHours = value;
+  }
   return {
     model,
     plugins: patch.plugins ? { ...current.plugins, ...patch.plugins } : current.plugins,
     agent: patch.agent ? { ...current.agent, ...patch.agent } : current.agent,
+    subagents,
   };
 }
 
@@ -93,6 +103,7 @@ export function viewOf(
     model: { ...model, apiKeyConfigured: Boolean(apiKey) },
     plugins: settings.plugins,
     agent: settings.agent,
+    subagents: { ...(settings.subagents ?? {}) },
     runtime: env.TRANSPORT_RUNTIME ?? "openclaw",
     settingsPath,
   };
@@ -146,6 +157,18 @@ export function parseSettingsPatch(
   if ("agent" in body) {
     if (!isPlainObject(body.agent)) return { error: "agent must be an object" };
     patch.agent = body.agent;
+  }
+  if ("subagents" in body) {
+    if (!isPlainObject(body.subagents)) return { error: "subagents must be an object" };
+    const sub: SubagentSettingsPatch = {};
+    if ("visibleWindowHours" in body.subagents) {
+      const value = body.subagents.visibleWindowHours;
+      if (value === null) sub.visibleWindowHours = null;
+      else if (typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 720)
+        sub.visibleWindowHours = value;
+      else return { error: "subagents.visibleWindowHours must be an integer between 1 and 720" };
+    }
+    patch.subagents = sub;
   }
   return { patch };
 }
