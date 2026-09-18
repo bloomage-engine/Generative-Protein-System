@@ -31,6 +31,7 @@ import {
   bridgeSocketPath,
   createCommandBridge,
   writeBridgePatch,
+  writeCronPatch,
   writeProjectPatch,
   type DshCommandBridge,
 } from "./bridge.js";
@@ -77,6 +78,11 @@ export interface DshRuntimeAdapterOptions {
    * adapter that wrote the patch.
    */
   projectPluginPath?: string;
+  /**
+   * The child-side cron plugin this adapter's launch patch mounts — the
+   * scheduled-task tools. Defaults to this package's own build output.
+   */
+  cronPluginPath?: string;
   /** Where the socket and its launch patch live (default under the temp dir). */
   bridgeDir?: string;
   /** Test seam: inject the bridge client (defaults to the real socket client). */
@@ -132,6 +138,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private model = DEFAULT_MODEL;
   private readonly bridgePluginPath: string;
   private readonly projectPluginPath: string;
+  private readonly cronPluginPath: string;
   private readonly bridgeDir: string;
   private readonly createBridge: (endpoint: string) => DshCommandBridge;
   /** This child generation's command bridge, or `null` when it could not be set up. */
@@ -159,6 +166,8 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       options.bridgePluginPath ?? fileURLToPath(new URL("./bridge-plugin.js", import.meta.url));
     this.projectPluginPath =
       options.projectPluginPath ?? fileURLToPath(new URL("./project-plugin.js", import.meta.url));
+    this.cronPluginPath =
+      options.cronPluginPath ?? fileURLToPath(new URL("./cron-plugin.js", import.meta.url));
     this.bridgeDir = options.bridgeDir ?? join(tmpdir(), "science-studio", "dsh-bridge");
     this.createBridge = options.createBridge ?? createCommandBridge;
     this.subagentRegistry = new SubagentRegistry(
@@ -263,6 +272,21 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
         );
       } catch (err) {
         console.warn("[dsh] project plugin unavailable", err);
+      }
+    }
+    // The cron plugin rides a THIRD launch patch, best-effort like the others:
+    // it adds the scheduled-task tools and `/cron` for this Project's workspace.
+    if (opts.project) {
+      try {
+        patches.push(
+          await writeCronPatch({
+            dir: this.bridgeDir,
+            pluginPath: this.cronPluginPath,
+            config: { project: opts.project, root: cwd },
+          }),
+        );
+      } catch (err) {
+        console.warn("[dsh] cron plugin unavailable", err);
       }
     }
 

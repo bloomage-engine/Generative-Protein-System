@@ -156,6 +156,14 @@ export const DSH_HARNESS_FALLBACK_DESCRIPTORS: readonly CommandDescriptor[] = [
     description: "确保项目目录结构与 PROJECT.md 简报就绪，并报告状态",
     invocationText: "/project",
   },
+  // This package's own cron plugin registers `/cron` in the harness registry
+  // (like `/project`), listed here for the same cold-menu reason.
+  {
+    id: "cron",
+    label: "/cron",
+    description: "列出本项目的定时任务",
+    invocationText: "/cron",
+  },
 ];
 
 /** The dsh command catalog, in menu order. */

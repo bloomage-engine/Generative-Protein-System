@@ -207,3 +207,34 @@ export async function writeProjectPatch(opts: {
   await writeFile(file, document, "utf8");
   return file;
 }
+
+/** The config the child-side cron plugin (`cron-plugin.ts`) reads. */
+export interface CronPluginLaunchConfig {
+  project: { id: string; name: string; createdAt: string };
+  /** The Project Workspace root (the child's cwd) the task files live in. */
+  root: string;
+}
+
+/**
+ * Write the launch patch that inserts the CRON plugin into the child's profile,
+ * and return its path (for `--patch`). Same shape as the bridge/project patches:
+ * a `file:` URL name and one JSON config node, so no YAML dependency is needed.
+ */
+export async function writeCronPatch(opts: {
+  dir: string;
+  pluginPath: string;
+  config: CronPluginLaunchConfig;
+}): Promise<string> {
+  const { dir, pluginPath, config } = opts;
+  await mkdir(dir, { recursive: true });
+  const file = join(dir, `cron-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
+  const document = [
+    "- insert:",
+    "    - id: science-studio-cron",
+    `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
+    `      config: ${JSON.stringify(config)}`,
+    "",
+  ].join("\n");
+  await writeFile(file, document, "utf8");
+  return file;
+}

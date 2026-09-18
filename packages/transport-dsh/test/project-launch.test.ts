@@ -60,6 +60,7 @@ async function launchedPatches(project: { id: string; name: string; createdAt: s
     bridgeDir: dir,
     bridgePluginPath: "/opt/ss/bridge-plugin.js",
     projectPluginPath: "/opt/ss/project-plugin.js",
+    cronPluginPath: "/opt/ss/cron-plugin.js",
   });
   try {
     await adapter.init({
@@ -77,8 +78,9 @@ async function launchedPatches(project: { id: string; name: string; createdAt: s
 
 test("the adapter mounts the project plugin when it serves a Project", async () => {
   const patches = await launchedPatches(META);
-  assert.equal(patches.length, 2, "the bridge patch and the project patch");
+  assert.equal(patches.length, 3, "the bridge, project and cron patches");
   assert.ok(patches.some((text) => text.includes("drought-screen")), "the project identity rides the launch");
+  assert.ok(patches.some((text) => text.includes("science-studio-cron")), "the cron plugin is mounted");
 });
 
 test("the adapter mounts no project plugin without a Project", async () => {

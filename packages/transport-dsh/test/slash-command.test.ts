@@ -79,6 +79,8 @@ test("the catalog is served before the harness child has ever started", async ()
         // This package's own project plugin (docs/adr/0012), curated for the
         // same cold-registry reason.
         ["project", "/project"],
+        // This package's own cron plugin, curated for the same reason.
+        ["cron", "/cron"],
       ],
     );
     assert.equal(client.started, false, "the menu must not need a spawned harness");
