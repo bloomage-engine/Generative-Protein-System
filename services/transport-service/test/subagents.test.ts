@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
-import type { RuntimeAdapter, SessionState, SubagentRun, TransportCommand } from "@science-studio/transport";
+import type { RuntimeAdapter, SessionState, SubagentRun, SubagentTranscript, TransportCommand } from "@science-studio/transport";
 import { createTransportService } from "../src/index.js";
 
 async function withAdapter<T>(adapter: RuntimeAdapter, fn: (base: string) => Promise<T>): Promise<T> {
@@ -60,5 +60,30 @@ test("GET /api/transport/subagents degrades to empty when the adapter throws", a
     const res = await fetch(`${base}/api/transport/subagents?projectId=p1&threadId=sess-1`);
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { subagents: [] });
+  });
+});
+
+test("GET /api/transport/subagents/:childId/transcript serves the adapter's record", async () => {
+  const transcript: SubagentTranscript = { id: "child-1", parentId: "sess-1", messages: [] };
+  const adapter: RuntimeAdapter = {
+    ...emptyAdapter,
+    subagentTranscript: async (sessionKey, childId) =>
+      sessionKey === "sess-1" && childId === "child-1" ? transcript : null,
+  };
+  await withAdapter(adapter, async (base) => {
+    const ok = await fetch(`${base}/api/transport/subagents/child-1/transcript?projectId=p1&threadId=sess-1`);
+    assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { transcript });
+    const missing = await fetch(`${base}/api/transport/subagents/nobody/transcript?projectId=p1&threadId=sess-1`);
+    assert.equal(missing.status, 404, "a null answer is a 404");
+  });
+});
+
+test("GET .../transcript answers 404 when the runtime has no surface and 400 on an unsafe id", async () => {
+  await withAdapter(emptyAdapter, async (base) => {
+    const res = await fetch(`${base}/api/transport/subagents/child-1/transcript?projectId=p1&threadId=sess-1`);
+    assert.equal(res.status, 404, "no subagentTranscript member → 404");
+    const unsafe = await fetch(`${base}/api/transport/subagents/child.1/transcript?projectId=p1&threadId=sess-1`);
+    assert.equal(unsafe.status, 400, "a path-unsafe id is 400");
   });
 });

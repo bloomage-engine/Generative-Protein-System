@@ -390,6 +390,34 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     }
   });
 
+  // -- Subagent child-session records (adapter-owned, optional surface) -----
+  app.get("/api/transport/subagents/:childId/transcript", async (request, reply) => {
+    // The record belongs to the Project's OWN adapter (docs/adr/0008), like
+    // the list. A runtime without the surface (or a child it has no record
+    // for) answers 404 — the panel degrades to a friendly state.
+    const { environment, threadId } = await scope.acquire(request);
+    const adapter = environment.adapter;
+    const childId = (request.params as { childId?: string }).childId ?? "";
+    if (!/^[A-Za-z0-9_-]+$/.test(childId)) {
+      return reply.code(400).send({ error: "childId must be a single safe path segment" });
+    }
+    const sessionId = canonicalSessionKey(adapter, threadId);
+    if (typeof adapter.subagentTranscript !== "function") {
+      return reply.code(404).send({ error: `runtime "${adapter.runtime}" has no subagent records` });
+    }
+    let transcript: unknown;
+    try {
+      transcript = await adapter.subagentTranscript(sessionId, childId);
+    } catch (err) {
+      console.error("[transport-service] subagent transcript read failed", err);
+      return reply.code(404).send({ error: "the subagent record is not available" });
+    }
+    if (transcript === null) {
+      return reply.code(404).send({ error: "the subagent record is not available" });
+    }
+    return { transcript };
+  });
+
   // -- Scheduled tasks (per-Project, service-owned) --------------------------
   // The scheduler is a controller, not a route: it is NOT auto-started here
   // (only `index.ts` `isMain` calls `start()`), so tests and embedders drive
