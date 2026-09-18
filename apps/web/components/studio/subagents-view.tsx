@@ -1,8 +1,9 @@
 "use client";
 
 import { Bot, History } from "lucide-react";
-import { useSubagents } from "@science-studio/transport-client";
+import { useSubagents, useSubagentsWindow } from "@science-studio/transport-client";
 import type { SubagentRun } from "@science-studio/transport";
+import { isRecent, windowMsFromHours } from "./subagents-window";
 import { Button } from "@/components/ui/button";
 import { ModuleEmptyState, SidebarSection } from "./sidebar-section";
 import { useStudioStore } from "@/store/studio-store";
@@ -91,8 +92,11 @@ export function SubagentsView() {
 
   const enabled = open && projectId !== null && activeSessionId !== null;
   const { subagents } = useSubagents({ projectId, threadId: activeSessionId, enabled });
+  // Gated on the module being open so a collapsed view never hits /api/settings.
+  const { windowHours } = useSubagentsWindow({ enabled: open });
 
-  const visible = showHistory ? subagents : subagents.filter((run) => run.status === "running");
+  const windowMs = windowMsFromHours(windowHours);
+  const visible = showHistory ? subagents : subagents.filter((run) => isRecent(run, windowMs, Date.now()));
   const hidden = subagents.length - visible.length;
 
   const openTranscript = (run: SubagentRun): void => {
@@ -128,7 +132,7 @@ export function SubagentsView() {
         hidden > 0 ? (
           <ModuleEmptyState
             icon={Bot}
-            message="No subagents running."
+            message={`No subagents in the last ${windowHours}h.`}
             hint={`${hidden} past run${hidden === 1 ? "" : "s"} hidden — use the history button to see them.`}
           />
         ) : (
