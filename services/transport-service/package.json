@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@fastify/cors": "11.3.0",
+    "@science-studio/cron": "*",
     "@science-studio/transport": "*",
     "@science-studio/transport-dsh": "*",
     "@science-studio/transport-openclaw": "*",
