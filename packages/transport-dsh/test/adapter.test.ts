@@ -485,6 +485,7 @@ test("a standing subscription reports live subagent runs for the session", async
     assert.equal(done[0]!.finishedAt, "2026-09-17T00:00:00.000Z");
   } finally {
     await adapter.abort();
+    await adapter.flushSubagents();
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -519,6 +520,54 @@ test("a subagent started during the first turn is listed mid-turn and after", as
     assert.equal(after[0]!.id, "child-live");
   } finally {
     await adapter.abort();
+    await adapter.flushSubagents();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a finished subagent run belongs to the session's ledger across an adapter restart", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-subagents-persist-"));
+  const now = () => "2026-09-18T00:00:00.000Z";
+  const store = new FakeRecordStore();
+  const client = new FakeDshClient(() => completedReply("am1", "Hello from dsh."));
+  try {
+    const first = new DshRuntimeAdapter({ createClient: () => client, transcriptDir: dir, now });
+    await first.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
+    await collect(first.run(session(), [
+      { type: "add-message", message: { id: "u1", role: "user", content: "delegate" } },
+    ]));
+    const parent = client.sessionIds[0]!;
+    client.emit({ method: "subagent.started", params: { parentSessionId: parent, childSessionId: "child-1" } });
+    client.emit({
+      method: "session.event",
+      params: { sessionId: "child-1", event: { type: "subagent/descriptor", data: { label: "收集足球类24小时体育新闻", provider: "spawn" } } },
+    });
+    client.emit({
+      method: "subagent.finished",
+      params: { parentSessionId: parent, childSessionId: "child-1", provider: "spawn", status: "ok", stopReason: "completed" },
+    });
+    await first.flushSubagents();
+    const done = await first.subagents("sess-1");
+    assert.equal(done.length, 1);
+    assert.equal(done[0]!.status, "completed");
+    await first.abort();
+
+    // A SECOND adapter generation over the SAME transcript dir must still list
+    // the finished run (the panel's history across service restarts).
+    const restarted = new DshRuntimeAdapter({
+      createClient: () => new FakeDshClient(() => completedReply("am2", "Hello again.")),
+      transcriptDir: dir,
+      now,
+    });
+    await restarted.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
+    const restored = await restarted.subagents("sess-1");
+    await restarted.abort();
+    assert.equal(restored.length, 1, "a finished subagent run survives an adapter restart");
+    assert.equal(restored[0]!.id, "child-1");
+    assert.equal(restored[0]!.status, "completed");
+    assert.equal(restored[0]!.label, "收集足球类24小时体育新闻");
+    assert.equal(await restarted.subagents("other").then((l) => l.length), 0, "only the owning Session lists it");
+  } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });

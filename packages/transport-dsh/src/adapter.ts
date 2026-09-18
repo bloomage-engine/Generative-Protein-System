@@ -36,6 +36,7 @@ import {
   type DshCommandBridge,
 } from "./bridge.js";
 import { TranscriptMirror } from "./mirror.js";
+import { FileSubagentLedger } from "./ledger.js";
 import { createDshBehavior } from "./behavior.js";
 import { applyRouteSettings } from "./route-settings.js";
 import { SubagentRegistry } from "./subagents.js";
@@ -317,6 +318,11 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       ...(patches.length > 0 ? { patches } : {}),
     });
     this.mirror = new TranscriptMirror(dir);
+    // The subagent ledger gains durability in the SAME place as the transcript
+    // mirror: one file per Session key under the shared transcript dir
+    // (docs/adr/0016 addendum) — a restart restores the session's finished
+    // runs instead of emptying the panel.
+    this.subagentRegistry.attachStore(new FileSubagentLedger(join(dir, "subagents")));
     this.provider = provider;
     this.model = model;
     this.behavior = createDshBehavior({
@@ -496,6 +502,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
         status: params["status"] === "error" ? "error" : "ok",
         ...(typeof params["provider"] === "string" ? { provider: params["provider"] } : {}),
         ...(typeof params["stopReason"] === "string" ? { stopReason: params["stopReason"] } : {}),
+        ...(typeof params["parentSessionId"] === "string" ? { parentSessionId: params["parentSessionId"] } : {}),
       });
       return;
     }
@@ -513,7 +520,16 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   async subagents(sessionKey: string): Promise<SubagentRun[]> {
     // No init wait: the registry is constructor-owned and empty before init, so
     // a read is always answerable (the seam read must not hang a cold adapter).
+    // It DOES await the one-time ledger restore, so a first read right after a
+    // restart lists the previous generation's finished runs instead of racing
+    // the file load (docs/adr/0016 addendum).
+    await this.subagentRegistry.ready();
     return this.subagentRegistry.list(sessionKey);
+  }
+
+  /** Quiesce in-flight ledger saves (tests and graceful shutdown). */
+  async flushSubagents(): Promise<void> {
+    await this.subagentRegistry.flush();
   }
 
   private runtimeFor(sessionKey: string): SessionRuntime<SessionEvent> {
