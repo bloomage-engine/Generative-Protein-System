@@ -77,8 +77,34 @@ test(
         });
       });
 
-      await page.route("**/api/transport/subagents/child-2/transcript*", (route) =>
-        route.fulfill({
+      // p1 gets a SECOND session, so the drill-in can be tested across a
+      // Session switch (a later-registered route wins over the harness's).
+      const record = (route) => {
+        const path = new URL(route.request().url()).pathname.replace(/^.*\/api\/projects/, "");
+        if (path === "/p1/sessions") {
+          return route.fulfill({
+            json: {
+              sessions: [
+                { id: "s1", title: "First session" },
+                { id: "s2", title: "Second session" },
+              ],
+            },
+          });
+        }
+        return route.fallback();
+      };
+      await page.route("**/api/projects", record);
+      await page.route("**/api/projects/**", record);
+
+      // The child-2 record belongs to s1 (its ledger's session): the service
+      // only serves a child under the session that owns it, so the mock
+      // answers 404 for any other threadId claim.
+      await page.route("**/api/transport/subagents/child-2/transcript*", (route) => {
+        const url = new URL(route.request().url());
+        if (url.searchParams.get("threadId") !== "s1") {
+          return route.fulfill({ status: 404, headers: { "content-type": "application/json" } });
+        }
+        return route.fulfill({
           status: 200,
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -92,8 +118,8 @@ test(
               messages: [{ id: "m1", role: "assistant", parts: [{ type: "text", text: "Child transcript body." }] }],
             },
           }),
-        }),
-      );
+        });
+      });
 
       await page.goto(`http://localhost:${port}/projects/p1/sessions/s1`, {
         waitUntil: "domcontentloaded",
@@ -125,6 +151,27 @@ test(
       // Double-clicking a row opens the child session in the tab system.
       await friendly.dblclick();
       await page.getByText("Child transcript body.").waitFor({ timeout: 10_000 });
+
+      // Switching to ANOTHER Session of the same Project must not blank the
+      // open child tab: the tab keeps the Session it was opened in (the record
+      // is session-scoped, the tab strip is project-scoped).
+      const pane = page.getByRole("complementary", { name: "Projects and sessions" });
+      await page.getByRole("button", { name: "Projects", exact: true }).click();
+      const secondSession = pane.getByRole("button", { name: "Second session", exact: true });
+      // Expand p1 (Alpha) only if it isn't already listing its sessions — a
+      // click toggles, so an already-expanded list would collapse.
+      if ((await secondSession.count()) === 0) {
+        await pane.getByRole("button", { name: "Alpha", exact: true }).click();
+      }
+      await secondSession.waitFor({ state: "visible", timeout: 15_000 });
+      await secondSession.dblclick();
+      await page.waitForFunction(
+        () => location.pathname === `/projects/p1/sessions/s2`,
+        { timeout: 15_000 },
+      );
+      await page
+        .getByText("Child transcript body.")
+        .waitFor({ timeout: 10_000 });
     } catch (error) {
       throw new Error(`${error.message}\n--- web server log ---\n${server.log().slice(-2000)}`);
     } finally {

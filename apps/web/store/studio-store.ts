@@ -16,6 +16,14 @@ export interface Tab {
   id: string;
   path: string;
   name: string;
+  /**
+   * The Session a subagent child tab was opened in. Its record is
+   * SESSION-scoped (the child's ledger lives under one Session) while the tab
+   * strip is Project-scoped — so the tab must remember its own Session, or a
+   * same-Project Session switch would re-fetch it under the wrong one (and 404).
+   * File tabs carry no session.
+   */
+  session?: string;
 }
 
 /**
@@ -117,7 +125,7 @@ type State = {
   setRightHeights: (heights: { subagents: number; cron: number }) => void;
   setSubagentsShowHistory: (show: boolean) => void;
   /** Open (or refocus) one subagent child session in the tab system. */
-  openSubagent: (childId: string, name: string) => void;
+  openSubagent: (childId: string, name: string, sessionId: string | null) => void;
   openSettings: () => void;
   closeSettings: () => void;
   /** Signal that a run finished; the status bar's metrics hook depends on it. */
@@ -255,11 +263,16 @@ export const useStudioStore = create<State>()((set) => ({
     set((s) => ({ rightHeights: { ...s.rightHeights, [id]: height } })),
   setRightHeights: (heights) => set({ rightHeights: heights }),
   setSubagentsShowHistory: (subagentsShowHistory) => set({ subagentsShowHistory }),
-  openSubagent: (childId, name) =>
+  openSubagent: (childId, name, sessionId) =>
     set((s) => {
       const id = `subagent:${childId}`;
       const exists = s.tabs.some((t) => t.id === id);
-      const tabs = exists ? s.tabs : [...s.tabs, { id, path: id, name }];
+      // The tab remembers the Session it was opened in (its record is
+      // session-scoped), so a later same-Project Session switch re-fetches it
+      // under the RIGHT session instead of the live one.
+      const tabs = exists
+        ? s.tabs
+        : [...s.tabs, { id, path: id, name, session: sessionId ?? undefined }];
       return { tabs, activeTabPath: id };
     }),
   openSettings: () => set({ settingsOpen: true }),

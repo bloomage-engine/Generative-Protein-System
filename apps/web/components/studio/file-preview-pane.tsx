@@ -65,7 +65,7 @@ export function FilePreviewPane() {
       {tabs.map((tab) => (
         <TabPanel key={tab.id} active={tab.path === activeTabPath}>
           {isSubagentTab(tab.path) ? (
-            <SubagentPreview path={tab.path} name={tab.name} />
+            <SubagentPreview path={tab.path} name={tab.name} session={tab.session} />
           ) : (
             <Preview path={tab.path} name={tab.name} />
           )}
@@ -81,8 +81,13 @@ export function FilePreviewPane() {
  * header with a close control but no download affordance (there is nothing to
  * download). A missing/unreadable record lands in `error` and renders a
  * friendly "not available" line.
+ *
+ * `session` is the Session the tab was OPENED in (the record is session-scoped,
+ * the tab strip is project-scoped) — a same-Project Session switch must not
+ * re-fetch the record under the new, wrong session (it would 404). Falls back
+ * to the live Session only for a tab that records none.
  */
-function SubagentPreview({ path, name }: { path: string; name: string }) {
+function SubagentPreview({ path, name, session }: { path: string; name: string; session?: string }) {
   const { api, project } = useTransportApi();
   const activeSessionId = useStudioStore((s) => s.activeSessionId);
   const closeTab = useStudioStore((s) => s.closeTab);
@@ -90,7 +95,7 @@ function SubagentPreview({ path, name }: { path: string; name: string }) {
   const { transcript, isLoading, error } = useSubagentTranscript({
     api,
     project,
-    threadId: activeSessionId,
+    threadId: session ?? activeSessionId,
     childId,
     enabled: project !== null,
   });

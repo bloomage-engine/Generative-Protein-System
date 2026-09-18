@@ -96,7 +96,9 @@ export function SubagentsView() {
   const hidden = subagents.length - visible.length;
 
   const openTranscript = (run: SubagentRun): void => {
-    openSubagent(run.id, run.label?.trim() || "Subagent");
+    // The tab records the Session it was opened in, so a later same-Project
+    // Session switch re-fetches the record under the RIGHT session.
+    openSubagent(run.id, run.label?.trim() || "Subagent", activeSessionId);
   };
 
   return (
