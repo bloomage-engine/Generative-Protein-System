@@ -33,6 +33,7 @@ import {
 } from "@science-studio/transport";
 import type { Backend, CorsConfig } from "./composition.js";
 import { registerCronRoutes } from "./cron/routes.js";
+import { createCronScheduler } from "./cron/scheduler.js";
 import { createCronStore } from "./cron/store.js";
 import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS } from "./directory.js";
 import { canonicalSessionKey, createProjectScopes } from "./project-scope.js";
@@ -390,7 +391,27 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
   });
 
   // -- Scheduled tasks (per-Project, service-owned) --------------------------
-  registerCronRoutes(app, { scope, store: cronStore });
+  // The scheduler is a controller, not a route: it is NOT auto-started here
+  // (only `index.ts` `isMain` calls `start()`), so tests and embedders drive
+  // `tick()`/`fire()` directly. Its one-in-flight-run lock is the SAME Set the
+  // transport route uses, and `principal` is resolved once — `null` in hosted
+  // mode, where the cron surface no-ops safely.
+  const cronPrincipal = await backend.principal
+    .resolve({ headers: {}, url: "" })
+    .catch(() => null);
+  const cronScheduler = createCronScheduler({
+    store: cronStore,
+    records,
+    directory,
+    environments: backend.environments,
+    principal: cronPrincipal,
+    activeRuns,
+  });
+  app.decorate("cronScheduler", cronScheduler);
+  app.addHook("onClose", async () => {
+    cronScheduler.stop();
+  });
+  registerCronRoutes(app, { scope, store: cronStore, scheduler: cronScheduler });
 
   // -- Standing watch (NDJSON, long-lived, NOT [DONE]-terminated) ------------
   app.get("/api/transport/watch", async (request, reply) => {

@@ -1,11 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { isValidSchedule, isValidTaskId, type CronTask } from "@science-studio/cron";
 import type { ProjectScopes } from "../project-scope.js";
+import type { CronScheduler } from "./scheduler.js";
 import type { CronStore } from "./store.js";
 
 export interface CronRouteDeps {
   scope: ProjectScopes;
   store: CronStore;
+  scheduler: CronScheduler;
 }
 
 interface TaskBody {
@@ -55,7 +57,7 @@ function uniqueId(base: string, taken: ReadonlySet<string>): string {
 }
 
 export function registerCronRoutes(app: FastifyInstance, deps: CronRouteDeps): void {
-  const { scope, store } = deps;
+  const { scope, store, scheduler } = deps;
 
   app.get("/api/cron", async (request, reply) =>
     scope.withWorkspace(request, reply, async ({ environment }) => store.list(environment.workspace)),
@@ -111,4 +113,10 @@ export function registerCronRoutes(app: FastifyInstance, deps: CronRouteDeps): v
     });
   });
 
+  app.post("/api/cron/task/run", async (request, reply) => {
+    const { id } = request.query as { id?: string };
+    if (!id || !isValidTaskId(id)) return reply.code(400).send({ error: "a valid id is required" });
+    const { projectId } = await scope.acquire(request);
+    return scheduler.fire(projectId, id);
+  });
 }

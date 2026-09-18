@@ -117,6 +117,7 @@ if (isMain) {
   const host = process.env.HOST ?? "127.0.0.1";
   const backend = await createBackend();
   const app = await createServer(backend);
+  app.cronScheduler.start();
   await app.listen({ port, host });
   console.log(`[transport-service] listening on http://localhost:${port}/api/transport`);
 }
