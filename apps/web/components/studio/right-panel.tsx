@@ -88,7 +88,7 @@ export function RightPanel({ project }: { project: string | null }) {
   const cronOpen = useStudioStore((s) => s.rightSections.cron);
 
   return (
-    <aside className="flex h-full min-h-0 flex-col border-l border-border/70 bg-background">
+    <aside className="flex h-full min-h-0 flex-col overflow-y-auto border-l border-border/70 bg-background">
       <WorkspaceTree project={project} />
       {subagentsOpen && <ResizeHandle section="subagents" label="Resize Subagents" />}
       <SubagentsView />

@@ -77,6 +77,7 @@ export function SubagentsView() {
       icon={Bot}
       open={open}
       onOpenChange={() => toggleRightSection("subagents")}
+      className={open ? "shrink-0" : undefined}
       style={open ? { height } : undefined}
     >
       {subagents.length === 0 ? (
