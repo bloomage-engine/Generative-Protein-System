@@ -173,6 +173,152 @@ test("a busy target is skipped and logged as skipped-busy", async () => {
   }
 });
 
+test("tick() fires a matching task once and does not re-fire within the same minute", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ss-cron-dedupe-"));
+  try {
+    const store = createCronStore({ now: () => "2026-09-18T00:00:00.000Z" });
+    const workspace = new FsWorkspace(root, { agentRoot: root });
+    await store.write(workspace, {
+      id: "run-it",
+      name: "Run it",
+      schedule: "* * * * *",
+      enabled: true,
+      prompt: PROMPT,
+      sessionId: "s1",
+    });
+    const records = createInMemoryRecordStore();
+    await records.createProject({
+      id: "project-default",
+      name: "Default project",
+      createdAt: "2026-09-18T00:00:00.000Z",
+    });
+    await records.addSession({
+      id: "s1",
+      projectId: "project-default",
+      agentId: "main",
+      createdAt: "2026-09-18T00:00:00.000Z",
+      updatedAt: "2026-09-18T00:00:00.000Z",
+    });
+    const directory = createRecordDirectory({ store: records });
+    const principal = await new LocalPrincipalResolver().resolve({ headers: {}, url: "" });
+    const prompts: string[] = [];
+    const environments = new LocalEnvironmentProvider({
+      environmentFor: async () => ({
+        adapter: {
+          runtime: "fake",
+          init: async () => {},
+          run: async function* () {
+            prompts.push("ran");
+          },
+          abort: () => {},
+        },
+        workspace,
+      }),
+    });
+    const scheduler = createCronScheduler({
+      store,
+      records,
+      directory,
+      environments,
+      principal,
+      activeRuns: new Set(),
+      now: () => new Date("2026-09-18T12:30:00.000Z"),
+    });
+    await scheduler.tick();
+    assert.deepEqual(prompts, ["ran"], "the matching minute fires once");
+    await scheduler.tick();
+    assert.deepEqual(prompts, ["ran"], "a second tick in the same minute must not re-fire");
+    const listing = await store.list(workspace);
+    assert.equal(listing.tasks[0]?.lastRun?.status, "success");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a project whose environment fails does not stop the tick for other projects", async () => {
+  const goodRoot = await mkdtemp(join(tmpdir(), "ss-cron-good-"));
+  const badRoot = await mkdtemp(join(tmpdir(), "ss-cron-bad-"));
+  try {
+    const store = createCronStore({ now: () => "2026-09-18T00:00:00.000Z" });
+    const goodWorkspace = new FsWorkspace(goodRoot, { agentRoot: goodRoot });
+    const badWorkspace = new FsWorkspace(badRoot, { agentRoot: badRoot });
+    await store.write(goodWorkspace, {
+      id: "good",
+      name: "Good",
+      schedule: "* * * * *",
+      enabled: true,
+      prompt: PROMPT,
+      sessionId: "sg",
+    });
+    await store.write(badWorkspace, {
+      id: "bad",
+      name: "Bad",
+      schedule: "* * * * *",
+      enabled: true,
+      prompt: PROMPT,
+      sessionId: "sb",
+    });
+    const records = createInMemoryRecordStore();
+    await records.createProject({ id: "bad", name: "Bad", createdAt: "2026-09-18T00:00:00.000Z" });
+    await records.createProject({ id: "good", name: "Good", createdAt: "2026-09-18T00:00:00.000Z" });
+    for (const [id, projectId] of [["sg", "good"], ["sb", "bad"]] as const) {
+      await records.addSession({
+        id,
+        projectId,
+        agentId: "main",
+        createdAt: "2026-09-18T00:00:00.000Z",
+        updatedAt: "2026-09-18T00:00:00.000Z",
+      });
+    }
+    const directory = createRecordDirectory({ store: records });
+    const principal = await new LocalPrincipalResolver().resolve({ headers: {}, url: "" });
+    const prompts: string[] = [];
+    const errors: unknown[] = [];
+    const environments = new LocalEnvironmentProvider({
+      environmentFor: async (projectId) => {
+        if (projectId === "bad") throw new Error("boom");
+        return {
+          adapter: {
+            runtime: "fake",
+            init: async () => {},
+            run: async function* () {
+              prompts.push("ran");
+            },
+            abort: () => {},
+          },
+          workspace: projectId === "good" ? goodWorkspace : badWorkspace,
+        };
+      },
+    });
+    const scheduler = createCronScheduler({
+      store,
+      records,
+      directory,
+      environments,
+      principal,
+      activeRuns: new Set(),
+      now: () => new Date("2026-09-18T12:30:00.000Z"),
+      onError: (err) => errors.push(err),
+    });
+    await scheduler.tick();
+    assert.deepEqual(prompts, ["ran"], "the healthy project still fires");
+    assert.equal(errors.length, 1, "the failing project is reported, not swallowed silently");
+  } finally {
+    await rm(goodRoot, { recursive: true, force: true });
+    await rm(badRoot, { recursive: true, force: true });
+  }
+});
+
+test("POST /api/cron/task/run on an unknown id reports an error", async () => {
+  await fixture(async ({ base }) => {
+    const res = await fetch(`${base}/api/cron/task/run?id=nope&projectId=project-default`, {
+      method: "POST",
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { status: "error" });
+  });
+});
+
 test("a named session in another project is an error and logs nothing to the transcript", async () => {
   await fixture(async ({ base, records, app, prompts }) => {
     await records.addSession({

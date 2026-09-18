@@ -45,12 +45,24 @@ function textOf(parts: readonly MessagePart[]): string {
     .join("");
 }
 
+/**
+ * The wall-clock minute a fire belongs to, in the SAME local frame
+ * `matchesSchedule` reads. Two ticks inside one minute share this key, so a task
+ * is attempted at most once per scheduled minute even when the 30-s tick and the
+ * minute granularity otherwise line up twice (docs/adr/0017).
+ */
+function minuteKey(at: Date): string {
+  return `${at.getFullYear()}-${at.getMonth()}-${at.getDate()}-${at.getHours()}-${at.getMinutes()}`;
+}
+
 export function createCronScheduler(deps: CronSchedulerDeps): CronScheduler {
   const { store, records, directory, environments, principal, activeRuns } = deps;
   const now = deps.now ?? (() => new Date());
   const tickMs = deps.tickMs ?? 30_000;
   const onError = deps.onError ?? ((err) => console.error("[transport-service] cron tick failed", err));
   const maxChars = deps.maxMessageChars ?? 4000;
+  /** Last minute `(projectId, taskId)` was fired from `tick()`; run-now is exempt. */
+  const firedMinutes = new Map<string, string>();
   let timer: ReturnType<typeof setInterval> | null = null;
   let ticking = false;
 
@@ -134,13 +146,27 @@ export function createCronScheduler(deps: CronSchedulerDeps): CronScheduler {
       ticking = true;
       try {
         const at = now();
+        const minute = minuteKey(at);
         for (const project of await directory.listProjects()) {
-          const environment = await environments.acquire(principal, project.id);
-          const { tasks } = await store.list(environment.workspace);
-          for (const task of tasks) {
-            if (!task.enabled) continue;
-            if (!matchesSchedule(task.schedule, at)) continue;
-            await fireWith(project.id, environment, task);
+          // Per project AND per task: one unreadable workspace, unreachable
+          // environment or foreign task must never suspend the rest of the tick.
+          try {
+            const environment = await environments.acquire(principal, project.id);
+            const { tasks } = await store.list(environment.workspace);
+            for (const task of tasks) {
+              try {
+                if (!task.enabled) continue;
+                if (!matchesSchedule(task.schedule, at)) continue;
+                const key = `${project.id}:${task.id}`;
+                if (firedMinutes.get(key) === minute) continue;
+                firedMinutes.set(key, minute);
+                await fireWith(project.id, environment, task);
+              } catch (err) {
+                onError(err);
+              }
+            }
+          } catch (err) {
+            onError(err);
           }
         }
       } catch (err) {
