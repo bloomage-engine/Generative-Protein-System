@@ -82,7 +82,8 @@ export function createCronStore(opts: { now?: () => string } = {}): CronStore {
       return "error" in parsed ? null : parsed.task;
     },
     async write(workspace, task) {
-      const next = { ...task, updatedAt: now() };
+      const timestamp = now();
+      const next = { ...task, createdAt: task.createdAt ?? timestamp, updatedAt: timestamp };
       await writeText(workspace, cronTaskPath(task.id), serializeTaskDoc(next));
       return next;
     },

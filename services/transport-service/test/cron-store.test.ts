@@ -37,6 +37,22 @@ test("write/read/list round-trips a task and a missing log is empty", async () =
   });
 });
 
+test("write stamps createdAt once and preserves it on update", async () => {
+  await fixture(async (store, workspace) => {
+    const created = await store.write(workspace, {
+      id: "digest",
+      name: "Digest",
+      schedule: "0 9 * * *",
+      enabled: true,
+      prompt: "",
+    });
+    assert.equal(created.createdAt, "2026-09-18T00:00:00.000Z");
+    const updated = await store.write(workspace, { ...created, name: "Renamed" });
+    assert.equal(updated.createdAt, "2026-09-18T00:00:00.000Z");
+    assert.equal((await store.read(workspace, "digest"))?.createdAt, "2026-09-18T00:00:00.000Z");
+  });
+});
+
 test("a malformed file is reported as invalid, never as a task", async () => {
   await fixture(async (store, workspace, root) => {
     await store.write(workspace, { id: "ok", name: "OK", schedule: "0 9 * * *", enabled: true, prompt: "" });
