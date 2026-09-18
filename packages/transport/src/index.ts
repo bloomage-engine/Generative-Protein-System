@@ -29,6 +29,7 @@ export type {
   TransportCommand,
   CommandDescriptor,
   SubagentRun,
+  SubagentTranscript,
   RuntimeAdapter,
   RuntimeInitOptions,
   ProjectContext,

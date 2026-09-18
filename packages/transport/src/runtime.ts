@@ -68,6 +68,8 @@ export interface RuntimeCapabilities {
   perSessionCwd: boolean;
   /** `RuntimeAdapter.subagents()` is available (live subagent activity). */
   subagents: boolean;
+  /** `RuntimeAdapter.subagentTranscript()` is available (a child-session record read). */
+  subagentTranscript: boolean;
 }
 
 /** Thrown when a binding does not match the runtime's expected shape. */

@@ -80,6 +80,7 @@ testRuntimeFactory("fake runtime factory", () => {
       hostedSandbox: false,
       perSessionCwd: false,
       subagents: false,
+      subagentTranscript: false,
     },
     create: (): RuntimeAdapter => ({
       runtime: "fake",

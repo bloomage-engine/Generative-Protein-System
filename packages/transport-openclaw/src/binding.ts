@@ -62,4 +62,5 @@ export const OPENCLAW_CAPABILITIES: RuntimeCapabilities = {
   hostedSandbox: true,
   perSessionCwd: false,
   subagents: false,
+  subagentTranscript: false,
 };

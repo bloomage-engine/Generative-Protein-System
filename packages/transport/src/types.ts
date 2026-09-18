@@ -151,9 +151,11 @@ export interface CommandDescriptor {
 }
 
 /**
- * One delegated (subagent) run as a runtime reports it. LIVE state: assembled
- * by the adapter from runtime events and never persisted, so it is gone when
- * the adapter (or the process) is.
+ * One delegated (subagent) run as a runtime reports it. Best-effort live
+ * state, assembled by the adapter from runtime events — a runtime MAY keep a
+ * durable ledger of it (dsh does, per-Session; the ADR 0016 addendum), but it
+ * never enters the record: `Run` stays the record's atomic unit
+ * (docs/adr/0002, docs/adr/0007).
  */
 export interface SubagentRun {
   /** Runtime-assigned child identity (dsh: the child session id). */
@@ -171,6 +173,34 @@ export interface SubagentRun {
   /** ISO timestamps stamped by the adapter (the wire carries none). */
   startedAt: string;
   finishedAt?: string;
+}
+
+/**
+ * One delegated session's readable record, as a runtime that keeps one serves
+ * it (dsh: the harness's own durable child-session log). A `null` answer means
+ * "the runtime has no record for this child" — the log is absent, unreadable,
+ * or in a format this build does not read.
+ */
+export interface SubagentTranscript {
+  /** The child session id — the same identity as `SubagentRun.id`. */
+  id: Id;
+  /** The Science Studio Session this run was delegated from. */
+  parentId: Id;
+  /** The child's descriptor label, when one exists. */
+  label?: string;
+  /** The provider name that established the child (dsh: "spawn" | "fork"). */
+  provider?: string;
+  /** The child's model routing, when the descriptor recorded it. */
+  agentProvider?: string;
+  agentModel?: string;
+  /** The stored session's creation time, when the log carries one. */
+  startedAt?: string;
+  /** The last recorded turn-end time, when the log ends one. */
+  finishedAt?: string;
+  /** The child's terminal outcome, when the recorded log ends one. */
+  status?: RunStatus;
+  /** The child's conversation in the canonical `Message`/`MessagePart` vocabulary. */
+  messages: Message[];
 }
 
 /**
@@ -206,11 +236,19 @@ export interface RuntimeAdapter {
    */
   listCommands?(): Promise<CommandDescriptor[]>;
   /**
-   * Live subagent runs delegated from one canonical session key. OPTIONAL:
-   * gate on `capabilities.subagents` rather than forcing a no-op on every
-   * runtime. The list is best-effort live state, not a persisted record.
+   * Subagent runs delegated from one canonical session key. OPTIONAL: gate on
+   * `capabilities.subagents` rather than forcing a no-op on every runtime.
+   * The list is best-effort live state, not a persisted record — a runtime MAY
+   * remember it durably (dsh does; never a record).
    */
   subagents?(sessionKey: string): Promise<SubagentRun[]>;
+  /**
+   * One delegated session's readable record. OPTIONAL: gate on
+   * `capabilities.subagentTranscript`. Resolves to `null` — never throws —
+   * when the runtime has no record for this child (absent, unreadable, or an
+   * unrecognized format).
+   */
+  subagentTranscript?(sessionKey: string, childId: string): Promise<SubagentTranscript | null>;
   /**
    * The canonical session key a client `threadId` targets. Runtimes whose
    * session namespace differs from raw client thread ids implement this and

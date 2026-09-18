@@ -64,6 +64,11 @@ export function testRuntimeFactory(
       typeof adapter.subagents === "function",
       "capabilities.subagents must match whether the adapter implements subagents()",
     );
+    assert.equal(
+      factory.capabilities.subagentTranscript,
+      typeof adapter.subagentTranscript === "function",
+      "capabilities.subagentTranscript must match whether the adapter implements subagentTranscript()",
+    );
   });
 
   test(`${name}: refuses a binding for another runtime`, async () => {

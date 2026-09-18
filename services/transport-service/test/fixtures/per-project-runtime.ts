@@ -44,6 +44,7 @@ export const runtimePlugins: RuntimePlugin[] = [
         hostedSandbox: false,
         perSessionCwd: true,
         subagents: false,
+        subagentTranscript: false,
       },
       create: (): RecordingAdapter => {
         const inits: AdapterInitObservation[] = [];

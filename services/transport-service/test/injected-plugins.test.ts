@@ -15,6 +15,7 @@ const stubPlugin: RuntimePlugin = {
       hostedSandbox: false,
       perSessionCwd: false,
       subagents: false,
+      subagentTranscript: false,
     },
     create: () =>
       ({ runtime: "stub-runtime", init: async () => {}, run: async function* () {} }) as never,
