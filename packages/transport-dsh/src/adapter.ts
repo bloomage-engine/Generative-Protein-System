@@ -13,6 +13,7 @@ import {
   type SessionState,
   type StateDelta,
   type SubagentRun,
+  type SubagentTranscript,
   type TransportCommand,
   type WatchSnapshot,
 } from "@science-studio/transport";
@@ -39,6 +40,7 @@ import { TranscriptMirror } from "./mirror.js";
 import { FileSubagentLedger } from "./ledger.js";
 import { createDshBehavior } from "./behavior.js";
 import { applyRouteSettings } from "./route-settings.js";
+import { readChildTranscript } from "./child-transcript.js";
 import { SubagentRegistry } from "./subagents.js";
 
 const DEFAULT_PROVIDER = "deepseek-official";
@@ -90,6 +92,8 @@ export interface DshRuntimeAdapterOptions {
   createBridge?: (endpoint: string) => DshCommandBridge;
   /** Test seam: deterministic timestamps for the subagent registry. */
   now?: () => string;
+  /** Test seam: the harness home (`dshHome`) for child-session transcript reads. */
+  bindingDshHome?: string;
 }
 
 /**
@@ -120,6 +124,8 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private readonly createClient: (options: DshClientLaunchOptions) => DshTurnClient;
   private readonly transcriptDir: string;
   private client: DshTurnClient | null = null;
+  private dshHome: string | undefined = undefined;
+  private launchCwd: string | undefined = undefined;
   private recordStore: RecordStoreLike | null = null;
   private mirror: TranscriptMirror | null = null;
   private ready: Promise<void> | null = null;
@@ -161,6 +167,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private subagentWatchAttached = false;
 
   constructor(options: DshRuntimeAdapterOptions = {}) {
+    this.dshHome = options.bindingDshHome;
     this.createClient = options.createClient ?? createDshTurnClient;
     this.transcriptDir = options.transcriptDir ?? "";
     this.bridgePluginPath =
@@ -244,6 +251,11 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       binding.transcriptDir ||
       env("DSH_TRANSCRIPT_DIR") ||
       join(tmpdir(), "science-studio", "transcripts");
+    // The harness home the child's session logs live under, kept for the
+    // child-transcript reads: an explicit binding/env home wins, then the
+    // constructor seam (tests), then the harness default directory.
+    this.dshHome = dshHome ?? this.dshHome ?? join(homedir(), ".dsh");
+    this.launchCwd = cwd;
 
     // The command bridge is a launch-artifact PAIR: a socket path and the
     // profile patch that mounts the plugin listening on it. Both are
@@ -295,7 +307,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     if (binding.endpoint || binding.apiKey) {
       try {
         const route = await applyRouteSettings({
-          home: dshHome ?? join(homedir(), ".dsh"),
+          home: this.dshHome!,
           provider,
           ...(model === undefined ? {} : { model }),
           ...(binding.endpoint === undefined ? {} : { endpoint: binding.endpoint }),
@@ -309,7 +321,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
 
     this.client = this.createClient({
       profile,
-      dshHome,
+      dshHome: this.dshHome,
       cwd,
       provider,
       model,
@@ -525,6 +537,20 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     // the file load (docs/adr/0016 addendum).
     await this.subagentRegistry.ready();
     return this.subagentRegistry.list(sessionKey);
+  }
+
+  /**
+   * One delegated session's readable record: the child's own durable log in
+   * the harness home (docs/adr/0016 addendum). The LEDGER is the membership
+   * gate — a child id that is not one of this Session's runs is not served —
+   * and the read is fail-soft (absent/mismatched/unreadable logs are `null`,
+   * never a throw).
+   */
+  async subagentTranscript(sessionKey: string, childId: string): Promise<SubagentTranscript | null> {
+    if (this.dshHome === undefined || this.launchCwd === undefined) return null;
+    const runs = await this.subagents(sessionKey);
+    if (!runs.some((r) => r.id === childId)) return null;
+    return readChildTranscript({ home: this.dshHome, cwd: this.launchCwd, sessionKey, childId });
   }
 
   /** Quiesce in-flight ledger saves (tests and graceful shutdown). */

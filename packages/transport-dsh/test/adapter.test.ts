@@ -571,3 +571,62 @@ test("a finished subagent run belongs to the session's ledger across an adapter 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("subagentTranscript serves the child's record and null for a foreign child", async () => {
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
+  const zlib = await import("node:zlib");
+  // `zstdCompressSync` is present at runtime (Node >= 23.8) but not declared in
+  // this repo's pinned @types/node — reached the same way as the production module.
+  const zstdCompressSync = (zlib as unknown as {
+    zstdCompressSync: (buf: string | Buffer) => Buffer;
+  }).zstdCompressSync;
+  const { projectKey } = await import("../src/child-transcript.js");
+  const dir = await mkdtemp(join(tmpdir(), "dsh-subagent-transcript-"));
+  const store = new FakeRecordStore();
+  const client = new FakeDshClient(() => completedReply("am1", "Hello from dsh."));
+  const adapter = new DshRuntimeAdapter({
+    createClient: () => client,
+    transcriptDir: dir,
+    bindingDshHome: dir, // test seam (added by this task)
+  });
+  try {
+    await adapter.init({
+      binding: { runtime: "dsh", config: {} },
+      recordStore: store,
+      workspace: { toAgentPath: () => "/proj/one", root: "/proj/one" } as never,
+    });
+    // Lay a child log down where the harness would store it.
+    const childDir = join(dir, "sessions", projectKey("/proj/one"), "sub-child-1");
+    await (await import("node:fs/promises")).mkdir(childDir, { recursive: true });
+    const log = JSON.stringify({ type: "session", id: "sub-child-1", version: 3, createdAt: 1789655889309, cwd: "/proj/one", delegationDepth: 1, isSeeded: false, origin: "subagent" })
+      + "\n"
+      + JSON.stringify({ type: "assistant/message", seq: 1, time: 1789655911253, data: { turn: 1, step: 1, message: { role: "assistant", id: "m1", content: [{ type: "text", text: "child says hi" }] } } })
+      + "\n"
+      + JSON.stringify({ type: "turn/end", seq: 2, time: 1789656491505, data: { turn: 1, reason: { kind: "completed" } } });
+    await writeFile(join(childDir, "session.v3.jsonl.zstd"), zstdCompressSync(log), "utf8");
+
+    const run: SubagentRun = {
+      id: "sub-child-1",
+      parentId: "sess-1",
+      provider: "spawn",
+      status: "running",
+      startedAt: "2026-09-17T14:38:09.309Z",
+    };
+    await collect(adapter.run(session(), [
+      { type: "add-message", message: { id: "u1", role: "user", content: "delegate" } },
+    ]));
+    client.emit({ method: "subagent.started", params: { parentSessionId: client.sessionIds[0] ?? "root-x", childSessionId: "sub-child-1" } });
+    void run;
+
+    const t = await adapter.subagentTranscript("sess-1", "sub-child-1");
+    assert.ok(t, "the adapter must serve the child's record");
+    assert.equal(t!.id, "sub-child-1");
+    assert.equal(t!.status, "completed");
+    assert.equal(t!.messages.some((m) => m.parts.some((p) => p.type === "text" && p.text === "child says hi")), true);
+
+    assert.equal(await adapter.subagentTranscript("sess-1", "not-in-the-ledger"), null, "a child outside the session's ledger is not served");
+  } finally {
+    await adapter.abort();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

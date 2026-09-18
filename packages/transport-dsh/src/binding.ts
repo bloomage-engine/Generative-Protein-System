@@ -97,6 +97,6 @@ export const DSH_CAPABILITIES: RuntimeCapabilities = {
   /** The adapter spawns the child and sets its cwd. */
   perSessionCwd: true,
   subagents: true,
-  /** Flips to `true` once the adapter implements `subagentTranscript()` (Task 5). */
-  subagentTranscript: false,
+  /** Child-session record reads are implemented (docs/adr/0016 addendum). */
+  subagentTranscript: true,
 };
