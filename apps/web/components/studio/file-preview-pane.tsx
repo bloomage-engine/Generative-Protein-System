@@ -5,18 +5,21 @@ import dynamic from "next/dynamic";
 import { Download, FileX, Loader2, X } from "lucide-react";
 import {
   isCronTaskPath,
+  useSubagentTranscript,
+  useTransportApi,
   useWorkspaceApi,
   useWorkspaceFile,
   workspaceFileUrl,
 } from "@science-studio/transport-client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { kindFor, languageFor } from "./file-utils";
+import { isSubagentTab, kindFor, languageFor, subagentTabChildId } from "./file-utils";
 import { CronTaskRenderer } from "./renderers/CronTaskRenderer";
 import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
 import { CodeRenderer } from "./renderers/CodeRenderer";
 import { JsonRenderer } from "./renderers/JsonRenderer";
 import { PlainTextRenderer } from "./renderers/PlainTextRenderer";
+import { TranscriptBody } from "./renderers/SubagentRenderer";
 import { useStudioStore } from "@/store/studio-store";
 
 /**
@@ -61,9 +64,66 @@ export function FilePreviewPane() {
     <div className="relative h-full min-h-0">
       {tabs.map((tab) => (
         <TabPanel key={tab.id} active={tab.path === activeTabPath}>
-          <Preview path={tab.path} name={tab.name} />
+          {isSubagentTab(tab.path) ? (
+            <SubagentPreview path={tab.path} name={tab.name} />
+          ) : (
+            <Preview path={tab.path} name={tab.name} />
+          )}
         </TabPanel>
       ))}
+    </div>
+  );
+}
+
+/**
+ * A subagent child-session tab: the child's own conversation record, fetched
+ * from the TRANSPORT surface (NOT the workspace — this is not a file). It has a
+ * header with a close control but no download affordance (there is nothing to
+ * download). A missing/unreadable record lands in `error` and renders a
+ * friendly "not available" line.
+ */
+function SubagentPreview({ path, name }: { path: string; name: string }) {
+  const { api, project } = useTransportApi();
+  const activeSessionId = useStudioStore((s) => s.activeSessionId);
+  const closeTab = useStudioStore((s) => s.closeTab);
+  const childId = subagentTabChildId(path);
+  const { transcript, isLoading, error } = useSubagentTranscript({
+    api,
+    project,
+    threadId: activeSessionId,
+    childId,
+    enabled: project !== null,
+  });
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex items-center gap-1 border-b border-border/70 px-3 py-2">
+        <span className="min-w-0 flex-1 truncate text-xs font-medium" title={path}>
+          {name}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="h-6 w-6"
+          onClick={() => closeTab(path)}
+          aria-label="Close tab"
+        >
+          <X className="size-3.5" />
+        </Button>
+      </header>
+      <div className="min-h-0 flex-1 overflow-auto">
+        {isLoading && (
+          <div className="flex justify-center p-4">
+            <Loader2 className="text-muted-foreground size-4 animate-spin" />
+          </div>
+        )}
+        {!isLoading && error && (
+          <p className="text-muted-foreground p-4 text-sm">
+            The record for this subagent session is not available.
+          </p>
+        )}
+        {!isLoading && !error && transcript && <TranscriptBody transcript={transcript} />}
+      </div>
     </div>
   );
 }

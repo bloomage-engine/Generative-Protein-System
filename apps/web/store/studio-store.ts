@@ -64,6 +64,8 @@ type State = {
    * so it has no stored height.
    */
   rightHeights: { subagents: number; cron: number };
+  /** The Subagents panel's History toggle — finished runs, not only running. */
+  subagentsShowHistory: boolean;
   /** The deployment settings dialog. Chrome state: never keyed into SessionView. */
   settingsOpen: boolean;
   /**
@@ -113,6 +115,9 @@ type State = {
    * pair consistent (no half-applied frame).
    */
   setRightHeights: (heights: { subagents: number; cron: number }) => void;
+  setSubagentsShowHistory: (show: boolean) => void;
+  /** Open (or refocus) one subagent child session in the tab system. */
+  openSubagent: (childId: string, name: string) => void;
   openSettings: () => void;
   closeSettings: () => void;
   /** Signal that a run finished; the status bar's metrics hook depends on it. */
@@ -134,6 +139,7 @@ export const useStudioStore = create<State>()((set) => ({
   rightPanel: true,
   rightSections: { files: true, subagents: false, cron: false },
   rightHeights: { subagents: 200, cron: 200 },
+  subagentsShowHistory: false,
   settingsOpen: false,
   runsRevision: 0,
 
@@ -248,6 +254,14 @@ export const useStudioStore = create<State>()((set) => ({
   setRightSectionHeight: (id, height) =>
     set((s) => ({ rightHeights: { ...s.rightHeights, [id]: height } })),
   setRightHeights: (heights) => set({ rightHeights: heights }),
+  setSubagentsShowHistory: (subagentsShowHistory) => set({ subagentsShowHistory }),
+  openSubagent: (childId, name) =>
+    set((s) => {
+      const id = `subagent:${childId}`;
+      const exists = s.tabs.some((t) => t.id === id);
+      const tabs = exists ? s.tabs : [...s.tabs, { id, path: id, name }];
+      return { tabs, activeTabPath: id };
+    }),
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
   bumpRunsRevision: () => set((s) => ({ runsRevision: s.runsRevision + 1 })),

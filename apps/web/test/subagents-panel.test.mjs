@@ -77,6 +77,24 @@ test(
         });
       });
 
+      await page.route("**/api/transport/subagents/child-2/transcript*", (route) =>
+        route.fulfill({
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            transcript: {
+              id: "child-2",
+              parentId: "s1",
+              provider: "fork",
+              startedAt: "2026-09-17T00:00:00.000Z",
+              finishedAt: "2026-09-17T00:01:00.000Z",
+              status: "completed",
+              messages: [{ id: "m1", role: "assistant", parts: [{ type: "text", text: "Child transcript body." }] }],
+            },
+          }),
+        }),
+      );
+
       await page.goto(`http://localhost:${port}/projects/p1/sessions/s1`, {
         waitUntil: "domcontentloaded",
       });
@@ -90,12 +108,23 @@ test(
       await page.waitForTimeout(2_500);
       assert.equal(requests, 0, "a collapsed Subagents module must not poll");
 
-      // Expanding starts polling and renders the rows.
+      // Expanding starts polling; the DEFAULT view is running-only.
       await subagents.getByRole("button", { name: "Subagents" }).click();
       await subagents.getByText("Literature review").waitFor({ timeout: 10_000 });
       await subagents.getByText("Running").waitFor({ timeout: 10_000 });
-      await subagents.getByText("Completed", { exact: true }).waitFor({ timeout: 10_000 });
+      assert.equal(await subagents.getByText("Completed", { exact: true }).count(), 0, "history is hidden by default");
       assert.ok(requests >= 1, "an open Subagents module polls");
+
+      // The History toggle reveals past runs, with a friendly name for the
+      // unlabeled child.
+      await subagents.getByLabel("Show past subagent runs").click();
+      await subagents.getByText("Completed", { exact: true }).waitFor({ timeout: 10_000 });
+      const friendly = subagents.getByText("Subagent B", { exact: true });
+      await friendly.waitFor({ timeout: 10_000 });
+
+      // Double-clicking a row opens the child session in the tab system.
+      await friendly.dblclick();
+      await page.getByText("Child transcript body.").waitFor({ timeout: 10_000 });
     } catch (error) {
       throw new Error(`${error.message}\n--- web server log ---\n${server.log().slice(-2000)}`);
     } finally {

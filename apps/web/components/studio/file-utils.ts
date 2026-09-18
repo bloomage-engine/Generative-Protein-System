@@ -58,3 +58,16 @@ export function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/**
+ * A subagent child-session tab lives in its OWN namespace (`subagent:<id>`)
+ * — a real workspace path can never collide with it, and the preview pane
+ * dispatches it before any file logic.
+ */
+export function isSubagentTab(path: string): boolean {
+  return path.startsWith("subagent:");
+}
+
+export function subagentTabChildId(path: string): string {
+  return isSubagentTab(path) ? path.slice("subagent:".length) : "";
+}

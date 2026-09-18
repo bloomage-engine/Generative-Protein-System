@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import {
   Atom,
+  Bot,
   Braces,
   CalendarClock,
   File,
@@ -33,6 +34,10 @@ export function fileIcon(kind: FileKind): ReactNode {
 
 export function cronIcon(): ReactNode {
   return <CalendarClock className="size-3.5 text-orange-500" />;
+}
+
+export function subagentIcon(): ReactNode {
+  return <Bot className="size-3.5 text-violet-500" />;
 }
 
 export function fileIconForName(
