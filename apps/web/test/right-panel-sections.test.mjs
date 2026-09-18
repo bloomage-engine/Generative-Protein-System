@@ -105,6 +105,35 @@ test(
         `sections must stay within the pane, got ${filesBox.height} + ${after.height} > ${paneBox.height}`,
       );
 
+      // The Cron handle sits on the edge BETWEEN Subagents and Cron, so it must
+      // trade space only between those two — Files (the top module) must never
+      // reflow. (Regression: it once resized Cron and stole that space from
+      // Files, making the top module jump.)
+      const files0 = (await page.locator('[data-section="files"]').boundingBox()).height;
+      const cron0 = (await cron.boundingBox()).height;
+      const sub0 = (await subagents.boundingBox()).height;
+      const cronHandle = page.getByRole("separator", { name: "Resize Cron" });
+      const cbox = await cronHandle.boundingBox();
+      await page.mouse.move(cbox.x + cbox.width / 2, cbox.y + cbox.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(cbox.x + cbox.width / 2, cbox.y + cbox.height / 2 - 60, { steps: 8 });
+      await page.mouse.up();
+      const files1 = (await page.locator('[data-section="files"]').boundingBox()).height;
+      const cron1 = (await cron.boundingBox()).height;
+      const sub1 = (await subagents.boundingBox()).height;
+      assert.ok(
+        Math.abs(files1 - files0) <= 1,
+        `the Subagents/Cron edge must not resize Files, got ${files0} -> ${files1}`,
+      );
+      assert.ok(
+        cron1 >= cron0 + 40,
+        `expected Cron to grow off the dragged edge, got ${cron0} -> ${cron1}`,
+      );
+      assert.ok(
+        sub1 <= sub0 - 20,
+        `expected Subagents to give up the space, got ${sub0} -> ${sub1}`,
+      );
+
       // Collapsing Files unmounts the tree; re-expanding restores it.
       await page.getByRole("button", { name: "Files" }).click();
       await tree.waitFor({ state: "detached", timeout: 10_000 });

@@ -107,6 +107,12 @@ type State = {
   toggleRight: () => void;
   toggleRightSection: (id: RightSectionId) => void;
   setRightSectionHeight: (id: "subagents" | "cron", height: number) => void;
+  /**
+   * Atomically set both stored heights in one update — the edge between the two
+   * fixed modules redistributes space between them, and a single set keeps the
+   * pair consistent (no half-applied frame).
+   */
+  setRightHeights: (heights: { subagents: number; cron: number }) => void;
   openSettings: () => void;
   closeSettings: () => void;
   /** Signal that a run finished; the status bar's metrics hook depends on it. */
@@ -241,6 +247,7 @@ export const useStudioStore = create<State>()((set) => ({
     set((s) => ({ rightSections: { ...s.rightSections, [id]: !s.rightSections[id] } })),
   setRightSectionHeight: (id, height) =>
     set((s) => ({ rightHeights: { ...s.rightHeights, [id]: height } })),
+  setRightHeights: (heights) => set({ rightHeights: heights }),
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
   bumpRunsRevision: () => set((s) => ({ runsRevision: s.runsRevision + 1 })),

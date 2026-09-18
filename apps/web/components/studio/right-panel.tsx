@@ -16,12 +16,16 @@ function clamp(value: number, min: number, max: number) {
 }
 
 /**
- * A drag handle that resizes the module BELOW it (sets its fixed pixel height).
- * Dragging up/lower grows/shrinks that module; the flexible Files module above
- * absorbs the difference.
+ * A drag handle on a module's TOP edge — between it and the module above. It
+ * resizes the module it sits on the edge of, taking space from the module
+ * DIRECTLY above that edge: Subagents when Subagents is the neighbour (so the
+ * edge only ever trades between the two modules it separates), otherwise the
+ * flexible Files filler. Dragging the Subagents/Cron edge therefore never makes
+ * the top module (Files) reflow.
  */
 function ResizeHandle({ section, label }: { section: "subagents" | "cron"; label: string }) {
   const setHeight = useStudioStore((s) => s.setRightSectionHeight);
+  const setRightHeights = useStudioStore((s) => s.setRightHeights);
   const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => () => cleanupRef.current?.(), []);
@@ -37,13 +41,15 @@ function ResizeHandle({ section, label }: { section: "subagents" | "cron"; label
         const containerHeight = handle.parentElement?.clientHeight ?? 600;
         const startY = event.clientY;
         const state = useStudioStore.getState();
-        const startHeight = state.rightHeights[section];
+        const heights = state.rightHeights;
+        const startHeight = heights[section];
 
-        const other = section === "subagents" ? "cron" : "subagents";
-        const otherOpen = state.rightSections[other];
-        const reserved =
-          FILES_MIN_PX + HANDLE_PX + (otherOpen ? state.rightHeights[other] + HANDLE_PX : COLLAPSED_HEADER_PX);
-        const max = Math.max(MIN_SECTION_PX, containerHeight - reserved);
+        // The donor is the module ABOVE this edge. For the Cron edge that is
+        // Subagents while it is open — a fixed module — so space is moved
+        // BETWEEN the two fixed modules (their sum stays constant and Files is
+        // untouched). Otherwise the donor is the flexible Files filler.
+        const donor: "files" | "subagents" =
+          section === "cron" && state.rightSections.subagents ? "subagents" : "files";
 
         try {
           handle.setPointerCapture(event.pointerId);
@@ -52,8 +58,26 @@ function ResizeHandle({ section, label }: { section: "subagents" | "cron"; label
         }
 
         const onMove = (moveEvent: PointerEvent) => {
-          const next = clamp(startHeight + (startY - moveEvent.clientY), MIN_SECTION_PX, max);
-          setHeight(section, next);
+          const delta = startY - moveEvent.clientY;
+          if (donor === "subagents") {
+            // Fixed donor: redistribute the pair's constant sum so Subagents
+            // gives up exactly what Cron gains (and vice versa).
+            const total = heights.subagents + heights.cron;
+            const next = clamp(
+              startHeight + delta,
+              MIN_SECTION_PX,
+              Math.max(MIN_SECTION_PX, total - MIN_SECTION_PX),
+            );
+            setRightHeights({ subagents: total - next, cron: next });
+            return;
+          }
+          // Flexible donor: grow/shrink this module, Files absorbs the rest.
+          const other = section === "subagents" ? "cron" : "subagents";
+          const otherOpen = state.rightSections[other];
+          const reserved =
+            FILES_MIN_PX + HANDLE_PX + (otherOpen ? heights[other] + HANDLE_PX : COLLAPSED_HEADER_PX);
+          const max = Math.max(MIN_SECTION_PX, containerHeight - reserved);
+          setHeight(section, clamp(startHeight + delta, MIN_SECTION_PX, max));
         };
         const onUp = () => {
           try {
