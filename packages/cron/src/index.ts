@@ -10,3 +10,21 @@ export {
   type SchedulePreset,
   type SchedulePresetOption,
 } from "./schedule.js";
+export {
+  CRON_DIR,
+  cronLogPath,
+  cronTaskPath,
+  isCronTaskPath,
+  isValidTaskId,
+  parseTaskDoc,
+  serializeTaskDoc,
+  taskIdFromPath,
+  type CronTask,
+  type ParseResult,
+} from "./task-doc.js";
+export {
+  appendLogEntry,
+  latestLogEntry,
+  type CronLogEntry,
+  type CronRunStatus,
+} from "./log.js";
