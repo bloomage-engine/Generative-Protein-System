@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { structureFormat } from "../formats.js";
 import { setActiveMolqlViewer } from "../registry.js";
+import type { MolqlTarget } from "../selection.js";
 import { MolqlViewer } from "../viewer.js";
 
 export interface MolqlViewerPanelProps {
@@ -17,6 +18,11 @@ export interface MolqlViewerPanelProps {
   className?: string;
   /** Called once the plugin is initialized and registered as the active viewer. */
   onReady?: (viewer: MolqlViewer) => void;
+  /**
+   * Called when the user clicks a residue/bond while Mol*'s selection mode is
+   * on. The viewer reports the domain target; the host decides what to do.
+   */
+  onResidueClick?: (target: MolqlTarget) => void;
   /** Called when initialization or loading fails. */
   onError?: (error: Error) => void;
 }
@@ -58,6 +64,7 @@ export function MolqlViewerPanel({
   assemblyId,
   className,
   onReady,
+  onResidueClick,
   onError,
 }: MolqlViewerPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -65,12 +72,15 @@ export function MolqlViewerPanel({
   const initRef = useRef<Promise<MolqlViewer> | null>(null);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
+  const onResidueClickRef = useRef(onResidueClick);
+  onResidueClickRef.current = onResidueClick;
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const viewer = new MolqlViewer();
+    viewer.onResidueClick = (target) => onResidueClickRef.current?.(target);
     viewerRef.current = viewer;
     const ready = viewer.init(container).then(() => viewer);
     initRef.current = ready;

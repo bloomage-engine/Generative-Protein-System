@@ -259,6 +259,20 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `references/molql-syntax.md` → embedded skill). Each plugin's
   `scripts/sync-skill.mjs` copies it into its own `skill/` at build time; the
   plugin packages are agent-side deployables and are NOT in the root build.
+- **The reverse direction (viewer → composer) is a click, gated on Mol*'s
+  selection mode.** `MolqlViewer` subscribes to
+  `plugin.behaviors.interaction.click`, and ONLY while `plugin.selectionMode` is
+  on resolves the clicked loci (`StructureElement.Loci` → residue via
+  `StructureProperties`; `Bond.Loci` → its two endpoint atoms) and calls
+  `onResidueClick`. `MolqlViewerPanel` forwards it; `StructureRenderer` formats
+  `@<workspace path>/<molql>` (`selection.ts`'s `formatResidueMolql` /
+  `formatBondMolql` / `formatStructureMention` — pure, Node-tested) and appends
+  it to the composer through `ComposerInsertProvider` (an app-local context seam
+  modelled on `WorkspaceOpenProvider`, since the center preview and the left
+  `Thread` are siblings), then reveals the conversation pane via the store's
+  `revealLeftView`. The visible selection is Mol*'s own selection-mode behavior —
+  the app adds no second selection. The mention is plain text (not a `:file`
+  directive), so the service does not lift it into an `AttachmentRef`.
 
 ## Architecture rules
 

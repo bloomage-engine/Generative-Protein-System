@@ -134,6 +134,14 @@ the web app parses it and applies it. The tool does not validate against a
 structure — only the browser can.
 _Avoid_: Molstar tool, Structure tool, Viewer command
 
+**Selection Mention**:
+The composer text `@<workspace path>/<MolQL expression>` produced when the user
+clicks a residue or a bond in the structure preview while Mol*'s selection mode
+is on. The viewer reports the target as domain data (chain/resno/resname, or the
+two endpoint atoms of a bond) and the app formats and appends it to the draft, so
+the next message names both the file and the selection.
+_Avoid_: Highlight text, Residue link, Click command
+
 **Workflow** (also **DAG**):
 A composition overlay that chains multiple steps so that one Run's output becomes
 a downstream step's input. Optional in the first version; a later structured mode

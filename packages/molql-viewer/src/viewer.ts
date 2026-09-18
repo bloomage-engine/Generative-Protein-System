@@ -5,17 +5,73 @@ import { PluginCommands } from "molstar/lib/mol-plugin/commands";
 import type { BuiltInTrajectoryFormat } from "molstar/lib/mol-plugin-state/formats/trajectory";
 import type { PluginStateObject as SO } from "molstar/lib/mol-plugin-state/objects";
 import type { StateObjectRef } from "molstar/lib/mol-state";
-import { Structure, StructureElement } from "molstar/lib/mol-model/structure";
+import type { Loci as ModelLoci } from "molstar/lib/mol-model/loci.js";
+import {
+  Bond,
+  Structure,
+  StructureElement,
+  StructureProperties,
+  type Unit,
+} from "molstar/lib/mol-model/structure";
 import { Asset } from "molstar/lib/mol-util/assets";
 import { Color } from "molstar/lib/mol-util/color";
 import type { ReactElement } from "react";
 import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { MolqlError } from "./directive.js";
+import type { AtomSelection, MolqlTarget, ResidueSelection } from "./selection.js";
 import type { MolqlSelectionTarget } from "./target.js";
 
 /** Default ceiling for `whenReady` before it gives up as NOT_READY. */
 const READY_TIMEOUT_MS = 15000;
+
+/** Read the residue identity off a location, or `undefined` for coarse models. */
+function readResidue(loc: StructureElement.Location): ResidueSelection | undefined {
+  try {
+    const chain = StructureProperties.chain.auth_asym_id(loc);
+    const resno = StructureProperties.residue.auth_seq_id(loc);
+    const resname = StructureProperties.residue.auth_comp_id(loc);
+    if (!chain || !resname || typeof resno !== "number") return undefined;
+    return { chain, resno, resname };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Read one atom (residue identity plus its name) off a unit element. */
+function readAtom(
+  structure: Structure,
+  unit: Unit,
+  unitIndex: StructureElement.UnitIndex,
+): AtomSelection | undefined {
+  const loc = StructureElement.Location.create(structure, unit, unit.elements[unitIndex]);
+  const residue = readResidue(loc);
+  if (!residue) return undefined;
+  try {
+    const atomName = StructureProperties.atom.auth_atom_id(loc);
+    if (!atomName) return undefined;
+    return { ...residue, atomName };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Resolve a click's loci into a residue or a bond (its two endpoint atoms). */
+function describeMolqlTarget(loci: ModelLoci): MolqlTarget | undefined {
+  if (StructureElement.Loci.is(loci)) {
+    const loc = StructureElement.Loci.getFirstLocation(loci);
+    const residue = loc ? readResidue(loc) : undefined;
+    return residue ? { kind: "residue", residue } : undefined;
+  }
+  if (Bond.isLoci(loci)) {
+    const bond = loci.bonds[0];
+    if (!bond) return undefined;
+    const a = readAtom(loci.structure, bond.aUnit, bond.aIndex);
+    const b = readAtom(loci.structure, bond.bUnit, bond.bIndex);
+    return a && b ? { kind: "bond", a, b } : undefined;
+  }
+  return undefined;
+}
 
 /**
  * A standalone Mol* viewer wrapped for the science-studio preview pane.
@@ -34,10 +90,17 @@ export interface MolqlLoadUrl {
 
 export class MolqlViewer implements MolqlSelectionTarget {
   plugin: PluginUIContext | undefined;
+  /**
+   * Called when the user clicks a residue or bond WHILE Mol*'s selection mode
+   * is on (the mode's own click behavior does the visible selecting). Assign
+   * before or after `init` — the click subscription reads it on every click.
+   */
+  onResidueClick: ((target: MolqlTarget) => void) | undefined;
   private initialized = false;
   private disposed = false;
   private host: HTMLElement | undefined;
   private root: Root | undefined;
+  private clickSub: { unsubscribe(): void } | undefined;
 
   /** True from the start of a load until its preset has been applied. */
   private loadInFlight = false;
@@ -100,6 +163,22 @@ export class MolqlViewer implements MolqlSelectionTarget {
 
     this.plugin = plugin;
     this.initialized = true;
+    this.clickSub = plugin.behaviors.interaction.click.subscribe((event) => {
+      this.handleClick(event.current);
+    });
+  }
+
+  /**
+   * Selection-mode click → `onResidueClick`. Gated on `plugin.selectionMode`
+   * so a normal click (rotate/focus) never types into the composer; the mode's
+   * own behavior is what highlights the clicked element.
+   */
+  private handleClick(reprLoci: { loci: ModelLoci }): void {
+    if (!this.plugin?.selectionMode) return;
+    const handler = this.onResidueClick;
+    if (!handler) return;
+    const target = describeMolqlTarget(reprLoci.loci);
+    if (target) handler(target);
   }
 
   get structure(): Structure | undefined {
@@ -233,6 +312,8 @@ export class MolqlViewer implements MolqlSelectionTarget {
     this.disposed = true;
     this.loadInFlight = false;
     this.flushReadyWaiters();
+    this.clickSub?.unsubscribe();
+    this.clickSub = undefined;
     const plugin = this.plugin;
     const root = this.root;
     const host = this.host;

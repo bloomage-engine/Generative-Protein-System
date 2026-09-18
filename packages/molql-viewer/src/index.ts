@@ -24,6 +24,14 @@ export {
   applyMolqlToolResult,
   type ApplyMolqlOptions,
 } from "./molql.js";
+export {
+  formatResidueMolql,
+  formatBondMolql,
+  formatStructureMention,
+  type ResidueSelection,
+  type AtomSelection,
+  type MolqlTarget,
+} from "./selection.js";
 export { setActiveMolqlViewer, getActiveMolqlViewer } from "./registry.js";
 export type { MolqlSelectionTarget } from "./target.js";
 export { MolqlViewer, type MolqlLoadUrl } from "./viewer.js";

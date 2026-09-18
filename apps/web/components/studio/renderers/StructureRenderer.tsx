@@ -2,15 +2,21 @@
 
 import "molstar/lib/mol-plugin-ui/skin/light.scss";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useWorkspaceApi, workspaceFileUrl } from "@science-studio/transport-client";
 import {
   applyMolqlSelection,
+  formatBondMolql,
+  formatResidueMolql,
+  formatStructureMention,
   MolqlError,
   MolqlViewerPanel,
+  type MolqlTarget,
 } from "@science-studio/molql-viewer";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronUp, Play, Sparkles } from "lucide-react";
+import { useComposerInsert } from "@/components/assistant-ui/composer-insert";
+import { useStudioStore } from "@/store/studio-store";
 
 const EXAMPLE = "(sel.atom.chains (= atom.chain A))";
 
@@ -32,6 +38,22 @@ export function StructureRenderer({ path, name }: { path: string; name: string }
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [expression, setExpression] = useState("");
+  const insert = useComposerInsert();
+  const revealLeftView = useStudioStore((s) => s.revealLeftView);
+
+  // Selection-mode click → `@<path>/<molql>` appended to the composer draft.
+  const handleResidueClick = useCallback(
+    (target: MolqlTarget) => {
+      if (!insert) return;
+      const molql =
+        target.kind === "residue"
+          ? formatResidueMolql(target.residue)
+          : formatBondMolql(target.a, target.b);
+      insert(formatStructureMention(path, molql));
+      revealLeftView("thread");
+    },
+    [insert, path, revealLeftView],
+  );
 
   const apply = async () => {
     setError(null);
@@ -55,6 +77,7 @@ export function StructureRenderer({ path, name }: { path: string; name: string }
           fileUrl={url}
           fileName={name}
           className="h-full w-full"
+          onResidueClick={handleResidueClick}
           onError={(err) => setError(err.message)}
         />
       </div>
