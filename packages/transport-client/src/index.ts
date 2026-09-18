@@ -83,6 +83,8 @@ export {
   DEFAULT_SETTINGS_API,
   SettingsRequestError,
   fetchSettings,
+  subagentWindowFromView,
+  useSubagentsWindow,
   updateSettings,
 } from "./settings.js";
 export type {

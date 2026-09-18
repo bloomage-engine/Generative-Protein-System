@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fetchSettings, updateSettings } from "../src/settings.js";
+import { fetchSettings, subagentWindowFromView, updateSettings } from "../src/settings.js";
 
 interface Call {
   url: string;
@@ -66,4 +66,15 @@ test("a failed request throws with the upstream error text", async () => {
       /model\.endpoint must be an http\(s\) URL/,
     );
   });
+});
+
+test("subagentWindowFromView applies the default and bounds", () => {
+  assert.equal(subagentWindowFromView({}), 24);
+  assert.equal(subagentWindowFromView({ subagents: {} }), 24);
+  assert.equal(subagentWindowFromView({ subagents: { visibleWindowHours: 48 } }), 48);
+  assert.equal(subagentWindowFromView({ subagents: { visibleWindowHours: 720 } }), 720);
+  assert.equal(subagentWindowFromView({ subagents: { visibleWindowHours: 721 } }), 720);
+  assert.equal(subagentWindowFromView({ subagents: { visibleWindowHours: 0 } }), 24);
+  assert.equal(subagentWindowFromView({ subagents: { visibleWindowHours: -1 } }), 24);
+  assert.equal(subagentWindowFromView({ subagents: { visibleWindowHours: "x" as never } }), 24);
 });
