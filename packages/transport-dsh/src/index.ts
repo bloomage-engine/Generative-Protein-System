@@ -14,6 +14,8 @@ export { FileSubagentLedger } from "./ledger.js";
 export type { LedgerFile } from "./ledger.js";
 export type { SubagentLedgerEntry, SubagentLedgerStore } from "./subagents.js";
 export type { SubagentDescriptorInfo, SubagentFinishedInfo } from "./subagents.js";
+export { projectKey, readChildTranscript } from "./child-transcript.js";
+export type { ChildTranscriptSource } from "./child-transcript.js";
 export { applyRouteSettings } from "./route-settings.js";
 export type { RouteSettingsInput } from "./route-settings.js";
 
