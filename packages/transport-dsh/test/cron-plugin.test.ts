@@ -74,7 +74,7 @@ test("schedule_create writes a parseable task file; list and delete see it", asy
     assert.ok("task" in parsed);
     assert.equal(parsed.task.prompt, "Summarize.");
 
-    assert.match(await tool(host, "schedule_list").execute({}, {}), /Daily digest/);
+    assert.match(String(await tool(host, "schedule_list").execute({}, {})), /Daily digest/);
     await tool(host, "schedule_delete").execute({ id: "daily-digest" }, {});
     assert.equal(existsSync(path), false);
   } finally {
