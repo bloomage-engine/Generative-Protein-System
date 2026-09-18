@@ -706,7 +706,7 @@ test("a finished subagent run belongs to the session's ledger across an adapter 
     const first = new DshRuntimeAdapter({ createClient: () => client, transcriptDir: dir, now });
     await first.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
     await collect(first.run(session(), [
-      { type: "add-message", message: { id: "u1", role: "user", content: "delegate" } }),
+      { type: "add-message", message: { id: "u1", role: "user", content: "delegate" } },
     ]));
     const parent = client.sessionIds[0]!;
     client.emit({ method: "subagent.started", params: { parentSessionId: parent, childSessionId: "child-1" } });
@@ -1231,7 +1231,12 @@ Append to `packages/transport-dsh/test/adapter.test.ts`:
 ```ts
 test("subagentTranscript serves the child's record and null for a foreign child", async () => {
   const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
-  const { zstdCompressSync } = await import("node:zlib");
+  const zlib = await import("node:zlib");
+  // `zstdCompressSync` is present at runtime (Node >= 23.8) but not declared in
+  // this repo's pinned @types/node — reached the same way as the production module.
+  const zstdCompressSync = (zlib as unknown as {
+    zstdCompressSync: (buf: string | Buffer) => Buffer;
+  }).zstdCompressSync;
   const { projectKey } = await import("../src/child-transcript.js");
   const dir = await mkdtemp(join(tmpdir(), "dsh-subagent-transcript-"));
   const store = new FakeRecordStore();
@@ -1245,7 +1250,7 @@ test("subagentTranscript serves the child's record and null for a foreign child"
     await adapter.init({
       binding: { runtime: "dsh", config: {} },
       recordStore: store,
-      workspace: { toAgentPath: (p) => p, root: "/proj/one" } as never,
+      workspace: { toAgentPath: () => "/proj/one", root: "/proj/one" } as never,
     });
     // Lay a child log down where the harness would store it.
     const childDir = join(dir, "sessions", projectKey("/proj/one"), "sub-child-1");
@@ -1287,7 +1292,7 @@ Add BEFORE the `client.emit` line (inside the same test):
 
 ```ts
     await collect(adapter.run(session(), [
-      { type: "add-message", message: { id: "u1", role: "user", content: "delegate" } }),
+      { type: "add-message", message: { id: "u1", role: "user", content: "delegate" } },
     ]));
 ```
 
@@ -1388,11 +1393,11 @@ git commit -m "feat(dsh): serve child-session transcripts and advertise the capa
 
 - [ ] **Step 1: Write the route tests (fail first)**
 
-Append to `services/transport-service/test/subagents.test.ts`:
+Append to `services/transport-service/test/subagents.test.ts` (adding `SubagentTranscript` to the file's existing `@science-studio/transport` import):
 
 ```ts
 test("GET /api/transport/subagents/:childId/transcript serves the adapter's record", async () => {
-  const transcript = { id: "child-1", parentId: "sess-1", messages: [] as unknown[] };
+  const transcript: SubagentTranscript = { id: "child-1", parentId: "sess-1", messages: [] };
   const adapter: RuntimeAdapter = {
     ...emptyAdapter,
     subagentTranscript: async (sessionKey, childId) =>
@@ -1411,6 +1416,8 @@ test("GET .../transcript answers 404 when the runtime has no surface and 400 on 
   await withAdapter(emptyAdapter, async (base) => {
     const res = await fetch(`${base}/api/transport/subagents/child-1/transcript?projectId=p1&threadId=sess-1`);
     assert.equal(res.status, 404, "no subagentTranscript member → 404");
+    const unsafe = await fetch(`${base}/api/transport/subagents/child.1/transcript?projectId=p1&threadId=sess-1`);
+    assert.equal(unsafe.status, 400, "a path-unsafe id is 400");
   });
 });
 ```
@@ -1476,7 +1483,7 @@ git commit -m "feat(service): serve subagent child-session records over one GET 
 
 **Interfaces:**
 - Consumes: `SubagentTranscript` from `@science-studio/transport` (Task 1).
-- Produces: `fetchSubagentTranscript(api, project, childId, threadId?, signal?): Promise<SubagentTranscript>`; `useSubagentTranscript({ api?, project, threadId?, childId, enabled }): { transcript, isLoading, error }`; export `SubagentTranscript` type re-export through the client index.
+- Produces: `fetchSubagentTranscript(api, project, childId, threadId?, signal?): Promise<SubagentTranscript>`; `useSubagentTranscript({ api?, project, threadId?, childId, enabled }): { transcript, isLoading, error }`; index re-exports the two functions (the `SubagentTranscript` seam type stays imported by consumers from `@science-studio/transport`, like `SubagentRun`).
 
 - [ ] **Step 1: Write the hook test (fail first)**
 
@@ -1491,7 +1498,7 @@ test("fetchSubagentTranscript targets the per-child route and parses the body", 
   const transcript = { id: "child-1", parentId: "s1", messages: [] };
   const calls: string[] = [];
   const original = globalThis.fetch;
-  globalThis.fetch = (async (input: URL | RequestInfo) => {
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
     calls.push(String(input));
     return new Response(JSON.stringify({ transcript }), {
       status: 200,
@@ -1618,7 +1625,7 @@ import type { SubagentRun, SubagentTranscript } from "@science-studio/transport"
 
 - [ ] **Step 4: Export**
 
-`packages/transport-client/src/index.ts` — in the subagents export block (around L101, where `fetchSubagents`/`useSubagents` are listed) add `fetchSubagentTranscript` and `useSubagentTranscript` to the value exports and `SubagentTranscriptOptions`… precisely: add the two function names next to `fetchSubagents`/`useSubagents`, and (if the type is not already exported) add `type SubagentTranscript` to the type re-exports.
+`packages/transport-client/src/index.ts` — in the existing `./subagents.js` export block (L95-101) insert `fetchSubagentTranscript` and `useSubagentTranscript` next to `fetchSubagents`/`useSubagents` and `type UseSubagentTranscriptOptions` next to `type UseSubagentsOptions`. Do NOT re-export the `SubagentTranscript` seam type: the house pattern (see `SubagentRun` — index never re-exports it; `apps/web/components/studio/subagents-view.tsx:5` imports it from `@science-studio/transport`) is that consumers take seam types from `@science-studio/transport` directly.
 
 - [ ] **Step 5: Run the client tests + build the package**
 
@@ -1693,7 +1700,7 @@ And replace the render assertions (L93-98) with:
 
 - [ ] **Step 2: Verify it fails**
 
-Run: `npm run build -w @science-studio/transport-client && npm run test:e2e -w @science-studio/web -- subagents-panel`
+Run (from the repo root; targeting the ONE test file — the `-- subagents-panel` positional does NOT filter, it runs the whole suite because `node --test` treats positionals as file paths): `npm run build -w @science-studio/transport-client` then `cd apps/web && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-concurrency=1 test/subagents-panel.test.mjs`
 Expected: FAIL (toggle button absent, hidden-default assertion fails) — or SKIP if no Chromium (in which case the later assertions are the gate on a machine that has one).
 
 - [ ] **Step 3: Store**
@@ -1980,13 +1987,13 @@ export async function GET(
         </TabPanel>
 ```
 
-(imports: `isSubagentTab`, `subagentTabChildId` from `./file-utils`, `useSubagentTranscript` from `@science-studio/transport-client`.)
+(imports: `isSubagentTab`, `subagentTabChildId` from `./file-utils`; add `useSubagentTranscript` and `useTransportApi` to the existing `@science-studio/transport-client` import block at L6-11. `useTransportApi()` — NOT `useWorkspaceApi()` — hands out `{ api: "/api/transport", project }` (the transcript route lives under the TRANSPORT base; the workspace hook would produce `/api/workspace/subagents/…`, a path that exists nowhere — the e2e mock in Step 1 targets `/api/transport/…`). The existing `Preview` component keeps its `useWorkspaceApi()` call unchanged; the file imports both hooks. Also add `TranscriptBody` from `./renderers/SubagentRenderer` to the imports.)
 
 Below `FilePreviewPane`, add the subagent preview (own header — NO download affordance):
 
 ```tsx
 function SubagentPreview({ path, name }: { path: string; name: string }) {
-  const { api, project } = useWorkspaceApi();
+  const { api, project } = useTransportApi();
   const activeSessionId = useStudioStore((s) => s.activeSessionId);
   const closeTab = useStudioStore((s) => s.closeTab);
   const childId = subagentTabChildId(path);
@@ -2136,7 +2143,7 @@ Expected: Next build PASSES (catches the new route, store, and component wiring)
 
 - [ ] **Step 9: Run the web e2e panel test**
 
-Run: `npm run build -w @science-studio/transport-client && npm run test:e2e -w @science-studio/web -- subagents-panel`
+Run (single test file — see Step 2's note on why not the positional form): `npm run build -w @science-studio/transport-client` (repo root) then `cd apps/web && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-concurrency=1 test/subagents-panel.test.mjs`
 Expected: PASS (on a Chromium host) — default-running view, toggle reveal, friendly name, double-click tab with the mocked transcript body; on a Chromium-less host: SKIP (record it and move on).
 
 - [ ] **Step 10: Run the other panel-pinned e2e tests**

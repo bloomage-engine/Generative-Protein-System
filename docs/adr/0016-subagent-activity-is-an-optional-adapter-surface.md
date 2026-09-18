@@ -42,3 +42,24 @@ over `GET /api/transport/subagents`.
   persistence or transcript drill-in is ever needed, a new record entity and a
   child-transcript capture path are the work — this decision should be revisited
   then.
+
+## Addendum (2026-09-18)
+
+The **dsh-specific durability decision** is re-scoped: "live-only, in memory"
+held when the panel needed *a* data source; in practice the only useful
+moment to read it is *after the fact*, usually after a restart. The dsh
+adapter now keeps a durable per-Session subagent ledger — one JSON file per
+session key under its transcript dir (the `TranscriptMirror` placement
+pattern), restored on every adapter generation, with a restored `running`
+entry settled to `aborted` (its child died with the previous process). What
+is UNCHANGED: the surface stays the optional `subagents?`/`subagentTranscript?`
+adapter methods; nothing enters the record (v1's `Project`/`Session`/`Run`
+vocabulary is untouched); other runtimes may stay live-only (openclaw does).
+
+The same addendum introduces a drill-in: a delegated session's readable
+record is served by the *owning* runtime — dsh reads the harness's own
+durable child-session log (zstd JSONL, decoded with Node's built-in `zlib`),
+exposed as `GET /api/transport/subagents/:childId/transcript` under the
+existing Project scope claim — and the workbench opens it as a synthetic
+tab. The read is fail-soft: absent/mismatched/unreadable logs answer `null`
+(404 / a friendly state), never an error.
