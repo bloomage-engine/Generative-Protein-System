@@ -32,6 +32,8 @@ import {
   parseWorkspaceMentions,
 } from "@science-studio/transport";
 import type { Backend, CorsConfig } from "./composition.js";
+import { registerCronRoutes } from "./cron/routes.js";
+import { createCronStore } from "./cron/store.js";
 import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS } from "./directory.js";
 import { canonicalSessionKey, createProjectScopes } from "./project-scope.js";
 import {
@@ -94,6 +96,7 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     defaultProjectId,
   });
   const activeRuns = new Set<string>();
+  const cronStore = createCronStore();
   /** The bootstrap row every unscoped request falls back to (docs/adr/0014). */
   const isDefaultProject = (id: string): boolean => id === defaultProjectId;
   const DEFAULT_PROJECT_IMMUTABLE =
@@ -385,6 +388,9 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       return { subagents: [] };
     }
   });
+
+  // -- Scheduled tasks (per-Project, service-owned) --------------------------
+  registerCronRoutes(app, { scope, store: cronStore });
 
   // -- Standing watch (NDJSON, long-lived, NOT [DONE]-terminated) ------------
   app.get("/api/transport/watch", async (request, reply) => {
