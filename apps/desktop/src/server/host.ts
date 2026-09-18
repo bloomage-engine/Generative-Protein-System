@@ -50,6 +50,10 @@ async function defaultStartApi(env: NodeJS.ProcessEnv): Promise<{ port: number; 
   const backend = await createBackend(env, runtimePlugins);
   const app = await createTransportService({ backend });
   await app.listen({ port: 0, host: "127.0.0.1" });
+  // The packaged host owns the process, so it must start the cron controller
+  // itself: `index.ts`'s `isMain` branch never runs here (its `onClose` hook
+  // stops the scheduler).
+  app.cronScheduler.start();
   const address = app.server.address();
   const port = typeof address === "object" && address !== null ? address.port : 0;
   return { port, close: () => app.close() };

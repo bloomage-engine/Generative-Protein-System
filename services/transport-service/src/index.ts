@@ -34,6 +34,10 @@ import { applySettingsToEnv, loadSettings, resolveSettingsPath } from "./setting
 export { createBackend, loadRuntimePlugins, localWorkspace, resolveRuntimePlugins, toRecordStoreLike } from "./composition.js";
 export type { Backend, CorsConfig, EnterpriseModule } from "./composition.js";
 export { createServer } from "./server.js";
+// Re-exported so the `FastifyInstance.cronScheduler` decorator's module
+// augmentation is loaded by out-of-process embedders (the desktop host), which
+// import only this package root and must `start()` the controller themselves.
+export type { CronScheduler } from "./cron/scheduler.js";
 
 export interface TransportServiceOptions {
   /** A ready backend (production path). */
