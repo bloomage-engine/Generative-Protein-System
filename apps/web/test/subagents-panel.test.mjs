@@ -149,8 +149,14 @@ test(
       await friendly.waitFor({ timeout: 10_000 });
 
       // Double-clicking a row opens the child session in the tab system.
+      // The tab's Result section echoes the final assistant text, so assert
+      // inside the TRANSCRIPT's assistant section (page-wide would be 2).
       await friendly.dblclick();
-      await page.getByText("Child transcript body.").waitFor({ timeout: 10_000 });
+      const transcriptBody = page
+        .locator("section")
+        .filter({ hasText: "assistant" })
+        .getByText("Child transcript body.");
+      await transcriptBody.waitFor({ timeout: 10_000 });
 
       // Switching to ANOTHER Session of the same Project must not blank the
       // open child tab: the tab keeps the Session it was opened in (the record
@@ -169,9 +175,7 @@ test(
         () => location.pathname === `/projects/p1/sessions/s2`,
         { timeout: 15_000 },
       );
-      await page
-        .getByText("Child transcript body.")
-        .waitFor({ timeout: 10_000 });
+      await transcriptBody.waitFor({ timeout: 10_000 });
     } catch (error) {
       throw new Error(`${error.message}\n--- web server log ---\n${server.log().slice(-2000)}`);
     } finally {

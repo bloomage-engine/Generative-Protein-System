@@ -12,6 +12,7 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
  * vocabulary, not the harness's.
  */
 export function TranscriptBody({ transcript }: { transcript: SubagentTranscript }) {
+  const result = finalAssistantText(transcript);
   return (
     <div className="flex flex-col gap-3 p-3">
       <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
@@ -25,12 +26,36 @@ export function TranscriptBody({ transcript }: { transcript: SubagentTranscript 
         {transcript.startedAt ? <span>started {new Date(transcript.startedAt).toLocaleString()}</span> : null}
         {transcript.finishedAt ? <span>ended {new Date(transcript.finishedAt).toLocaleString()}</span> : null}
         {transcript.status ? <span>{transcript.status}</span> : null}
+        {transcript.stopReason ? <span>{transcript.stopReason}</span> : null}
       </div>
+
+      <section className="border-border/80 rounded-md border p-2">
+        <div className="text-muted-foreground mb-1 text-[10px] font-medium uppercase tracking-wide">
+          Result
+        </div>
+        {result ? (
+          <div className="text-xs"><MarkdownRenderer content={result} /></div>
+        ) : (
+          <p className="text-xs opacity-60">No closing message.</p>
+        )}
+      </section>
+
       {transcript.messages.map((message) => (
         <TranscriptMessage key={message.id} message={message} />
       ))}
     </div>
   );
+}
+
+/** The child's final assistant message's text parts joined. Null when there is none. */
+function finalAssistantText(transcript: SubagentTranscript): string | null {
+  const lastAssistant = [...transcript.messages].reverse().find((m) => m.role === "assistant");
+  if (lastAssistant === undefined) return null;
+  const text = lastAssistant.parts
+    .map((p) => (p.type === "text" ? p.text : null))
+    .filter((t): t is string => typeof t === "string")
+    .join("\n\n");
+  return text.trim().length > 0 ? text : null;
 }
 
 function TranscriptMessage({ message }: { message: Message }) {
