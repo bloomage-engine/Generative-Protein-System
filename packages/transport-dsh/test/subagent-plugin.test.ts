@@ -36,3 +36,28 @@ test("a host without a systemPrompt surface registers nothing and does not throw
 test("the plugin declares a section-only inject scope", () => {
   assert.deepEqual([...inject], ["systemPrompt"]);
 });
+
+test("the disposal callback (when provided by ctx.effect) is invoked", () => {
+  interface Section { name: string; order: number; text: string }
+  const sections: Section[] = [];
+  let disposed = 0;
+  // A "host-side" holder that captures the register closure (an object property,
+  // so TS does not flow-narrow it to its null initializer the way a bare `let` would).
+  const host: { register: (() => () => void) | null } = { register: null };
+  const ctx = {
+    systemPrompt: {
+      section: (s: Section) => {
+        sections.push(s);
+        return () => { disposed += 1; };
+      },
+    },
+    effect: (register: () => () => void, _name: string) => { host.register = register; },
+  };
+  apply(ctx);
+  assert.ok(host.register, "ctx.effect captured the register closure");
+  const disposeEffect = host.register!();
+  assert.equal(sections.length, 1, "mounting (calling register) registers the section");
+  assert.equal(disposed, 0, "not disposed yet");
+  disposeEffect();
+  assert.equal(disposed, 1, "the effect's disposer invokes the section's own dispose");
+});

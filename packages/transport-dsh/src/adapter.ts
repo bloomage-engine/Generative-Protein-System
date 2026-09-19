@@ -86,15 +86,15 @@ export interface DshRuntimeAdapterOptions {
    * The child-side cron plugin this adapter's launch patch mounts — the
    * scheduled-task tools. Defaults to this package's own build output.
    */
-   cronPluginPath?: string;
-   /**
-    * The child-side parent-reporting plugin this adapter's launch patch mounts
-    * — the host-scope section that steers the MAIN agent to report each
-    * delegated subagent's result (see `subagent-plugin.ts`). Defaults to this
-    * package's own build output.
-    */
-   subagentPluginPath?: string;
-   /** Where the socket and its launch patch live (default under the temp dir). */
+  cronPluginPath?: string;
+  /**
+   * The child-side parent-reporting plugin this adapter's launch patch mounts
+   * — the host-scope section that steers the MAIN agent to report each
+   * delegated subagent's result (see `subagent-plugin.ts`). Defaults to this
+   * package's own build output.
+   */
+  subagentPluginPath?: string;
+  /** Where the socket and its launch patch live (default under the temp dir). */
   bridgeDir?: string;
   /** Test seam: inject the bridge client (defaults to the real socket client). */
   createBridge?: (endpoint: string) => DshCommandBridge;

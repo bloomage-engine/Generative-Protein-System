@@ -134,7 +134,8 @@ test(
       await page.waitForTimeout(2_500);
       assert.equal(requests, 0, "a collapsed Subagents module must not poll");
 
-      // Expanding starts polling; the DEFAULT view is running-only.
+      // Expanding starts polling; the DEFAULT view is the recent window
+      // (running always shown + the recent finished ones — not running-only).
       await subagents.getByRole("button", { name: "Subagents" }).click();
       await subagents.getByText("Literature review").waitFor({ timeout: 10_000 });
       await subagents.getByText("Running").waitFor({ timeout: 10_000 });

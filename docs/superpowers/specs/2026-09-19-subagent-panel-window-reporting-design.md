@@ -34,10 +34,13 @@
   opaque `agent` key. It is a distinct, type-safe surface with a named "Subagents"
   dialog tab, so it does not bleed into `model` semantics or abuse an opaque bag.
 - **Service** (`services/transport-service/src/settings.ts`): `emptySettings()`
-  gains `subagents: {}`; `mergeSettings` stores or clears `visibleWindowHours`;
-  `viewOf` reports the **effective** number (default 24 when unset) so every
-  consumer reads a plain number; `parseSettingsPatch` validates an integer
-  `1 <= n <= 720` (a number), with `null` or `""` clearing it back to the default.
+   gains `subagents: {}`; `mergeSettings` stores or clears `visibleWindowHours`;
+   `viewOf` reports the raw stored number (or an empty `subagents: {}` when
+   cleared) so consumers read a plain number or nothing — the client's
+   `subagentWindowFromView` resolves the effective default (24 h) separately;
+   `parseSettingsPatch` validates an integer
+   `1 <= n <= 720` (a number) on save, and `null` is a clear to the unset
+   default — `""` and any out-of-range / non-integer value are a 400.
 - **Client.** A `useSubagentsWindow(api?)` hook next to the existing settings
   helpers in `@science-studio/transport-client` — fetches `/api/settings` once,
   memoized per `api`, and returns the hours number (default 24, degrading to 24
@@ -137,9 +140,9 @@
 
 - **#1 service** (`transport-service/test/settings.test.ts` or a
   subagents-adjacent file): `subagents.visibleWindowHours` round-trips — a number
-  is stored, `null`/`""` clears it, the view reports the effective number (24 by
-  default), and an out-of-range / non-integer value is a 400 with the expected
-  message.
+  (1/720) stores, `null` clears it to the unset default, and the client-side
+  `subagentWindowFromView` resolves absent → 24 / `721` → 720; `""` and any
+  out-of-range / non-integer value is a 400 with the expected message.
 - **#1 client** (`transport-client/test/subagents.test.ts`): `useSubagentsWindow`
   resolves to 24 on a failed or absent `subagents` fetch and to the stored value
   otherwise.
