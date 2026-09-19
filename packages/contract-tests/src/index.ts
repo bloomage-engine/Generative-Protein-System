@@ -33,3 +33,4 @@ export {
   type ResolveSessionKeyCase,
 } from "./resolve-session-key.js";
 export { testSubagents, type SubagentsCase } from "./subagents.js";
+export { testTranscriptAndSubagent, type TranscriptAndSubagentCase } from "./transcript-subagent.js";
