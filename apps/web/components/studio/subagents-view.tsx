@@ -115,17 +115,19 @@ export function SubagentsView() {
       className={open ? "shrink-0" : undefined}
       style={open ? { height } : undefined}
       actions={
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="h-6 w-6"
-          title={showHistory ? "Hide past subagent runs" : "Show past subagent runs"}
-          aria-label={showHistory ? "Hide past subagent runs" : "Show past subagent runs"}
-          aria-pressed={showHistory}
-          onClick={() => setShowHistory(!showHistory)}
-        >
-          <History className="size-3.5" />
-        </Button>
+        hidden > 0 || showHistory ? (
+          <Button
+            variant={showHistory ? "ghost" : "outline"}
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs font-medium"
+            aria-label={showHistory ? "Show recent only" : "Show past subagent runs"}
+            aria-pressed={showHistory}
+            onClick={() => setShowHistory(!showHistory)}
+          >
+            <History className="size-3.5" />
+            {showHistory ? "Hide older" : `Show ${hidden} older`}
+          </Button>
+        ) : null
       }
     >
       {visible.length === 0 ? (
@@ -133,17 +135,33 @@ export function SubagentsView() {
           <ModuleEmptyState
             icon={Bot}
             message={`No subagents in the last ${windowHours}h.`}
-            hint={`${hidden} past run${hidden === 1 ? "" : "s"} hidden — use the history button to see them.`}
+            hint={`Use the "Show ${hidden} older" button above to reveal them.`}
           />
         ) : (
           <ModuleEmptyState icon={Bot} message="No subagents yet." hint="Subagent runs will appear here." />
         )
       ) : (
-        <ul className="flex h-full flex-col gap-1 overflow-auto p-2" aria-label="Subagent runs">
-          {visible.map((run, index) => (
-            <SubagentRow key={run.id} run={run} index={index} open={openTranscript} />
-          ))}
-        </ul>
+        <div className="flex h-full min-h-0 flex-col">
+          <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-auto p-2" aria-label="Subagent runs">
+            {visible.map((run, index) => (
+              <SubagentRow key={run.id} run={run} index={index} open={openTranscript} />
+            ))}
+          </ul>
+          {hidden > 0 && (
+            <div className="border-border/60 border-t px-2 py-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-full justify-start gap-1 text-xs"
+                aria-label="Show all older subagent runs"
+                onClick={() => setShowHistory(true)}
+              >
+                <History className="size-3.5" />
+                Show {hidden} older run{hidden === 1 ? "" : "s"}
+              </Button>
+            </div>
+          )}
+        </div>
       )}
     </SidebarSection>
   );

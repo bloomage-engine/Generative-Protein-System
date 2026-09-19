@@ -90,6 +90,10 @@ test(
       // The OLD completed row (3d ago) is HIDDEN by default (outside the 24h window).
       assert.equal(await subagents.getByText("Old task").count(), 0, "a 3d-ago completed row is hidden by default");
 
+      // The reveal affordance is LABELLED (a visible "Show <N> older" label, not
+      // an icon-only button) so a user can find and click it — the discoverability fix.
+      await subagents.locator("button", { hasText: /Show \d+ older/ }).first().waitFor({ timeout: 10_000 });
+
       // Toggling History reveals the older row.
       await subagents.getByLabel("Show past subagent runs").click();
       await subagents.getByText("Old task").waitFor({ timeout: 10_000 });
