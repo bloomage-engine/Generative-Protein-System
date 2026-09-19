@@ -13,9 +13,9 @@
  * a temp file + rename) so restarts also bound its growth.
  */
 import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import type { RecordStore } from "./index.js";
-import type { Id, Project, Run, Session } from "./types.js";
+import type { Id, Project, Run, Session, PersistedTranscript, Subagent } from "./types.js";
 
 type Row =
   | { t: "project"; v: Project }
@@ -102,6 +102,33 @@ async function compact(path: string, tables: Tables): Promise<void> {
   await rename(tmp, path);
 }
 
+async function writeFileAtomic(path: string, value: unknown): Promise<void> {
+  const body = JSON.stringify(value);
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(tmp, body, "utf8");
+  await rename(tmp, path);
+}
+
+async function readJSONOrNull<T>(path: string): Promise<T | null> {
+  try {
+    const raw = await readFile(path, "utf8");
+    return (JSON.parse(raw) as T) ?? null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    return null;
+  }
+}
+
+async function listDir(path: string): Promise<string[]> {
+  try {
+    return (await import("node:fs/promises")).readdir(path);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    return [];
+  }
+}
+
 export async function createJsonlRecordStore(path: string): Promise<RecordStore> {
   const tables: Tables = { projects: new Map(), sessions: new Map(), runs: new Map() };
 
@@ -122,6 +149,10 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
     [...map.values()].filter(matches).map(clone);
   const drop = (table: "project" | "session" | "run", id: Id): Promise<void> =>
     append({ t: "drop", table, id });
+
+  const rootDir = dirname(path);
+  const transcriptsDir = join(rootDir, "transcripts");
+  const subagentsDir = join(rootDir, "subagents");
 
   return {
     async createProject(project: Project): Promise<Project> {
@@ -235,6 +266,29 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
     },
     async listRuns(projectId: Id): Promise<Run[]> {
       return ordered(tables.runs, (r) => r.projectId === projectId);
+    },
+    async saveSessionTranscript(sessionId: Id, doc: PersistedTranscript): Promise<void> {
+      await writeFileAtomic(join(transcriptsDir, `${encodeURIComponent(sessionId)}.json`), doc);
+    },
+    async loadSessionTranscript(sessionId: Id): Promise<PersistedTranscript | null> {
+      return readJSONOrNull<PersistedTranscript>(join(transcriptsDir, `${encodeURIComponent(sessionId)}.json`));
+    },
+    async upsertSubagent(subagent: Subagent): Promise<void> {
+      await writeFileAtomic(join(subagentsDir, `${encodeURIComponent(subagent.id)}.json`), subagent);
+    },
+    async loadSubagent(id: Id): Promise<Subagent | null> {
+      return readJSONOrNull<Subagent>(join(subagentsDir, `${encodeURIComponent(id)}.json`));
+    },
+    async listSubagents(parentSessionId: Id): Promise<Subagent[]> {
+      const names = await listDir(subagentsDir);
+      const out: Subagent[] = [];
+      for (const name of names) {
+        if (!name.endsWith(".json")) continue;
+        const id = decodeURIComponent(name.slice(0, -5));
+        const s = (await readJSONOrNull<Subagent>(join(subagentsDir, name))) ?? null;
+        if (s && s.parentSessionId === parentSessionId) out.push(s);
+      }
+      return out;
     },
   };
 }
