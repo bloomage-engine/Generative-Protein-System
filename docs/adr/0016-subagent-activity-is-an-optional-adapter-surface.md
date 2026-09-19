@@ -63,3 +63,15 @@ exposed as `GET /api/transport/subagents/:childId/transcript` under the
 existing Project scope claim — and the workbench opens it as a synthetic
 tab. The read is fail-soft: absent/mismatched/unreadable logs answer `null`
 (404 / a friendly state), never an error.
+
+## Addendum (2026-09-19)
+
+The durable home for the subagent ledger is **re-homed to the record** — a
+stable id, a durable `parentSessionId` lineage, and the child's own captured
+transcript — per docs/adr/0019. This decision's *surface* (the optional
+`subagents?`/`subagentTranscript?` methods, live-only for runtimes without a
+durable source) and its *fail-soft* rule are unchanged; what moves is **where
+the durable rows + transcripts live**: from the adapter's ephemeral transcript
+dir into the record's custody, so a subagent's identity and transcript survive
+a service restart and the drill-in no longer depends on a resolvable
+harness id.

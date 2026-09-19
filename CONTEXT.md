@@ -130,8 +130,28 @@ _Avoid_: Thread, Chat, Conversation
 **Run**:
 The atomic unit of traceability. One Agent execution in a Session, carrying its
 inputs, parameters, tool calls, outputs, duration, and cost. The Runs of a
-Project's Sessions are its shared record of results.
+Project's Sessions are its shared record of results. It is the rollup — one `Run`
+per turn; the Session's full conversation is its `Transcript` (docs/adr/0019).
 _Avoid_: Execution, Step, Attempt
+
+**Transcript**:
+The durable, full canonical message view of one Session — every message with its
+tool calls, reasoning, and multi-part text. Persisted by the Science
+Studio-owned record and keyed by the Session's stable id (docs/adr/0019); the
+restore path reads it back, so a settled conversation survives a service
+restart. Richer than a `Run` (one turn); the `Run` is the rollup projection
+derived from it.
+_Avoid_: Mirror, History, Conversation log (a runtime's in-memory mirror is a
+cache, not the source of truth)
+
+**Subagent**:
+An agent run delegated by a parent Session's agent — the "subagent" the Subagents
+panel shows. In v1 it is a durable, stably-identified entity in the record
+(docs/adr/0019): a stable id, a durable parent-session lineage, its run metadata,
+and its own captured transcript, so it survives a service restart and its
+transcript is replayable. A runtime exposes it live through the optional
+`subagents?` surface (docs/adr/0016).
+_Avoid_: Task (a deferred work item), Job, Harness child
 
 **Runtime Command** (also **Slash command**):
 A runtime-level operation invoked by a standalone "/"-prefixed user message
