@@ -1014,10 +1014,11 @@ Under the existing `writeCronPatch`, add:
 ```typescript
 /**
  * Write the launch patch that inserts the SUBAGENT-REPORTING plugin into the
- * child's profile, and return its path (for `--patch`). No config node — the
- * plugin registers a static section (see `subagent-plugin.ts`). Same shape as
- * the bridge/project/cron patches: a `file:` URL name and a distinct
- * filename (`subagent-reporting-<8hex>`).
+ * child's profile, and return its path (for `--patch`). No business config —
+ * the plugin registers a static section (see `subagent-plugin.ts`), but a
+ * `config: {}` node is kept so the patch shape matches the bridge/project/cron
+ * siblings the harness already loads. Same shape as them: a `file:` URL name
+ * and a distinct filename (`subagent-reporting-<8hex>`).
  */
 export async function writeSubagentPatch(opts: { dir: string; pluginPath: string }): Promise<string> {
   const { dir, pluginPath } = opts;
@@ -1027,6 +1028,7 @@ export async function writeSubagentPatch(opts: { dir: string; pluginPath: string
     "- insert:",
     "    - id: science-studio-subagent-reporting",
     `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
+    "      config: {}",
     "",
   ].join("\n");
   await writeFile(file, document, "utf8");
@@ -1285,10 +1287,15 @@ EOF
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  HISTORY_MARKER,
   findChromium, freePort, killTree, newWorkbenchPage,
   mockRecordSurface, mockWorkbenchSurfaces, startWebServer, waitForServer, warmWorkbench,
 } from "./harness.mjs";
 
+const H = 3600e3;
+// The row must be RECENT (within 24h of REAL now) to be visible in the DEFAULT
+// view — relative to Date.now() so it never ages out like a fixed date would.
+const iso = (msAgo) => new Date(Date.now() - msAgo).toISOString();
 const ROWS = [
   {
     id: "child-1",
@@ -1297,8 +1304,8 @@ const ROWS = [
     provider: "fork",
     status: "completed",
     stopReason: "max-tokens",
-    startedAt: "2026-09-19T10:00:00.000Z",
-    finishedAt: "2026-09-19T10:01:00.000Z",
+    startedAt: iso(2 * H),
+    finishedAt: iso(1 * H),
   },
 ];
 
@@ -1338,8 +1345,8 @@ test("the drill-in shows a Details block (with stopReason) and a Result section"
             provider: "fork",
             agentProvider: "ollama-local",
             agentModel: "qwen3.8",
-            startedAt: "2026-09-19T10:00:00.000Z",
-            finishedAt: "2026-09-19T10:01:00.000Z",
+            startedAt: iso(2 * H),
+            finishedAt: iso(1 * H),
             status: "completed",
             stopReason: "max-tokens",
             messages: [
