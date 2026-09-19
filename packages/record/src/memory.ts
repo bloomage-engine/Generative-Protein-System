@@ -1,4 +1,4 @@
-import type { Id, Project, Run, Session } from "./types.js";
+import type { Id, Project, Run, Session, PersistedTranscript, Subagent } from "./types.js";
 import type { RecordStore } from "./index.js";
 
 /**
@@ -10,6 +10,8 @@ export function createInMemoryRecordStore(): RecordStore {
   const projects = new Map<Id, Project>();
   const sessions = new Map<Id, Session>();
   const runs = new Map<Id, Run>();
+  const transcripts = new Map<Id, PersistedTranscript>();
+  const subagents = new Map<Id, Subagent>();
 
   const clone = <T>(v: T): T => structuredClone(v);
   const ordered = <T>(map: Map<Id, T>, matches: (v: T) => boolean): T[] =>
@@ -107,6 +109,25 @@ export function createInMemoryRecordStore(): RecordStore {
     },
     async listRuns(projectId: Id): Promise<Run[]> {
       return ordered(runs, (r) => r.projectId === projectId);
+    },
+    // Durable session transcript + subagents (docs/adr/0019): the record
+    // owns storage; the runtime (adapter) owns the transcript shape.
+    async saveSessionTranscript(sessionId: Id, doc: PersistedTranscript): Promise<void> {
+      transcripts.set(sessionId, clone(doc));
+    },
+    async loadSessionTranscript(sessionId: Id): Promise<PersistedTranscript | null> {
+      const d = transcripts.get(sessionId);
+      return d ? clone(d) : null;
+    },
+    async upsertSubagent(subagent: Subagent): Promise<void> {
+      subagents.set(subagent.id, clone(subagent));
+    },
+    async loadSubagent(id: Id): Promise<Subagent | null> {
+      const s = subagents.get(id);
+      return s ? clone(s) : null;
+    },
+    async listSubagents(parentSessionId: Id): Promise<Subagent[]> {
+      return ordered(subagents, (s) => s.parentSessionId === parentSessionId);
     },
   };
 }

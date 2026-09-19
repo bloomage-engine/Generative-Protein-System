@@ -1,7 +1,7 @@
-import type { Id, Project, Run, Session } from "./types.js";
+import type { Id, Project, Run, Session, PersistedTranscript, Subagent } from "./types.js";
 
 // The domain vocabulary, listed explicitly so this file is the package surface.
-export type { Id, Project, Run, RunStatus, Session } from "./types.js";
+export type { Id, Project, Run, RunStatus, Session, PersistedTranscript, Subagent } from "./types.js";
 export { createInMemoryRecordStore } from "./memory.js";
 export { createJsonlRecordStore } from "./jsonl.js";
 
@@ -58,4 +58,14 @@ export interface RecordStore {
   addRun(run: Run): Promise<Run>;
   /** A Project's Runs (the turns of all its Sessions), insertion order. */
   listRuns(projectId: Id): Promise<Run[]>;
+
+  // Durable session transcript: the runtime's canonical conversation view
+  // (docs/adr/0019). Stored opaquely by the record — the runtime owns the shape.
+  saveSessionTranscript(sessionId: Id, doc: PersistedTranscript): Promise<void>;
+  loadSessionTranscript(sessionId: Id): Promise<PersistedTranscript | null>;
+  // Durable subagents: stably-identified, lineage-bearing, self-contained
+  // sessions (docs/adr/0019).
+  upsertSubagent(subagent: Subagent): Promise<void>;
+  loadSubagent(id: Id): Promise<Subagent | null>;
+  listSubagents(parentSessionId: Id): Promise<Subagent[]>;
 }

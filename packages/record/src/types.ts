@@ -66,3 +66,33 @@ export interface Run {
   startedAt?: string;
   finishedAt?: string;
 }
+
+/**
+ * A durable, stably-identified session transcript (the runtime's canonical
+ * conversation view). The record stores it as an opaque JSON payload — it
+ * owns the storage, not the interpretation (the runtime defines the shape).
+ */
+export interface PersistedTranscript {
+  v: 1;
+  status: string;
+  /** The runtime's full `Message[]` (JSON-safe). The record does not read it. */
+  messages: unknown;
+}
+
+/**
+ * A durable, stably-identified subagent (a lineage-bearing, self-contained
+ * session): its stable id, durable parent-session link, run metadata, and its
+ * own captured transcript.
+ */
+export interface Subagent {
+  id: Id;
+  parentSessionId: Id;
+  origin: "subagent";
+  label?: string;
+  provider?: string;
+  status: "running" | "completed" | "aborted" | "error";
+  stopReason?: string;
+  startedAt: string;
+  finishedAt?: string;
+  transcript?: PersistedTranscript;
+}
