@@ -67,5 +67,7 @@ export interface RecordStore {
   // sessions (docs/adr/0019).
   upsertSubagent(subagent: Subagent): Promise<void>;
   loadSubagent(id: Id): Promise<Subagent | null>;
+  /** A parent-session's subagents. NO ORDER is guaranteed (insertion/readdir);
+   *  consumers that need a deterministic order sort on their own (the panel sorts by startedAt). */
   listSubagents(parentSessionId: Id): Promise<Subagent[]>;
 }

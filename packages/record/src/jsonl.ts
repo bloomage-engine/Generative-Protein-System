@@ -131,7 +131,7 @@ async function listDir(path: string): Promise<string[]> {
     return await readdir(path);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-    return [];
+    throw err;
   }
 }
 
