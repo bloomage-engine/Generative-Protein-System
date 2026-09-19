@@ -39,22 +39,32 @@ const SECTION: PromptSection = {
   ].join("\n"),
 };
 
+function warn(message: string, detail: unknown): void {
+  const text = detail instanceof Error ? detail.message : String(detail);
+  process.stderr.write(`[dsh subagent-reporting] ${message}: ${text}\n`);
+}
+
 export function apply(ctx: SubagentHost): void {
   const register = (): (() => void) => {
     const disposes: Array<() => void> = [];
     if (ctx.systemPrompt) {
-      try { disposes.push(ctx.systemPrompt.section(SECTION)); } catch { /* host without one */ }
+      try {
+        disposes.push(ctx.systemPrompt.section(SECTION));
+      } catch (err) {
+        warn("prompt section registration failed", err);
+      }
     }
     return () => {
       for (let i = disposes.length - 1; i >= 0; i--) {
-        try { disposes[i]?.(); } catch { /* noop */ }
+        try { disposes[i]?.(); } catch (err) { warn("dispose failed", err); }
       }
     };
   };
   try {
     if (ctx.effect) ctx.effect(register, name);
     else register();
-  } catch {
-    /* best-effort: a host without a surface simply registers nothing */
+  } catch (err) {
+    /* best-effort: a host without a surface still registers nothing, but say so */
+    warn("subagent-reporting plugin disabled", err);
   }
 }
