@@ -51,12 +51,21 @@ export function createInMemoryRecordStore(): RecordStore {
       return clone(rest);
     },
     async deleteProject(id: Id): Promise<void> {
+      const projectSessions = new Set<Id>(
+        [...sessions.values()].filter((session) => session.projectId === id).map((session) => session.id),
+      );
       projects.delete(id);
       for (const session of [...sessions.values()]) {
-        if (session.projectId === id) sessions.delete(session.id);
+        if (session.projectId === id) {
+          sessions.delete(session.id);
+          transcripts.delete(session.id);
+        }
       }
       for (const run of [...runs.values()]) {
         if (run.projectId === id) runs.delete(run.id);
+      }
+      for (const sub of [...subagents.values()]) {
+        if (projectSessions.has(sub.parentSessionId)) subagents.delete(sub.id);
       }
     },
     async addSession(session: Session): Promise<Session> {
@@ -101,6 +110,10 @@ export function createInMemoryRecordStore(): RecordStore {
       sessions.delete(id);
       for (const run of [...runs.values()]) {
         if (run.sessionId === id) runs.delete(run.id);
+      }
+      transcripts.delete(id);
+      for (const sub of [...subagents.values()]) {
+        if (sub.parentSessionId === id) subagents.delete(sub.id);
       }
     },
     async addRun(run: Run): Promise<Run> {

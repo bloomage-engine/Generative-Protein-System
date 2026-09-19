@@ -12,7 +12,7 @@
  * lost, earlier ones survive". Startup compacts the log (one row per entity, via
  * a temp file + rename) so restarts also bound its growth.
  */
-import { appendFile, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { RecordStore } from "./index.js";
 import type { Id, Project, Run, Session, PersistedTranscript, Subagent } from "./types.js";
@@ -135,6 +135,15 @@ async function listDir(path: string): Promise<string[]> {
   }
 }
 
+async function unlinkIfExists(path: string): Promise<void> {
+  try {
+    await unlink(path);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw err;
+  }
+}
+
 export async function createJsonlRecordStore(path: string): Promise<RecordStore> {
   const tables: Tables = { projects: new Map(), sessions: new Map(), runs: new Map() };
 
@@ -159,6 +168,19 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
   const rootDir = dirname(path);
   const transcriptsDir = join(rootDir, "transcripts");
   const subagentsDir = join(rootDir, "subagents");
+
+  // A session's durable siblings live as sibling files (ADR 0019), not in the
+  // JSONL log, so a cascade must unlink them directly: its transcript, plus
+  // every subagent whose parentSessionId is this session. ENOENT is fine —
+  // a missing transcript/subagent never blocks the delete.
+  const removeSessionDurable = async (sessionId: Id): Promise<void> => {
+    await unlinkIfExists(join(transcriptsDir, `${encodeURIComponent(sessionId)}.json`));
+    for (const name of await listDir(subagentsDir)) {
+      if (!name.endsWith(".json")) continue;
+      const sub = await readJSONOrNull<Subagent>(join(subagentsDir, name));
+      if (sub && sub.parentSessionId === sessionId) await unlinkIfExists(join(subagentsDir, name));
+    }
+  };
 
   return {
     async createProject(project: Project): Promise<Project> {
@@ -202,6 +224,7 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
         if (session.projectId === id) {
           await drop("session", session.id);
           tables.sessions.delete(session.id);
+          await removeSessionDurable(session.id);
         }
       }
       for (const run of [...tables.runs.values()]) {
@@ -264,6 +287,7 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
       }
       await drop("session", id);
       tables.sessions.delete(id);
+      await removeSessionDurable(id);
     },
     async addRun(run: Run): Promise<Run> {
       await append({ t: "run", v: run });

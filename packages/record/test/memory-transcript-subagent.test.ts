@@ -24,3 +24,20 @@ test("in-memory: subagent list-by-parent + upsert", async () => {
   assert.ok(one);
   assert.equal(one.parentSessionId, "sess-1");
 });
+
+test("in-memory: deleteSession cascades the transcript + its subagents", async () => {
+  const store = createInMemoryRecordStore();
+  await store.addSession({ id: "sess-1", projectId: "proj-1", agentId: "agent-1", createdAt: "2026-09-20T00:00:00Z", updatedAt: "2026-09-20T00:00:00Z" });
+  await store.saveSessionTranscript("sess-1", { v: 1, status: "idle", messages: [] });
+  const s = { id: "subagent-A", parentSessionId: "sess-1", origin: "subagent" as const, status: "completed" as const, startedAt: "2026-09-20T00:00:00Z" };
+  await store.upsertSubagent(s);
+  // A subagent owned by a DIFFERENT session must survive the cascade.
+  await store.upsertSubagent({ ...s, id: "subagent-B", parentSessionId: "sess-2" });
+
+  await store.deleteSession("sess-1");
+
+  assert.equal(await store.loadSessionTranscript("sess-1"), null);
+  assert.deepEqual(await store.listSubagents("sess-1"), []);
+  assert.equal(await store.loadSubagent("subagent-A"), null);
+  assert.equal((await store.listSubagents("sess-2")).length, 1);
+});
