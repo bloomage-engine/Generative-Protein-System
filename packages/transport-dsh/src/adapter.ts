@@ -569,8 +569,13 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   async subagentTranscript(sessionKey: string, childId: string): Promise<SubagentTranscript | null> {
     if (this.dshHome === undefined || this.launchCwd === undefined) return null;
     const runs = await this.subagents(sessionKey);
-    if (!runs.some((r) => r.id === childId)) return null;
-    return readChildTranscript({ home: this.dshHome, cwd: this.launchCwd, sessionKey, childId });
+    const run = runs.find((r) => r.id === childId);
+    if (run === undefined) return null;
+    const transcript = await readChildTranscript({ home: this.dshHome, cwd: this.launchCwd, sessionKey, childId });
+    if (transcript === null) return null;
+    return run.stopReason === undefined
+      ? transcript
+      : { ...transcript, stopReason: run.stopReason };
   }
 
   /** Quiesce in-flight ledger saves (tests and graceful shutdown). */

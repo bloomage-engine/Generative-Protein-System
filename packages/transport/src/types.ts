@@ -199,6 +199,8 @@ export interface SubagentTranscript {
   finishedAt?: string;
   /** The child's terminal outcome, when the recorded log ends one. */
   status?: RunStatus;
+  /** The child's stop reason when the ledger recorded one (max-tokens, refusal, …). */
+  stopReason?: string;
   /** The child's conversation in the canonical `Message`/`MessagePart` vocabulary. */
   messages: Message[];
 }

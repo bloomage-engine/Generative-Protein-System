@@ -641,6 +641,16 @@ test("subagentTranscript serves the child's record and null for a foreign child"
       { type: "add-message", message: { id: "u1", role: "user", content: "delegate" } },
     ]));
     client.emit({ method: "subagent.started", params: { parentSessionId: client.sessionIds[0] ?? "root-x", childSessionId: "sub-child-1" } });
+    client.emit({
+      method: "subagent.finished",
+      params: {
+        parentSessionId: client.sessionIds[0] ?? "root-x",
+        childSessionId: "sub-child-1",
+        provider: "spawn",
+        status: "ok",
+        stopReason: "max-tokens",
+      },
+    });
     void run;
 
     const t = await adapter.subagentTranscript("sess-1", "sub-child-1");
@@ -648,6 +658,7 @@ test("subagentTranscript serves the child's record and null for a foreign child"
     assert.equal(t!.id, "sub-child-1");
     assert.equal(t!.status, "completed");
     assert.equal(t!.messages.some((m) => m.parts.some((p) => p.type === "text" && p.text === "child says hi")), true);
+    assert.equal(t!.stopReason, "max-tokens", "the registry's stop reason surfaces on the transcript");
 
     assert.equal(await adapter.subagentTranscript("sess-1", "not-in-the-ledger"), null, "a child outside the session's ledger is not served");
   } finally {
