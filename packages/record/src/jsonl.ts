@@ -12,7 +12,7 @@
  * lost, earlier ones survive". Startup compacts the log (one row per entity, via
  * a temp file + rename) so restarts also bound its growth.
  */
-import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { RecordStore } from "./index.js";
 import type { Id, Project, Run, Session, PersistedTranscript, Subagent } from "./types.js";
@@ -111,18 +111,24 @@ async function writeFileAtomic(path: string, value: unknown): Promise<void> {
 }
 
 async function readJSONOrNull<T>(path: string): Promise<T | null> {
+  let raw: string;
   try {
-    const raw = await readFile(path, "utf8");
-    return (JSON.parse(raw) as T) ?? null;
+    raw = await readFile(path, "utf8");
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw err;
+  }
+  try {
+    return (JSON.parse(raw) as T) ?? null;
+  } catch {
+    // A corrupt/torn file: degrade to absent (the record's own parseLine does the same).
     return null;
   }
 }
 
 async function listDir(path: string): Promise<string[]> {
   try {
-    return (await import("node:fs/promises")).readdir(path);
+    return await readdir(path);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
     return [];
@@ -284,7 +290,6 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
       const out: Subagent[] = [];
       for (const name of names) {
         if (!name.endsWith(".json")) continue;
-        const id = decodeURIComponent(name.slice(0, -5));
         const s = (await readJSONOrNull<Subagent>(join(subagentsDir, name))) ?? null;
         if (s && s.parentSessionId === parentSessionId) out.push(s);
       }
