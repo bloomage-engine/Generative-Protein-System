@@ -114,6 +114,8 @@ type State = {
   selectLeftView: (view: LeftView) => void;
   /** Pure assignment — for seeding the shell (a fresh install lands on the panel). */
   setLeftView: (view: LeftView) => void;
+  /** Unconditionally show `view` (no toggle) — e.g. reveal the composer after a mention. */
+  revealLeftView: (view: LeftView) => void;
   toggleRight: () => void;
   toggleRightSection: (id: RightSectionId) => void;
   setRightSectionHeight: (id: "subagents" | "cron", height: number) => void;
@@ -255,6 +257,7 @@ export const useStudioStore = create<State>()((set) => ({
         : { leftView: view, leftPanel: true },
     ),
   setLeftView: (leftView) => set({ leftView }),
+  revealLeftView: (leftView) => set({ leftView, leftPanel: true }),
 
   toggleRight: () => set((s) => ({ rightPanel: !s.rightPanel })),
   toggleRightSection: (id) =>

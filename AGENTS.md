@@ -11,9 +11,10 @@ apps/web                          Next.js frontend (assistant-ui Thread UI, port
   app/page.tsx                      the SPA home — resolves the Project/Session scope (URL claim, else the remembered one, validated against the record), then renders the workbench
   app/projects/[projectId]/sessions/[sessionId]/page.tsx  the same workbench, scoped by the route
   app/api/{transport,workspace,projects,cron}  proxies to the service — every hop relays through ONE policy module (lib/service-proxy.ts: base URL, forwarded auth, verbatim status/body) which never uses next.config rewrites (they buffer) nor `fetch` (its 300 s body deadline kills an idle stream; the relay is lib/stream-proxy.ts)
-  components/studio                 the workbench shell: top bar (its two switch buttons give the LEFT slot to the conversation or the Projects pane), Projects pane (create Project + Session over `/api/projects*`; a click EXPANDS a Project for browsing, a DOUBLE click on a Session opens it — expanding must not move the scope, so the conversation and the file tree stay put), file tree/preview panes, tab strip, status bar; the Subagents module reads the active Session's delegated-agent runs (the optional `RuntimeAdapter.subagents?` surface; dsh implements it from the child's `subagent.*` notifications into a DURABLE per-Session ledger under the transcript dir, so finished runs survive service restarts — restored `running` rows settle to `aborted`) by polling `/api/transport/subagents` through `useSubagents`; the panel's DEFAULT view is a RECENT WINDOW — `running` rows plus the finished ones within it (default 24 h, configurable 1–720 h — a `useSubagentsWindow` client hook that reads a new `subagents.visibleWindowHours` service setting, docs/adr/0015; an out-of-range / non-integer value is a 400 from the service) — with a History toggle for the older runs, and a row double-clicks into the child's own session record (`RuntimeAdapter.subagentTranscript?` — dsh reads the harness's durable child log — over `GET /api/transport/subagents/:childId/transcript`, opened as a synthetic `subagent:<childId>` tab) now showing a Details row (provider, model, started→ended, status, and `stopReason` when the transcript carries it) plus a highlighted Result with the child's final assistant message's text; a fourth dsh child plugin (`subagent-plugin.ts`, docs/adr/0018) instructs the MAIN agent — best-effort, dsh-only, in a real Project and `project-default` alike — to report each delegated subagent's result (a tool result or a settlement notice) as it arrives
+  components/studio                 the workbench shell: top bar (its two switch buttons give the LEFT slot to the conversation or the Projects pane), Projects pane (create Project + Session over `/api/projects*`; a click EXPANDS a Project for browsing, a DOUBLE click on a Session opens it — expanding must not move the scope, so the conversation and the file tree stay put), file tree/preview panes, tab strip, status bar; the Subagents module reads the active Session's delegated-agent runs (the optional `RuntimeAdapter.subagents?` surface; dsh implements it from the child's `subagent.*` notifications into a DURABLE per-Session ledger under the transcript dir, so finished runs survive service restarts — restored `running` rows settle to `aborted`) by polling `/api/transport/subagents` through `useSubagents`; the panel's DEFAULT view is a RECENT WINDOW — `running` rows plus the finished ones within it (default 24 h, configurable 1–720 h — a `useSubagentsWindow` client hook that reads a new `subagents.visibleWindowHours` service setting, docs/adr/0015; an out-of-range / non-integer value is a 400 from the service) — with a History toggle for the older runs, and a row double-clicks into the child's own session record (`RuntimeAdapter.subagentTranscript?` — dsh reads the harness's durable child log — over `GET /api/transport/subagents/:childId/transcript`, opened as a synthetic `subagent:<childId>` tab) now showing a Details row (provider, model, started→ended, status, and `stopReason` when the transcript carries it) plus a highlighted Result with the child's final assistant message's text; a fourth dsh child plugin (`subagent-plugin.ts`, docs/adr/0018) instructs the MAIN agent — best-effort, dsh-only, in a real Project and `project-default` alike — to report each delegated subagent's result (a tool result or a settlement notice) as it arrives; `renderers/StructureRenderer.tsx` is the molecular-structure preview (dynamic `ssr:false` Mol* viewer over `@science-studio/molql-viewer` + a manual MolQL console)
   store/studio-store.ts             the shell's scope + chrome state (projects list, active Project/Session, left view + panel visibility, open tabs)
-  components/session-view.tsx       providers + the memoized runtime owner; with no scope it renders the chrome alone
+  components/session-view.tsx       providers + the memoized runtime owner; with no scope it renders the chrome alone. Mounts `components/assistant-ui/frontend-bridge.tsx` (the agent tool-call → UI bridge) just inside `AssistantRuntimeProvider`
+  lib/frontend-actions              app-local registry mapping a tool name (e.g. `molql`) to a UI handler; `molql.ts` dynamically imports `@science-studio/molql-viewer` so molstar never enters the chat bundle
   components/assistant-ui/elements  Thread UI registered from the assistant-ui registry
   components/workspace              workspace browser/viewer panel
   components/ui + hooks + lib       shadcn/ui base, registry helpers
@@ -27,7 +28,11 @@ packages/contract-tests          the SHARED seam conformance suites (testPrincip
 packages/transport-client         assistant-ui client boundary (single `useTransport` session hook = history probe + standing watch + guarded import; state converter; command catalog + slash-menu / reasoning-trace helpers)
 packages/transport-openclaw       openclaw runtime adapter — owns its OWN launch surface (`GatewayBinding`), factory, capabilities and `runtimePlugins`; ports gateway WS
 packages/transport-dsh            dsh runtime adapter — owns `DshBinding` + factory + `runtimePlugins` (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC). The SDK wire has no command plane, so the adapter answers `/status` and `/new` itself — and reaches the harness's OWN registry (`/compact`, `/plan`, `/goal`, `/feedback`, `/permission`) through `bridge-plugin.ts`, a dependency-free cordis plugin it ships into that child via a per-launch profile patch (`--patch`, a private UNIX socket; docs/adr/0011). The registry is agent-scoped, so a session with no agent yet sends the line as its FIRST PROMPT, which the plugin intercepts at `agent/pre-step` (registry runs it, the step is rejected, the model never sees it) — that is what makes `/plan` and `/goal` work before the first message; while the child is cold the adapter serves a CURATED list of the pinned profile's own commands instead (so the menu is complete from the first page load). A catalog request never starts the child; a user-issued command does. A SECOND dependency-free child plugin (`project-plugin.ts`, docs/adr/0012) rides another per-launch patch: for a real Project (its patch config carries the identity) it lays down the research layout (idempotent, create-only) and keeps the Project Brief `PROJECT.md` current — scaffolded on `agent/session-start` and by a `/project` command (also curated into the cold menu), maintained by the model through `project_update` / `project_log` tools plus a `systemPrompt` section; the record stays authoritative, and the adapter renders its Project identity from `RuntimeInitOptions.project` (the service fills it from `records.getProject`). A THIRD dependency-free child plugin (`cron-plugin.ts`, docs/adr/0017) rides a third per-launch patch: it adds the `schedule_create`/`schedule_list`/`schedule_delete`/`schedule_set_enabled` tools, a `/cron` command (curated into the cold menu) and a `systemPrompt` section that author the same `.science-studio/cron/` task files the SERVICE scheduler reads — the plugin authors, the service schedules
-services/transport-service        backend assistant-transport service — Fastify, port 3001. Composition root: `src/composition.ts`. `TRANSPORT_RUNTIME` picks the runtime product; runtime modules are loaded DYNAMICALLY by specifier, so the service statically imports NO runtime package. The DEFAULT module list is DATA — `scienceStudio.runtimeModules` in this package's own `package.json` — and `SS_RUNTIME_MODULES` overrides it entirely, so adding a runtime edits no core code. `SS_ENTERPRISE_MODULE` swaps in the private multi-user backend; unset = the complete single-user product. It also owns the per-Project scheduled-run surface: `src/cron/{store,routes,scheduler}.ts` — the file-backed `CronStore`, the `/api/cron*` routes, and a `CronScheduler` decorated as `app.cronScheduler` that is started ONLY by `index.ts`'s `isMain` (tests/embedders call `tick()`/`fire()`) and takes the SAME one-in-flight `activeRuns` lock as the transport route (docs/adr/0017).
+packages/molql-viewer             structure preview + Mol* integration. Compiles the agent's MolQL (Mol* `mol-script`) into a Selection and selects/highlights/focuses it. Entries `./formats` and `./directive` are molstar-runtime-free (Node-testable); `.` imports molstar and is browser-only (dynamic `ssr:false`). Exposes `MolqlViewer`/`MolqlViewerPanel`, `applyMolqlSelection`, `applyMolqlToolResult`, `parseMolqlToolResult`, and the active-viewer registry. Pinned to molstar 5.9.0
+packages/plugins/molql-tool-dsh   dsh harness plugin registering the `molql` tool (`ctx.tools.register(defineTool(...))`), the `computeInteraction` tool (fetches the service), and an embedded MolQL skill. Agent-side deployable — deliberately NOT a root workspace and NOT in the root build (own `scripts/sync-skill.mjs` + `tsc`)
+packages/plugins/molql-tool-openclaw  openclaw gateway plugin registering the same `molql` + `computeInteraction` tools (`defineToolPlugin`; `openclaw.plugin.json`). Agent-side deployable — NOT a root workspace/build. `esbuild` bundles `typebox` into `dist` and `openclaw` is a peerDependency, so the installed plugin has NO runtime deps and `openclaw plugins install` skips its slow/flaky npm step; `scripts/install.mjs` installs from an `npm pack` tarball (a directory install copies `node_modules` recursively) with `--accept-capabilities`. `typebox`/`openclaw` stay devDependencies for the local `tsc`/bundle build and the root-installed `esbuild` is borrowed for the bundle
+packages/skills/molql             the canonical MolQL skill (`SKILL.md` + `references/molql-syntax.md`); the single source of truth, copied into each plugin's `skill/` by its `sync-skill.mjs`. Not an npm package (workspaces negations exclude `packages/skills` and `packages/plugins`)
+services/transport-service        backend assistant-transport service — Fastify, port 3001. Composition root: `src/composition.ts`. `TRANSPORT_RUNTIME` picks the runtime product; runtime modules are loaded DYNAMICALLY by specifier, so the service statically imports NO runtime package. The DEFAULT module list is DATA — `scienceStudio.runtimeModules` in this package's own `package.json` — and `SS_RUNTIME_MODULES` overrides it entirely, so adding a runtime edits no core code. `SS_ENTERPRISE_MODULE` swaps in the private multi-user backend; unset = the complete single-user product. It also owns the per-Project scheduled-run surface: `src/cron/{store,routes,scheduler}.ts` — the file-backed `CronStore`, the `/api/cron*` routes, and a `CronScheduler` decorated as `app.cronScheduler` that is started ONLY by `index.ts`'s `isMain` (tests/embedders call `tick()`/`fire()`) and takes the SAME one-in-flight `activeRuns` lock as the transport route (docs/adr/0017), and the molstar-computed `/api/workspace/interactions` route (src/interactions.ts; see the MolQL section).
 examples/transport-openclaw-example  minimal assistant-ui example app over the openclaw adapter (Vite + core primitives; dev-only, not in the root build)
 examples/transport-dsh-example     minimal assistant-ui example app over the dsh adapter (local harness; dev-only, not in the root build)
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
@@ -102,9 +107,11 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   query's `project` (the older spelling), else the body's, else `project-default`)
   and that Project's `Environment` — so no route spells the Project claim its own
   way and no route body repeats the preamble: `GET
-  /api/workspace/{entries,stat,file}`. `file` streams inline up to the cap (413
-  over it) and `?download=1` streams any size; a missing path is 404, a
-  traversal/absolute path 400, no workspace 503. Uploads are `POST
+  /api/workspace/{entries,stat,file}`, plus `GET
+  /api/workspace/interactions?path=&molql=` (molstar-computed non-covalent
+  interactions for a selection; see the MolQL section). `file` streams inline up
+  to the cap (413 over it) and `?download=1` streams any size; a missing path is
+  404, a traversal/absolute path 400, no workspace 503. Uploads are `POST
   /api/workspace/upload?path=` with a **raw** body
   (`application/octet-stream`, one file per request — no multipart parser);
   `maxUploadBytes` (`WORKSPACE_MAX_UPLOAD_BYTES`, default 100 MB) answers 413 and
@@ -136,13 +143,16 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 - `npm run dev -w @science-studio/transport-openclaw-example` — the example app: Vite (5173, proxies `/api`) + the openclaw adapter behind `@science-studio/transport-service` (3200). Needs `examples/transport-openclaw-example/.env` (see its `.env.example`) and a live gateway, and `npm run build` first (imports deps from dist). Dev-only — intentionally NOT in the root build gate; its `npm run test` drives the same wiring against a scripted gateway (no live gateway needed).
 - `npm run dev -w @science-studio/transport-dsh-example` — the same shape over the dsh adapter: Vite (5173) + `@science-studio/transport-service` (3300); the adapter spawns `dsh --profile sdk` locally (needs `examples/transport-dsh-example/.env` with `DEEPSEEK_API_KEY`, the model route `HARNESS_PROVIDER`/`HARNESS_MODEL`, and that route's `apiKeyEnv` name — `server.ts` promotes those two `HARNESS_*` names to the launch-only `DSH_PROVIDER`/`DSH_MODEL` before the adapter reads it, because the harness child runs with that folder as cwd and the dsh CLI reads that same `.env` and hard-refuses any `DSH_*` key in it; the route itself — endpoint/models — is declared harness-side in `<harness home>/settings.yaml`, and the default example route is the LAN ollama `ollama-local`/`qwen3.8:latest`; defaults when `HARNESS_*` is unset: profile `sdk`, home `~/.dsh`, workspace = the example dir, transcript mirror under the service tmp dir, adapter provider/model `deepseek-official`/`deepseek-v4-flash` — override `DSH_HOME`/`DSH_TRANSCRIPT_DIR`/`DSH_MODEL`… via exported env). Its `npm run test` drives the wiring against a scripted turn client (no dsh process needed).
 - `npm run test:e2e -w @science-studio/web` — the web app's regression suite, all of it in one command: the panel/history tests mock the transport + record + workspace HTTP surface and assert the re-render invariants, `test/scope-restore.test.mjs` asserts that a load resumes the remembered scope and never probes an id the record does not list (docs/adr/0009), and `test/scope-memory.test.mjs` is the browserless resolution table (no Chromium needed; it imports `lib/scope-memory.ts` through Node's type stripping). The browser ones run their own `next dev` with a PRIVATE build dir (`NEXT_DIST_DIR=.next-test`, read by `next.config.mjs`) so the suite can run while a developer's own `npm run dev` is up — two dev servers on one `.next` corrupt it. Next rewrites `next-env.d.ts`/`tsconfig.json` to match whichever dist dir ran last, so a suite run may leave those generated lines dirty; the next `npm run dev`/`next build` flips them back. They need a Chromium (auto-detected; they SKIP without one) and `npm run build -w @science-studio/transport-client` first. Dev-only — NOT part of the root `npm test`.
-- `npm run build` — build record → transport → workspace → cron → contract-tests → transport-client → transport-openclaw → transport-dsh → transport-service, then
+- `npm run build` — build record → transport → workspace → cron → contract-tests → transport-client → molql-viewer → transport-openclaw → transport-dsh → transport-service, then
   `npm run typecheck:tests`; this is the real type gate. Each package's own
   `tsconfig.json` includes only `src/**` (so `tsc -b` emits just the package), so
   the TESTS are checked by one separate program, `tsconfig.tests.json` over
   `packages/*/test` + `services/*/test`. It runs LAST because
   `@science-studio/*` resolves to the built `dist` types. Outside the gate:
-  `apps/web/test/*.mjs` (plain JS) and the dev-only `examples/*`.
+  `apps/web/test/*.mjs` (plain JS), the dev-only `examples/*`, and the two
+  `packages/plugins/molql-tool-*` agent-side packages (built/deployed
+  independently; `packages/plugins`/`packages/skills` are excluded from the root
+  workspaces).
 - `npm run typecheck` — **known-broken**: fails in transport-service with pre-existing TS6310 (composite refs + `--noEmit`). Other workspaces pass; use `npm run build` for the service.
 - `npm run smoke:adapter` — connect a real openclaw adapter to a live gateway and drive one `chat.send` (sends a real message to `OPENCLAW_DEFAULT_SESSION` unless `SMOKE_SESSION` overrides it). Needs `npm run build` first.
 - `npm run smoke:replay -- <file>` — fold recorded SSE frames through the client decoder/accumulator (verifies a stream terminates with `[DONE]` and only uses `set` ops).
@@ -292,6 +302,79 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   streams. Run control reaches the adapter through `POST /api/transport/abort` and
   `POST /api/transport/approve`; `/approve` answers **501** when the runtime has
   no approval surface (`RuntimeAdapter.approve` is optional).
+
+## Molecular-structure preview and the `molql` tool
+
+- **The structure preview is a renderer, not a package change.** The workspace
+  center pane (`components/studio/file-preview-pane.tsx`) detects a structure
+  file BY NAME (`kindFor` → `"structure"`; the workspace mime map does not know
+  PDB/CIF, so they arrive as `application/octet-stream`) and lazily mounts
+  `renderers/StructureRenderer.tsx` (`dynamic(..., {ssr:false})`, since Mol* is
+  browser-only). It loads the file through the workspace URL and embeds Mol* via
+  `PluginUIContext` (`@science-studio/molql-viewer`). `packages/workspace` is
+  untouched.
+- **`@science-studio/molql-viewer` is the browser boundary.** `applyMolqlSelection`
+  compiles the expression with `Script.toLoci({expression, language:'mol-script'}, structure)`
+  and, by default, applies a PERSISTENT selection (`interactivity.lociSelects.selectOnly`)
+  plus a camera focus (`managers.camera.focusLoci`); `mode:"highlight"` uses the
+  transient `lociHighlights.highlightOnly`. `molstar` is pinned exactly `5.9.0`
+  and its skin is imported by the app (which owns `sass`), so the package stays a
+  pure `tsc` build and its `./formats` + `./directive` entries stay
+  molstar-runtime-free (and thus Node-testable).
+- **The agent drives it through one tool, `molql`**, registered by BOTH plugins
+  (`packages/plugins/molql-tool-dsh`, `packages/plugins/molql-tool-openclaw`).
+  The tool output is the JSON contract
+  `{ type:"molql-selection", molql, description?, focus?, mode? }`; the model does
+  the natural-language translation, the tool only structures/forwards it. Syntax
+  validation is FRONTEND-only (the browser has the structure); the server-side
+  tool does not import Mol*.
+- **The wire already carries the result.** Both adapters merge a tool's output
+  into its `tool-call` part's `result` string, so no adapter/service change is
+  needed. The bridge (`components/assistant-ui/frontend-bridge.tsx`, mounted in
+  `session-view.tsx`) registers a tool-call renderer for `molql`, dispatches each
+  completed call exactly once (keyed by `toolCallId`), and hands the raw result to
+  the app-local handler (`lib/frontend-actions/molql.ts`), which dynamically
+  imports `molql-viewer` and applies it. The chat bundle never imports molstar.
+- **The skill is the manual, the tool is the channel.** `packages/skills/molql`
+  is the single source (cheat-sheet → tool description; full
+  `references/molql-syntax.md` → embedded skill). Each plugin's
+  `scripts/sync-skill.mjs` copies it into its own `skill/` at build time; the
+  plugin packages are agent-side deployables and are NOT in the root build.
+- **The reverse direction (viewer → composer) is a click, gated on Mol*'s
+  selection mode.** `MolqlViewer` subscribes to
+  `plugin.behaviors.interaction.click`, and ONLY while `plugin.selectionMode` is
+  on resolves the clicked loci (`StructureElement.Loci` → residue via
+  `StructureProperties`; `Bond.Loci` → its two endpoint atoms) and calls
+  `onResidueClick` (`null` for an empty click, which clears Mol*'s selection).
+  `MolqlViewerPanel` forwards it; `StructureRenderer` formats
+  `@<project>/<workspace path>/<molql>` (`selection.ts`'s `formatResidueMolql` /
+  `formatBondMolql` / `formatStructureMention` / `molqlTargetKey` — pure,
+  Node-tested) and toggles it in the composer through `ComposerInsertProvider`
+  (an app-local context seam modelled on `WorkspaceOpenProvider`, since the center
+  preview and the left `Thread` are siblings), then reveals the conversation pane
+  via the store's `revealLeftView`. A second click on the same target REMOVES the
+  mention (keyed by `molqlTargetKey`), matching Mol*'s default `clickToggle`
+  action; an empty click removes them all. The visible selection is Mol*'s own
+  selection-mode behavior — the app adds no second selection. The mention is plain
+  text (not a `:file` directive), so the service does not lift it into an
+  `AttachmentRef`.
+- **`computeInteraction` is the one place the browser is NOT enough.** The agent
+  can only receive the computed result if the computation happens where its tool
+  runs, and molstar's interaction module is pure computation (no WebGL), so the
+  service computes it: molstar's CommonJS build is loaded lazily through
+  `createRequire` in `services/transport-service/src/interactions.ts`, which
+  parses the workspace file, compiles the MolQL selection, runs
+  `computeInteractions` (molstar's default providers: hydrogen-bonds, pi-stacking,
+  cation-pi, halogen-bonds, metal-coordination) and returns the contacts touching
+  the selection as a Markdown table. The route is `GET
+  /api/workspace/interactions?project=&path=&molql=` (same workspace preamble;
+  404/400/503 as the other workspace routes; `molstar` is a service dependency).
+  Both agent-side plugins register the same `computeInteraction` tool, which
+  fetches that route (`SCIENCE_STUDIO_SERVICE_URL`, default
+  `http://127.0.0.1:3001`) from the `@<project>/<path>/<molql>` mention. There is
+  deliberately NO browser→agent tool-result channel: `TransportCommand` declares
+  `add-tool-result` but no adapter implements it, and openclaw's chat protocol has
+  no client tool result — so browser-computed data could not reach the model.
 
 ## Architecture rules
 

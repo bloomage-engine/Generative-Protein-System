@@ -13,7 +13,7 @@ import {
   FolderOpen,
   Palette,
 } from "lucide-react";
-import { isMoleculeFile, type FileKind } from "./file-utils";
+import { isStructureFile, type FileKind } from "./file-utils";
 
 export function fileIcon(kind: FileKind): ReactNode {
   switch (kind) {
@@ -25,7 +25,7 @@ export function fileIcon(kind: FileKind): ReactNode {
       return <FileCode2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />;
     case "pdf":
       return <FileText className="size-3.5 text-red-500" />;
-    case "molecule":
+    case "structure":
       return <Atom className="size-3.5 text-violet-500" />;
     default:
       return <File className="size-3.5 text-muted-foreground" />;
@@ -68,7 +68,7 @@ export function fileIconForName(
   if (name.toLowerCase().endsWith(".pdf")) {
     return <FileText className="size-4 shrink-0 text-red-500" />;
   }
-  if (isMoleculeFile(name)) {
+  if (isStructureFile(name)) {
     return <Atom className="size-4 shrink-0 text-violet-500" />;
   }
   return <File className="text-muted-foreground size-4 shrink-0" />;

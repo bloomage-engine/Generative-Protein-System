@@ -27,7 +27,8 @@
     "@science-studio/transport-openclaw": "*",
     "@science-studio/workspace": "*",
     "dotenv": "^16.4.0",
-    "fastify": "5.12.3"
+    "fastify": "5.12.3",
+    "molstar": "5.9.0"
   },
   "scienceStudio": {
     "runtimeModules": [

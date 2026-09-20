@@ -1,0 +1,20 @@
+{
+  "id": "molql-tool",
+  "name": "MolQL",
+  "version": "0.0.0",
+  "description": "Science Studio structure tools: translate a query into a Mol* mol-script selection for the viewer to apply, and compute the non-covalent interactions of a selection.",
+  "configSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "molql",
+      "computeInteraction"
+    ]
+  }
+}

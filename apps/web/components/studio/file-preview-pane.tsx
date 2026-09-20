@@ -23,9 +23,9 @@ import { TranscriptBody } from "./renderers/SubagentRenderer";
 import { useStudioStore } from "@/store/studio-store";
 
 /**
- * The PDF and molecule viewers are browser-only (Canvas + WebAssembly; WebGL),
+ * The PDF and structure viewers are browser-only (Canvas + WebAssembly; WebGL),
  * so they are loaded on demand in the browser and never during SSR. Their
- * structure is fetched by the viewer itself from the workspace inline URL — the
+ * file is fetched by the viewer itself from the workspace inline URL — the
  * text hook would only download the same bytes twice.
  */
 const PdfRenderer = dynamic(
@@ -33,8 +33,8 @@ const PdfRenderer = dynamic(
   { ssr: false, loading: () => <ViewerLoading /> },
 );
 
-const MoleculeRenderer = dynamic(
-  () => import("./renderers/MoleculeRenderer").then((m) => m.MoleculeRenderer),
+const StructureRenderer = dynamic(
+  () => import("./renderers/StructureRenderer").then((m) => m.StructureRenderer),
   { ssr: false, loading: () => <ViewerLoading /> },
 );
 
@@ -188,8 +188,8 @@ function Preview({ path, name }: { path: string; name: string }) {
           <CronTaskRenderer path={path} />
         ) : kind === "pdf" ? (
           <PdfRenderer url={fileUrl} />
-        ) : kind === "molecule" ? (
-          <MoleculeRenderer url={fileUrl} fileName={name} />
+        ) : kind === "structure" ? (
+          <StructureRenderer path={path} name={name} />
         ) : (
           <TextPreview path={path} name={name} />
         )}

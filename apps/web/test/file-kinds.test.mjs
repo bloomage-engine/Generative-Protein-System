@@ -12,7 +12,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isMoleculeFile, isPdfFile, kindFor } from "../components/studio/file-utils.ts";
+import { isPdfFile, isStructureFile, kindFor } from "../components/studio/file-utils.ts";
 
 test("PDF files map to the pdf kind by name (mime-independent)", () => {
   assert.equal(kindFor("report.pdf"), "pdf");
@@ -21,7 +21,7 @@ test("PDF files map to the pdf kind by name (mime-independent)", () => {
   assert.equal(isPdfFile("report.PDF"), true);
 });
 
-test("structure formats map to the molecule kind", () => {
+test("structure formats map to the structure kind", () => {
   for (const name of [
     "1abc.pdb",
     "1abc.PDB.gz",
@@ -33,8 +33,8 @@ test("structure formats map to the molecule kind", () => {
     "ligand.mol",
     "ligand.mol2",
   ]) {
-    assert.equal(kindFor(name, "application/octet-stream"), "molecule", name);
-    assert.equal(isMoleculeFile(name), true, name);
+    assert.equal(kindFor(name, "application/octet-stream"), "structure", name);
+    assert.equal(isStructureFile(name), true, name);
   }
 });
 
@@ -48,7 +48,7 @@ test("text/markdown/json routing is unchanged", () => {
 });
 
 test("only real suffixes count, not words that merely contain them", () => {
-  assert.equal(isMoleculeFile("molecule.txt"), false);
+  assert.equal(isStructureFile("molecule.txt"), false);
   assert.equal(isPdfFile("pdf-report.txt"), false);
   assert.equal(kindFor("md.pdf.txt"), "code");
 });

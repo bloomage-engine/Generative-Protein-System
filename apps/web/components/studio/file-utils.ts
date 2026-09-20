@@ -1,40 +1,26 @@
 import type { BundledLanguage } from "shiki";
+import { isStructureFile } from "@science-studio/molql-viewer/formats";
 
 /**
  * Infer a renderer + code language from a file name / mime (the workspace API
  * gives us a `mime` and a basename; there is no explicit kind field).
  *
- * `pdf` and `molecule` are decided from the NAME only: the service serves PDFs
+ * `pdf` and `structure` are decided from the NAME only: the service serves PDFs
  * as `application/pdf` and every structure format as `application/octet-stream`
  * (see `mimeFor`), so a MIME sniff cannot tell a `.pdb` from any other binary.
+ * The structure formats themselves are owned by `@science-studio/molql-viewer/formats`.
  */
-export type FileKind = "markdown" | "json" | "code" | "text" | "pdf" | "molecule";
+export type FileKind = "markdown" | "json" | "code" | "text" | "pdf" | "structure";
 
-/** Structure formats Mol* can load, including the gzip/binary variants. */
-const MOLECULE_SUFFIXES = [
-  ".pdb",
-  ".pdb.gz",
-  ".cif",
-  ".cif.gz",
-  ".mmcif",
-  ".bcif",
-  ".bcif.gz",
-  ".mol",
-  ".mol2",
-];
+export { isStructureFile } from "@science-studio/molql-viewer/formats";
 
 export function isPdfFile(name: string): boolean {
   return name.toLowerCase().endsWith(".pdf");
 }
 
-export function isMoleculeFile(name: string): boolean {
-  const lower = name.toLowerCase();
-  return MOLECULE_SUFFIXES.some((suffix) => lower.endsWith(suffix));
-}
-
 export function kindFor(name: string, mime?: string | null): FileKind {
   if (isPdfFile(name)) return "pdf";
-  if (isMoleculeFile(name)) return "molecule";
+  if (isStructureFile(name)) return "structure";
   const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
   if (mime?.startsWith("text/markdown") || ext === "md" || ext === "markdown" || ext === "mdx")
     return "markdown";

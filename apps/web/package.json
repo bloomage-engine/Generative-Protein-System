@@ -16,6 +16,7 @@
     "@embedpdf/react-pdf-viewer": "2.14.2",
     "@headless-tree/core": "1.7.0",
     "@headless-tree/react": "1.7.0",
+    "@science-studio/molql-viewer": "*",
     "@science-studio/transport": "*",
     "@science-studio/transport-client": "*",
     "@tailwindcss/postcss": "4.3.3",
@@ -45,7 +46,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "playwright-core": "1.55.0",
-    "sass": "1.99.0",
+    "sass": "1.104.1",
     "typescript": "^5.5.0"
   }
 }

@@ -21,6 +21,7 @@ import { createInMemoryRecordStore, type Session } from "@science-studio/record"
 import type {
   AttachmentRef,
   CommandDescriptor,
+  FileContent,
   FileStat,
   Principal,
   SessionState,
@@ -37,6 +38,12 @@ import { createCronScheduler } from "./cron/scheduler.js";
 import { createCronStore } from "./cron/store.js";
 import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS } from "./directory.js";
 import { canonicalSessionKey, createProjectScopes } from "./project-scope.js";
+import {
+  computeInteractionsForSelection,
+  INTERACTIONS_MAX_BYTES,
+  MolqlCompileError,
+  UnsupportedStructureFormatError,
+} from "./interactions.js";
 import {
   loadSettings,
   mergeSettings,
@@ -503,6 +510,32 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     });
   });
 
+  // Non-covalent interactions for a MolQL selection over a workspace structure
+  // file. Mol* runs headlessly here; the agent's `computeInteraction` tool calls
+  // this route because the service is what owns the Project's file access.
+  app.get("/api/workspace/interactions", async (request, reply) => {
+    const { path, molql } = request.query as {
+      path?: string;
+      molql?: string;
+    };
+    if (!path) return reply.code(400).send({ error: "path is required" });
+    if (!molql) return reply.code(400).send({ error: "molql is required" });
+    return scope.withWorkspace(request, reply, async ({ environment }) => {
+      const content = await environment.workspace.open(path, {
+        maxBytes: INTERACTIONS_MAX_BYTES,
+      });
+      const data = await readAll(content.body);
+      try {
+        return await computeInteractionsForSelection({ fileName: path, data, molql });
+      } catch (err) {
+        if (err instanceof UnsupportedStructureFormatError || err instanceof MolqlCompileError) {
+          return reply.code(400).send({ error: err.message });
+        }
+        throw err;
+      }
+    });
+  });
+
   app.post("/api/workspace/upload", async (request, reply) => {
     const { path } = request.query as { path?: string };
     if (!path) return reply.code(400).send({ error: "path is required" });
@@ -587,6 +620,14 @@ function contentDisposition(kind: "inline" | "attachment", name: string): string
     (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
   );
   return `${kind}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+/** Drain a workspace file stream into one buffer (structure parsing needs it all). */
+async function readAll(body: FileContent["body"]): Promise<Buffer> {
+  const stream = Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]);
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk as Uint8Array));
+  return Buffer.concat(chunks);
 }
 
 function sseHeaders(): Record<string, string> {
