@@ -8,11 +8,6 @@ export { DSH_CAPABILITIES, dshBinding, dshLocalBinding, parseDshBinding } from "
 export type { DshBinding } from "./binding.js";
 export { createDshTurnClient } from "./client.js";
 export type { DshTurnClient, DshClientLaunchOptions } from "./client.js";
-export { TranscriptMirror } from "./mirror.js";
-export type { MirrorFile } from "./mirror.js";
-export { FileSubagentLedger } from "./ledger.js";
-export type { LedgerFile } from "./ledger.js";
-export type { SubagentLedgerEntry, SubagentLedgerStore } from "./subagents.js";
 export type { SubagentDescriptorInfo, SubagentFinishedInfo } from "./subagents.js";
 export { projectKey, readChildTranscript } from "./child-transcript.js";
 export type { ChildTranscriptSource } from "./child-transcript.js";

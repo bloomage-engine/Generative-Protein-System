@@ -55,37 +55,6 @@ export interface SubagentFinishedInfo {
   parentSessionId?: string;
 }
 
-/**
- * One persisted ledger row (JSON-safe; one file per session key). Kept for the
- * file-backed ledger (ledger.ts), which predates the record-backed seam and is
- * retired by a later task.
- */
-export interface SubagentLedgerEntry {
-  id: string;
-  parentHarnessId: string;
-  /** Stamped once resolvable; stable across harness generations. */
-  sessionKey?: string;
-  label?: string;
-  provider?: string;
-  status: SubagentRun["status"];
-  stopReason?: string;
-  startedAt: string;
-  finishedAt?: string;
-}
-
-/**
- * The file-backed durability seam (ledger.ts implements it). The record-backed
- * registry below no longer consumes it — it persists through `RecordStoreLike`.
- */
-export interface SubagentLedgerStore {
-  /** Every session key that holds a saved ledger. */
-  listKeys(): Promise<string[]>;
-  /** The ledger saved under one key, or `null` when absent/unreadable. */
-  load(sessionKey: string): Promise<SubagentLedgerEntry[] | null>;
-  /** Atomically replace every ledger row saved under one key. */
-  save(sessionKey: string, entries: readonly SubagentLedgerEntry[]): Promise<void>;
-}
-
 /** The Run status a finished subagent settles to. The stop reason wins over
  *  the coarse SDK status: `max-tokens` and `refusal` are completed runs. */
 function settleStatus(status: "ok" | "error", stopReason?: string): SubagentRun["status"] {
