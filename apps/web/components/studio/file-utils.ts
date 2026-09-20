@@ -57,3 +57,9 @@ export function isSubagentTab(path: string): boolean {
 export function subagentTabChildId(path: string): string {
   return isSubagentTab(path) ? path.slice("subagent:".length) : "";
 }
+
+/** True when the file is text-based and can be viewed/edited in source mode. */
+export function isTextEditable(name: string): boolean {
+  const kind = kindFor(name);
+  return kind !== "pdf" && kind !== "structure";
+}
