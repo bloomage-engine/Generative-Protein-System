@@ -583,7 +583,10 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     if (transcript === null) return;
     this.subagentRegistry.noteTranscript(childId, {
       v: 1,
-      status: transcript.status ?? "completed",
+      // A log with no `turn/end` row is a killed/aborted child — the conservative
+      // label (the served status always uses the row's own `status`, so this is a
+      // stored-field label only; the live row's `noteFinished` carried the real one).
+      status: transcript.status ?? "aborted",
       messages: transcript.messages,
     });
   }
