@@ -531,11 +531,22 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     if (notification.method === "subagent.finished") {
       const child = params["childSessionId"];
       if (typeof child !== "string") return;
+      const parent = typeof params["parentSessionId"] === "string" ? params["parentSessionId"] : undefined;
       this.subagentRegistry.noteFinished(child, {
         status: params["status"] === "error" ? "error" : "ok",
         ...(typeof params["provider"] === "string" ? { provider: params["provider"] } : {}),
         ...(typeof params["stopReason"] === "string" ? { stopReason: params["stopReason"] } : {}),
-        ...(typeof params["parentSessionId"] === "string" ? { parentSessionId: params["parentSessionId"] } : {}),
+        ...(parent === undefined ? {} : { parentSessionId: parent }),
+      });
+      // Gap-1 (docs/adr/0019): settle is the moment to capture the child's OWN
+      // transcript into the record — the PRODUCTION caller of the registry's
+      // `noteTranscript` (previously only the test called it), which is the copy
+      // the restored drill-in serves after a restart. Fire-and-forget: this
+      // listener is a SYNC `subscribeNotifications` callback (attachSubagents),
+      // but the harness-home read is async; a capture failure must never break a
+      // turn, so it is logged, not surfaced.
+      void this.captureSubagentTranscript(parent ?? child, child).catch((err) => {
+        console.warn("[dsh] subagent transcript capture failed", err);
       });
       return;
     }
@@ -547,6 +558,33 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     this.subagentRegistry.noteDescriptor(child, {
       ...(typeof data["label"] === "string" ? { label: data["label"] } : {}),
       ...(typeof data["provider"] === "string" ? { provider: data["provider"] } : {}),
+    });
+  }
+
+  /**
+   * Capture one delegated child's own settled transcript into its record row
+   * (docs/adr/0019, Gap-1). The read is the LIVE branch — the harness's own
+   * durable child log, identical to `subagentTranscript`'s live path — and the
+   * captured copy is what the RESTORED branch serves once the harness child is
+   * gone (a service restart). `childId` is the WIRE (harness child) id the
+   * `subagent.finished` notification carries: both `readChildTranscript` (the
+   * log's directory key) and the registry's `noteTranscript` (its `wire→stable`
+   * bridge) resolve on that same identity, so it travels unchanged from the
+   * call site. `sessionKey` is only the read's `parentId` label (discarded here).
+   *
+   * Fail-soft end to end (a capture never throws into the sync notification
+   * listener): no `dshHome`/`launchCwd`, a restored/unknown child, or an absent
+   * log all resolve to a no-op.
+   */
+  private async captureSubagentTranscript(sessionKey: string, childId: string): Promise<void> {
+    if (this.dshHome === undefined || this.launchCwd === undefined) return;
+    if (childId.startsWith(RESTORED_WIRE_PREFIX)) return; // a restored entry has no harness log to read
+    const transcript = await readChildTranscript({ home: this.dshHome, cwd: this.launchCwd, sessionKey, childId });
+    if (transcript === null) return;
+    this.subagentRegistry.noteTranscript(childId, {
+      v: 1,
+      status: transcript.status ?? "completed",
+      messages: transcript.messages,
     });
   }
 
