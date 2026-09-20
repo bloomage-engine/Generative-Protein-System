@@ -1,19 +1,21 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import type * as React from "react";
 import dynamic from "next/dynamic";
-import { Download, FileX, Loader2, X } from "lucide-react";
+import { Code, Download, FileX, Loader2, Save, X } from "lucide-react";
 import {
   isCronTaskPath,
   useSubagentTranscript,
   useTransportApi,
   useWorkspaceApi,
   useWorkspaceFile,
+  uploadWorkspaceFile,
   workspaceFileUrl,
 } from "@science-studio/transport-client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { isSubagentTab, kindFor, languageFor, subagentTabChildId } from "./file-utils";
+import { isSubagentTab, isTextEditable, kindFor, languageFor, subagentTabChildId } from "./file-utils";
 import { CronTaskRenderer } from "./renderers/CronTaskRenderer";
 import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
 import { CodeRenderer } from "./renderers/CodeRenderer";
@@ -159,12 +161,63 @@ function Preview({ path, name }: { path: string; name: string }) {
   const downloadUrl = workspaceFileUrl(api, path, { download: true, project });
   const fileUrl = workspaceFileUrl(api, path, { project });
 
+  const [sourceView, setSourceView] = useState(false);
+  const [editedText, setEditedText] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const canToggleSource = !isCronTaskPath(path) && isTextEditable(name);
+
+  const handleSave = useCallback(async () => {
+    if (editedText == null) return;
+    setSaving(true);
+    try {
+      await uploadWorkspaceFile(api, path, new Blob([editedText]), project);
+      setDirty(false);
+    } finally {
+      setSaving(false);
+    }
+  }, [api, editedText, path, project]);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex items-center gap-1 border-b border-border/70 px-3 py-2">
         <span className="min-w-0 flex-1 truncate text-xs font-medium" title={path}>
           /{path}
         </span>
+        {canToggleSource && (
+          <Button
+            variant={sourceView ? "secondary" : "ghost"}
+            size="icon-xs"
+            className="h-6 w-6"
+            onClick={() => {
+              setSourceView((v) => !v);
+              if (sourceView) {
+                setEditedText(null);
+                setDirty(false);
+              }
+            }}
+            aria-label={sourceView ? "Show rendered view" : "Show source"}
+          >
+            <Code className="size-3.5" />
+          </Button>
+        )}
+        {sourceView && dirty && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="h-6 w-6"
+            onClick={handleSave}
+            disabled={saving}
+            aria-label="Save file"
+          >
+            {saving ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Save className="size-3.5" />
+            )}
+          </Button>
+        )}
         <a
           href={downloadUrl}
           aria-label="Download"
@@ -191,7 +244,13 @@ function Preview({ path, name }: { path: string; name: string }) {
         ) : kind === "structure" ? (
           <StructureRenderer path={path} name={name} />
         ) : (
-          <TextPreview path={path} name={name} />
+          <TextPreview
+            path={path}
+            name={name}
+            sourceView={sourceView}
+            onEditedTextChange={setEditedText}
+            onDirtyChange={setDirty}
+          />
         )}
       </div>
     </div>
