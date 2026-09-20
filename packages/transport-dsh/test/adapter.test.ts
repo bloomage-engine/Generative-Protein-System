@@ -7,7 +7,7 @@ import type { SessionEvent } from "@deepseek-ai/dsh-session";
 import type { HarnessNotification } from "@deepseek-ai/dsh-sdk-client";
 import type { RecordStoreLike, SessionState, StateDelta, SubagentRun } from "@science-studio/transport";
 import { sessionState } from "@science-studio/contract-tests";
-import type { Run } from "@science-studio/record";
+import type { Run, Subagent } from "@science-studio/record";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
 import { TranscriptMirror } from "../src/mirror.js";
 
@@ -106,8 +106,18 @@ class CollidingHomeClient implements DshTurnClient {
 
 class FakeRecordStore implements RecordStoreLike {
   readonly runs: Run[] = [];
+  readonly subagents = new Map<string, Subagent>();
   async addRun(run: Run): Promise<void> {
     this.runs.push(run);
+  }
+  async upsertSubagent(subagent: Subagent): Promise<void> {
+    this.subagents.set(subagent.id, {...subagent});
+  }
+  async loadSubagent(id: string): Promise<Subagent | null> {
+    return this.subagents.get(id) ?? null;
+  }
+  async listSubagents(parentSessionId: string): Promise<Subagent[]> {
+    return [...this.subagents.values()].filter((s) => s.parentSessionId === parentSessionId);
   }
 }
 
@@ -487,7 +497,7 @@ test("a standing subscription reports live subagent runs for the session", async
     });
     const running = await adapter.subagents("sess-1");
     assert.equal(running.length, 1);
-    assert.equal(running[0]!.id, "child-1");
+    assert.ok(running[0]!.id.startsWith("subagent-"), "the id is the stable record identity, not the wire child id");
     assert.equal(running[0]!.parentId, "sess-1");
     assert.equal(running[0]!.label, "Literature review");
     assert.equal(running[0]!.status, "running");
@@ -538,11 +548,11 @@ test("a subagent started during the first turn is listed mid-turn and after", as
     assert.ok(pendingRead, "the first turn must have been polled mid-run");
     const midRun = await pendingRead;
     assert.equal(midRun.length, 1, "the subagent is live while the parent turn is still running");
-    assert.equal(midRun[0]!.id, "child-live");
+    assert.ok(midRun[0]!.id.startsWith("subagent-"), "the id is the stable record identity");
 
     const after = await adapter.subagents("sess-1");
     assert.equal(after.length, 1, "the subagent survives the parent turn settling");
-    assert.equal(after[0]!.id, "child-live");
+    assert.equal(after[0]!.id, midRun[0]!.id, "the same stable id survives the parent turn settling");
   } finally {
     await adapter.abort();
     await adapter.flushSubagents();
@@ -588,7 +598,8 @@ test("a finished subagent run belongs to the session's ledger across an adapter 
     const restored = await restarted.subagents("sess-1");
     await restarted.abort();
     assert.equal(restored.length, 1, "a finished subagent run survives an adapter restart");
-    assert.equal(restored[0]!.id, "child-1");
+    assert.equal(restored[0]!.id, done[0]!.id, "the SAME stable id survives the adapter restart");
+    assert.ok(restored[0]!.id.startsWith("subagent-"));
     assert.equal(restored[0]!.status, "completed");
     assert.equal(restored[0]!.label, "收集足球类24小时体育新闻");
     assert.equal(await restarted.subagents("other").then((l) => l.length), 0, "only the owning Session lists it");
@@ -653,9 +664,13 @@ test("subagentTranscript serves the child's record and null for a foreign child"
     });
     void run;
 
-    const t = await adapter.subagentTranscript("sess-1", "sub-child-1");
+    // The panel lists the STABLE id (the record's key); the transcript surface
+    // accepts that same id and resolves it to the harness's own child log.
+    const stableId = (await adapter.subagents("sess-1"))[0]!.id;
+    assert.ok(stableId.startsWith("subagent-"));
+    const t = await adapter.subagentTranscript("sess-1", stableId);
     assert.ok(t, "the adapter must serve the child's record");
-    assert.equal(t!.id, "sub-child-1");
+    assert.equal(t!.id, stableId, "the transcript is keyed on the stable id (SubagentRun.id)");
     assert.equal(t!.status, "completed");
     assert.equal(t!.messages.some((m) => m.parts.some((p) => p.type === "text" && p.text === "child says hi")), true);
     assert.equal(t!.stopReason, "max-tokens", "the registry's stop reason surfaces on the transcript");

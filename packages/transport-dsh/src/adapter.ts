@@ -37,8 +37,7 @@ import {
   writeSubagentPatch,
   type DshCommandBridge,
 } from "./bridge.js";
-import { TranscriptMirror } from "./mirror.js";
-import { FileSubagentLedger } from "./ledger.js";
+ import { TranscriptMirror } from "./mirror.js";
 import { createDshBehavior } from "./behavior.js";
 import { applyRouteSettings } from "./route-settings.js";
 import { readChildTranscript } from "./child-transcript.js";
@@ -350,11 +349,12 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       ...(patches.length > 0 ? { patches } : {}),
     });
     this.mirror = new TranscriptMirror(dir);
-    // The subagent ledger gains durability in the SAME place as the transcript
-    // mirror: one file per Session key under the shared transcript dir
-    // (docs/adr/0016 addendum) — a restart restores the session's finished
-    // runs instead of emptying the panel.
-    this.subagentRegistry.attachStore(new FileSubagentLedger(join(dir, "subagents")));
+    // The subagent ledger is DURABLE through the record (docs/adr/0019): each
+    // run is a record `Subagent` row keyed by its stable id, so a restart
+    // restores the session's finished runs + their transcripts instead of
+    // emptying the panel (docs/adr/0016 addendum). The record store (set at
+    // `this.recordStore = opts.recordStore` above) is the dsh adapter's durable.
+    if (this.recordStore !== null) this.subagentRegistry.bindStore(this.recordStore);
     this.provider = provider;
     this.model = model;
     this.behavior = createDshBehavior({
@@ -552,30 +552,38 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   async subagents(sessionKey: string): Promise<SubagentRun[]> {
     // No init wait: the registry is constructor-owned and empty before init, so
     // a read is always answerable (the seam read must not hang a cold adapter).
-    // It DOES await the one-time ledger restore, so a first read right after a
-    // restart lists the previous generation's finished runs instead of racing
-    // the file load (docs/adr/0016 addendum).
-    await this.subagentRegistry.ready();
+    // It DOES seed THIS session from the record (idempotent per key), so a first
+    // read right after a restart lists the previous generation's finished runs +
+    // their transcripts instead of emptying the panel (docs/adr/0019).
+    await this.subagentRegistry.restore(sessionKey);
     return this.subagentRegistry.list(sessionKey);
   }
 
   /**
    * One delegated session's readable record: the child's own durable log in
-   * the harness home (docs/adr/0016 addendum). The LEDGER is the membership
-   * gate — a child id that is not one of this Session's runs is not served —
-   * and the read is fail-soft (absent/mismatched/unreadable logs are `null`,
-   * never a throw).
+   * the harness home (docs/adr/0016 addendum). `childId` is the STABLE id the
+   * panel lists (the record's key) — the membership gate is "one of this
+   * Session's runs", and the stable→wire bridge is what finds the harness's
+   * own child log. The read is fail-soft (absent/mismatched/unreadable logs
+   * are `null`, never a throw).
    */
   async subagentTranscript(sessionKey: string, childId: string): Promise<SubagentTranscript | null> {
     if (this.dshHome === undefined || this.launchCwd === undefined) return null;
     const runs = await this.subagents(sessionKey);
     const run = runs.find((r) => r.id === childId);
     if (run === undefined) return null;
-    const transcript = await readChildTranscript({ home: this.dshHome, cwd: this.launchCwd, sessionKey, childId });
+    // The stable id is the panel's identity; the WIRE id (the harness child
+    // session id) is what the harness's own durable log is keyed by.
+    const wireId = this.subagentRegistry.harnessIdFor(childId);
+    if (wireId === undefined) return null;
+    const transcript = await readChildTranscript({ home: this.dshHome, cwd: this.launchCwd, sessionKey, childId: wireId });
     if (transcript === null) return null;
-    return run.stopReason === undefined
-      ? transcript
-      : { ...transcript, stopReason: run.stopReason };
+    return {
+      ...transcript,
+      id: run.id,
+      parentId: sessionKey,
+      ...(run.stopReason === undefined ? {} : { stopReason: run.stopReason }),
+    };
   }
 
   /** Quiesce in-flight ledger saves (tests and graceful shutdown). */
