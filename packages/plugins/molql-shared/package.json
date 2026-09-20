@@ -1,0 +1,22 @@
+{
+  "name": "@science-studio/molql-shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared MolQL tool execution logic for the dsh and openclaw plugins.",
+  "main": "src/molql.ts",
+  "types": "src/molql.ts",
+  "exports": {
+    ".": "./src/molql.ts"
+  },
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@science-studio/molql-viewer": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -4,70 +4,18 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { ContentBlock } from "@deepseek-ai/dsh-llm";
 // Type-only: brings in the `ctx.skills` module augmentation.
 import type {} from "@deepseek-ai/dsh-skill";
-
-/**
- * The `molql` tool for the DeepSeek Harness.
- *
- * The model translates a natural-language request into a Mol* `mol-script`
- * selection; this tool forwards it as structured JSON that the Science Studio
- * web viewer compiles and highlights. The tool itself never touches a structure
- * — semantic validation (does the selection match anything) happens in the
- * browser, where the structure lives.
- *
- * The full syntax manual ships under `skill/` and is registered as an embedded
- * skill, so the model can load it on demand.
- */
-
-/** Compact cheat-sheet for the common cases; the skill carries the full manual. */
-export const TOOL_DESCRIPTION = `Select and highlight atoms in the molecular structure currently open in the Science Studio viewer.
-
-Provide a MolQL (Mol* mol-script) expression. The viewer compiles it and highlights/focuses the matching atoms. Common forms:
-- chain: (sel.atom.chains (= atom.chain A))
-- residue range: (sel.atom.res (in-range atom.resno 10 20))
-- residue name: (sel.atom.res (= atom.resname ALA))
-- atom name: (sel.atom.atoms (= atom.name CA))
-- element: (sel.atom.atoms (= atom.el _Fe))
-- B-factor: (sel.atom.pick (sel.atom.res (= atom.entity-type polymer)) :test (> atom.bfactor 50))
-- within distance: (sel.atom.include-surroundings (sel.atom.atoms (= atom.el _Fe)) :radius 5 :as-whole-residues true)
-- union: (sel.atom.merge (sel.atom.chains (= atom.chain A)) (sel.atom.chains (= atom.chain B)))
-- exclude: (sel.atom.except-by (sel.atom.all) :by (sel.atom.chains (= atom.chain A)))
-
-Symbols are bare; element symbols take a leading underscore (_Fe). Load the "molql" skill for the complete syntax reference.`;
+import {
+  TOOL_DESCRIPTION,
+  INTERACTION_TOOL_NAME,
+  INTERACTION_DESCRIPTION,
+  createMolqlResult,
+  fetchInteractions,
+} from "@science-studio/molql-shared";
 
 export const SKILL_DESCRIPTION =
   "Translate natural-language molecular structure queries into MolQL (Mol* mol-script) selections for the Science Studio structure viewer.";
 
 const SKILL_NAME = "molql";
-
-/** The interaction tool asks the Science Studio service, which owns file access. */
-const INTERACTION_TOOL_NAME = "computeInteraction";
-
-const INTERACTION_DESCRIPTION = `Compute the non-covalent interactions (hydrogen bonds, pi-stacking, cation-pi, halogen bonds, metal coordination) that involve a selection in a workspace structure file, using Mol*'s interaction module.
-
-Call this when the user asks about the interactions of a residue, chemical bond or ligand that appears in the conversation as a mention of the form \`@<project>/<path>/<molql>\`. Split that mention into the three arguments:
-- project: the first segment, e.g. "project-default"
-- path: the workspace-relative file path, e.g. "boltz_holo.pdb"
-- molql: the parenthesized MolQL selection expression
-
-Returns a Markdown table: interaction type, the two atom/residue endpoints, and the distance in Å.`;
-
-const SERVICE_URL = process.env.SCIENCE_STUDIO_SERVICE_URL ?? "http://127.0.0.1:3001";
-
-async function fetchInteractions(args: {
-  project: string;
-  path: string;
-  molql: string;
-}): Promise<{ table: string }> {
-  const url = `${SERVICE_URL}/api/workspace/interactions?project=${encodeURIComponent(
-    args.project,
-  )}&path=${encodeURIComponent(args.path)}&molql=${encodeURIComponent(args.molql)}`;
-  const response = await fetch(url);
-  const body = (await response.json().catch(() => null)) as { table?: string; error?: string } | null;
-  if (!response.ok) {
-    throw new Error(body?.error ?? `interaction service answered ${response.status}`);
-  }
-  return { table: body?.table ?? "" };
-}
 
 export const name = "molql-tool";
 
@@ -129,14 +77,7 @@ export function apply(ctx: Context): void {
         ],
       },
       async execute(args) {
-        const mode = args.mode === "highlight" ? "highlight" : "select";
-        return {
-          type: "molql-selection",
-          molql: args.molql.trim(),
-          ...(args.description ? { description: args.description } : {}),
-          focus: args.focus ?? true,
-          mode,
-        };
+        return createMolqlResult(args);
       },
     }),
   );

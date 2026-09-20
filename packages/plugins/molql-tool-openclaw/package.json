@@ -14,6 +14,7 @@
     "sync-skill": "node scripts/sync-skill.mjs",
     "build": "node scripts/sync-skill.mjs && node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
     "plugin:build": "npm run build && openclaw plugins build --entry ./dist/index.js",
     "plugin:validate": "openclaw plugins validate --entry ./dist/index.js",
     "plugin:install": "openclaw plugins uninstall molql-tool && npm run plugin:build && node scripts/install.mjs && openclaw plugins enable molql-tool --accept-capabilities"
@@ -24,6 +25,8 @@
   "devDependencies": {
     "esbuild": "^0.28.2",
     "openclaw": "^2026.8.1",
+    "@science-studio/molql-shared": "workspace:*",
+    "tsx": "^4.0.0",
     "typebox": "^1.1.38",
     "typescript": "^5.5.0"
   },
