@@ -58,7 +58,12 @@ export function subagentTabChildId(path: string): string {
   return isSubagentTab(path) ? path.slice("subagent:".length) : "";
 }
 
-/** True when the file is text-based and can be viewed/edited in source mode. */
+/**
+ * True when the file is text-based and can be viewed/edited in source mode.
+ * Cron tasks are excluded — they have their own dedicated editor UI.
+ * Note: this only checks the file name, not the path; the caller must also
+ * check `isCronTaskPath` for full correctness.
+ */
 export function isTextEditable(name: string): boolean {
   const kind = kindFor(name);
   return kind !== "pdf" && kind !== "structure";
