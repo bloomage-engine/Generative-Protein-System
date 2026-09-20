@@ -149,12 +149,23 @@ export async function localRecordStore(env: NodeJS.ProcessEnv): Promise<RecordSt
   return createJsonlRecordStore(env.RECORD_STORE_PATH ?? join(base, "science-studio", "record.jsonl"));
 }
 
-/** Narrow the authoritative record store to the runtime-agnostic adapter seam. */
+/**
+ * Narrow the authoritative record store to the runtime-agnostic adapter seam.
+ * The view FORWARDS the record's durable extensions — the session transcript and
+ * the subagent rows (docs/adr/0019) — as well as `addRun`: the dsh adapter owns
+ * their shape and writes/reads them through THIS view, so dropping them here
+ * makes every turn ephemeral (the "messages lost after restart" bug).
+ */
 export function toRecordStoreLike(store: RecordStore): RecordStoreLike {
   return {
     addRun: async (run) => {
       await store.addRun(run);
     },
+    saveSessionTranscript: (sessionId, doc) => store.saveSessionTranscript(sessionId, doc),
+    loadSessionTranscript: (sessionId) => store.loadSessionTranscript(sessionId),
+    upsertSubagent: (subagent) => store.upsertSubagent(subagent),
+    loadSubagent: (id) => store.loadSubagent(id),
+    listSubagents: (parentSessionId) => store.listSubagents(parentSessionId),
   };
 }
 
