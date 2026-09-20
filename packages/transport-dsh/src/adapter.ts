@@ -406,9 +406,9 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     // waiting is what makes that request work instead of failing.
     await this.awaitInit();
     // A batch that drives no model turn — the mount probe, or commands only —
-    // is served entirely by this process (reconcile, mirror restore, and the
-    // adapter's own replies), so it must not pay for a harness child: `/status`
-    // answers even where the harness could not start at all.
+    // is served entirely by this process (reconcile, record/transcript restore,
+    // and the adapter's own replies), so it must not pay for a harness child:
+    // `/status` answers even where the harness could not start at all.
     if (commands.some((c) => c.type === "add-message" && !isCommandText(c.message.content))) {
       await this.ensureStarted();
     }
