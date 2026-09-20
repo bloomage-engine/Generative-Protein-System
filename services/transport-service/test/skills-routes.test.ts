@@ -161,6 +161,23 @@ test("POST /api/skills/remove requires confirm and maps errors", async () => {
   });
 });
 
+test("GET /api/skills propagates an adapter failure but keeps the no-surface answer", async () => {
+  const adapter = adapterWith({
+    skills: async () => {
+      throw new Error("boom");
+    },
+  });
+  await withServer(backend(adapter), async (base) => {
+    const res = await fetch(`${base}/api/skills`);
+    assert.equal(res.status, 500, "a transient failure is not 'available:false'");
+  });
+  await withServer(backend(adapterWith()), async (base) => {
+    const res = await fetch(`${base}/api/skills`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { available: false, runtime: "dsh", skills: [] });
+  });
+});
+
 test("a non-local non-manager principal can read but not write skills", async () => {
   const researcher: Principal = {
     id: "u-1",

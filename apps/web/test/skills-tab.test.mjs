@@ -70,12 +70,20 @@ test(
 
       let skills = [skill("alpha", "project", "A project skill"), skill("gamma", "global", "A global skill")];
       let available = true;
+      let failRequests = false;
       const writes = [];
       await page.route(
         (url) => url.pathname === "/api/skills" || url.pathname.startsWith("/api/skills/"),
         async (route) => {
         const request = route.request();
         const url = new URL(request.url());
+        if (failRequests) {
+          return route.fulfill({
+            status: 500,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "boom" }),
+          });
+        }
         if (request.method() === "GET") {
           return route.fulfill({ json: { available, runtime: "dsh", skills } });
         }
@@ -159,6 +167,16 @@ test(
       assert.equal(layout.dialogFits, true, "the dialog fits the viewport");
       assert.equal(layout.overflowY, "auto", "the tab content is a scroll container");
       assert.equal(layout.scrolled, true, "the tab content scrolls");
+
+      // A transport failure is an error state with a Retry — NOT the
+      // "runtime lacks the surface" copy (docs/adr/0021).
+      failRequests = true;
+      await page.getByRole("tab", { name: "Model" }).click();
+      await page.getByRole("tab", { name: "Skills" }).click();
+      await page.getByText("boom").waitFor({ timeout: 10_000 });
+      failRequests = false;
+      await page.getByRole("button", { name: "Retry" }).click();
+      await page.getByText("Skill 0", { exact: true }).waitFor({ timeout: 10_000 });
 
       // A runtime without the surface shows the neutral unavailable copy.
       available = false;

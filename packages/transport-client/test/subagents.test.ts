@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fetchSubagentTranscript } from "../src/subagents.js";
+import { fetchSubagentTranscript, fetchSubagents } from "../src/subagents.js";
 
 test("fetchSubagentTranscript targets the per-child route and parses the body", async () => {
   const transcript = { id: "child-1", parentId: "s1", messages: [] };
@@ -17,6 +17,20 @@ test("fetchSubagentTranscript targets the per-child route and parses the body", 
     const got = await fetchSubagentTranscript("/api/transport", "p1", "child-1", "s1");
     assert.deepEqual(got, transcript);
     assert.match(calls[0]!, /\/api\/transport\/subagents\/child-1\/transcript\?projectId=p1&threadId=s1/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("fetchSubagents throws on a failed poll so the hook can keep its last list", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ error: "boom" }), {
+      status: 500,
+      headers: { "content-type": "application/json" },
+    })) as typeof fetch;
+  try {
+    await assert.rejects(() => fetchSubagents("/api/transport", { projectId: "p1", threadId: "s1" }));
   } finally {
     globalThis.fetch = original;
   }

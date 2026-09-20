@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fetchSkills, installSkill, removeSkill } from "../src/skills.js";
+import { SkillsRequestError, fetchSkills, installSkill, removeSkill } from "../src/skills.js";
 
 interface Call {
   url: string;
@@ -52,9 +52,14 @@ test("fetchSkills GETs the catalog with the Project claim", async () => {
   });
 });
 
-test("fetchSkills degrades to unavailable on a failed hop", async () => {
+test("fetchSkills throws on a failed hop so the caller owns the decision", async () => {
   await withFetch(500, { error: "boom" }, async () => {
-    assert.deepEqual(await fetchSkills(), { available: false, runtime: "", skills: [] });
+    await assert.rejects(() => fetchSkills(), (err: unknown) => {
+      assert.ok(err instanceof SkillsRequestError);
+      assert.equal(err.status, 500);
+      assert.match(err.message, /boom/);
+      return true;
+    });
   });
 });
 

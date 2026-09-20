@@ -49,7 +49,9 @@ test("GET /api/transport/subagents answers empty when the runtime has no surface
   });
 });
 
-test("GET /api/transport/subagents degrades to empty when the adapter throws", async () => {
+test("GET /api/transport/subagents propagates an adapter failure", async () => {
+  // A transient failure must reach the client surface, whose hook owns the
+  // keep-last decision (docs/adr/0021) — the service never masks it as empty.
   const adapter: RuntimeAdapter = {
     ...emptyAdapter,
     subagents: async () => {
@@ -58,8 +60,9 @@ test("GET /api/transport/subagents degrades to empty when the adapter throws", a
   };
   await withAdapter(adapter, async (base) => {
     const res = await fetch(`${base}/api/transport/subagents?projectId=p1&threadId=sess-1`);
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { subagents: [] });
+    assert.equal(res.status, 500);
+    const body = (await res.json()) as { statusCode?: number };
+    assert.equal(body.statusCode, 500, "the error body, not an empty success");
   });
 });
 
@@ -76,6 +79,19 @@ test("GET /api/transport/subagents/:childId/transcript serves the adapter's reco
     assert.deepEqual(await ok.json(), { transcript });
     const missing = await fetch(`${base}/api/transport/subagents/nobody/transcript?projectId=p1&threadId=sess-1`);
     assert.equal(missing.status, 404, "a null answer is a 404");
+  });
+});
+
+test("GET .../transcript propagates a thrown read as a failure", async () => {
+  const adapter: RuntimeAdapter = {
+    ...emptyAdapter,
+    subagentTranscript: async () => {
+      throw new Error("boom");
+    },
+  };
+  await withAdapter(adapter, async (base) => {
+    const res = await fetch(`${base}/api/transport/subagents/child-1/transcript?projectId=p1&threadId=sess-1`);
+    assert.equal(res.status, 500, "a thrown read is not a 'record unavailable' 404");
   });
 });
 

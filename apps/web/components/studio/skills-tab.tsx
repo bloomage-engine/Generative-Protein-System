@@ -26,24 +26,37 @@ export function SkillsTab({ projectId }: { projectId: string | null }) {
   const [error, setError] = React.useState<string | null>(null);
   const [showForm, setShowForm] = React.useState(false);
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    const next = await fetchSkills(projectId ? { projectId } : {});
-    setView(next);
-    setLoading(false);
+  // A failed refresh KEEPS the last good view (the same keep-last policy every
+  // other surface uses); it only becomes the error state when there is nothing
+  // to show.
+  const load = React.useCallback(async (): Promise<boolean> => {
+    setError(null);
+    try {
+      setView(await fetchSkills(projectId ? { projectId } : {}));
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return false;
+    }
   }, [projectId]);
 
   React.useEffect(() => {
-    void load();
+    let active = true;
+    setLoading(true);
+    void load().finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
   }, [load]);
 
-  /** Run one action, reload on success. Returns false so a form can keep its input. */
+  /** Run one action, then refresh. Returns false (keeping a form's input) on failure. */
   const run = async (action: () => Promise<unknown>): Promise<boolean> => {
     setError(null);
     try {
       await action();
-      await load();
-      return true;
+      return await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       return false;
@@ -56,6 +69,20 @@ export function SkillsTab({ projectId }: { projectId: string | null }) {
         <Loader2 className="size-4 animate-spin" />
         Loading…
       </p>
+    );
+  }
+
+  // A transport failure is NOT the `available:false` "no surface" answer
+  // (docs/adr/0021) — it is an error the user can retry.
+  if (view === null && error !== null) {
+    return (
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">Skills</h3>
+        <p className="text-xs text-destructive">{error}</p>
+        <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
+          Retry
+        </Button>
+      </section>
     );
   }
 

@@ -38,7 +38,7 @@ examples/transport-dsh-example     minimal assistant-ui example app over the dsh
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/design/                      design specs (research-agent-framework EN/ZH + implementation-plan)
-docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete, 0015 deployment settings are service-owned, 0016 subagent activity is an optional adapter surface (dsh keeps a durable ledger; addendum), 0017 cron scheduling is service-owned and a task is a workspace file, 0018 a dsh plugin instructs the parent to report subagent results)
+docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete, 0015 deployment settings are service-owned, 0016 subagent activity is an optional adapter surface (dsh keeps a durable ledger; addendum), 0017 cron scheduling is service-owned and a task is a workspace file, 0018 a dsh plugin instructs the parent to report subagent results, 0019 durable session and subagent transcript belongs to the record, 0020 dsh skills are configured through the workbench, 0021 the `/api` hop relays and the client surface owns failure policy)
 CONTEXT.md                        domain glossary (authoritative vocabulary)
 ```
 
@@ -564,9 +564,14 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `runtime`/`dynamic` stay literal in each route file (Next must statically
   analyze route segment config, so it cannot be re-exported). Each route keeps
   only what is genuinely per-hop: the upstream path + query (the watch is the one
-  hop that WHITELISTS its query instead of relaying it), the request body, and —
-  for `transport/commands` — the one failure policy: an empty catalog on a
-  failed upstream, so the composer degrades to plain chat.
+  hop that WHITELISTS its query instead of relaying it) and the request body.
+  **No hop rewrites a failure** (docs/adr/0021): the transport-service logs an
+  adapter throw and rethrows, the proxy relays it, and the CLIENT surface owns
+  the decision — `useSubagents` / `useCronTasks` / `useSessionMetrics` keep
+  their last good value, `useRuntimeCommands` degrades to an empty catalog, and
+  the Skills tab shows an error with a Retry. A runtime that lacks an optional
+  surface is NOT a failure: the service answers a successful empty payload
+  (`subagents`, `commands`) or `available:false` (`skills`).
   Note the response HEAD is only flushed with the first body chunk (Next's
   Response plumbing, both before and after this change): a watch that has nothing
   to push shows no TTFB until it does.

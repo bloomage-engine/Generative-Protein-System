@@ -20,7 +20,6 @@ import { Readable } from "node:stream";
 import { createInMemoryRecordStore, type Session } from "@science-studio/record";
 import type {
   AttachmentRef,
-  CommandDescriptor,
   FileContent,
   FileStat,
   Principal,
@@ -370,22 +369,26 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     // The catalog belongs to the Project's OWN adapter (one per Project,
     // docs/adr/0008), so it follows the request's Project like every other route.
     const { environment } = await scope.acquire(request);
-    let commands: CommandDescriptor[] = [];
-    if (typeof environment.adapter.listCommands === "function") {
-      try {
-        commands = await environment.adapter.listCommands();
-      } catch (err) {
-        console.error("[transport-service] commands.list failed", err);
-      }
+    const adapter = environment.adapter;
+    // A runtime without the surface is NOT a failure: it answers an empty
+    // catalog so the composer degrades to plain chat. A real failure is logged
+    // and propagates — `useRuntimeCommands` owns the degrade (docs/adr/0021).
+    if (typeof adapter.listCommands !== "function") return { commands: [] };
+    try {
+      return { commands: await adapter.listCommands() };
+    } catch (err) {
+      console.error("[transport-service] commands.list failed", err);
+      throw err;
     }
-    return { commands };
   });
 
   // -- Live subagent activity (the dsh adapter's optional surface) -----------
   app.get("/api/transport/subagents", async (request) => {
     // Like the catalog, the subagent ledger belongs to the Project's OWN
     // adapter (one per Project, docs/adr/0008). A runtime without the surface
-    // answers empty so the panel needs no runtime-specific branch.
+    // answers empty so the panel needs no runtime-specific branch; a real
+    // failure propagates so `useSubagents` can keep its last good list
+    // (docs/adr/0021).
     const { environment, threadId } = await scope.acquire(request);
     const adapter = environment.adapter;
     if (typeof adapter.subagents !== "function") return { subagents: [] };
@@ -394,7 +397,7 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       return { subagents: await adapter.subagents(sessionId) };
     } catch (err) {
       console.error("[transport-service] subagents.list failed", err);
-      return { subagents: [] };
+      throw err;
     }
   });
 
@@ -413,17 +416,18 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     if (typeof adapter.subagentTranscript !== "function") {
       return reply.code(404).send({ error: `runtime "${adapter.runtime}" has no subagent records` });
     }
-    let transcript: unknown;
+    // A `null` answer is the friendly "the record is not available" 404; a
+    // THROWN read is a real failure and propagates (docs/adr/0021).
     try {
-      transcript = await adapter.subagentTranscript(sessionId, childId);
+      const transcript = await adapter.subagentTranscript(sessionId, childId);
+      if (transcript === null) {
+        return reply.code(404).send({ error: "the subagent record is not available" });
+      }
+      return { transcript };
     } catch (err) {
       console.error("[transport-service] subagent transcript read failed", err);
-      return reply.code(404).send({ error: "the subagent record is not available" });
+      throw err;
     }
-    if (transcript === null) {
-      return reply.code(404).send({ error: "the subagent record is not available" });
-    }
-    return { transcript };
   });
 
   // -- Skills (the dsh adapter's optional surface, docs/adr/0020) ------------
@@ -439,8 +443,10 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     try {
       return { available: true, runtime: adapter.runtime, skills: await adapter.skills() };
     } catch (err) {
+      // A real failure propagates so the tab's own error state can be reached
+      // (docs/adr/0021); `available:false` stays reserved for "no surface".
       console.error("[transport-service] skills.list failed", err);
-      return { available: true, runtime: adapter.runtime, skills: [] };
+      throw err;
     }
   });
 

@@ -55,17 +55,14 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
 }
 
 /**
- * Read the Project's skills catalog. A failed hop degrades to an unavailable
- * empty view so the tab shows a neutral state rather than an error (the same
- * fail-soft policy the Subagents proxy uses).
+ * Read the Project's skills catalog. A non-2xx throws `SkillsRequestError`, so
+ * the caller owns the failure decision (docs/adr/0021): the tab separates a
+ * transport failure (an error state) from the service's `available:false`
+ * "no skills surface" answer.
  */
 export async function fetchSkills(options: SkillsApiOptions = {}): Promise<SkillsView> {
   const api = options.api ?? DEFAULT_SKILLS_API;
-  try {
-    return await request<SkillsView>(`${base(api)}${query(options.projectId)}`);
-  } catch {
-    return { available: false, runtime: "", skills: [] };
-  }
+  return request<SkillsView>(`${base(api)}${query(options.projectId)}`);
 }
 
 /** Install (or overwrite) one Project skill; returns the installed skill. */
