@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type * as React from "react";
 import dynamic from "next/dynamic";
 import { Code, Download, FileX, Loader2, Save, X } from "lucide-react";
@@ -258,10 +258,61 @@ function Preview({ path, name }: { path: string; name: string }) {
 }
 
 /** The text preview: markdown / JSON / highlighted code / plain text. */
-function TextPreview({ path, name }: { path: string; name: string }) {
+function TextPreview({
+  path,
+  name,
+  sourceView,
+  onEditedTextChange,
+  onDirtyChange,
+}: {
+  path: string;
+  name: string;
+  sourceView: boolean;
+  onEditedTextChange: (text: string | null) => void;
+  onDirtyChange: (dirty: boolean) => void;
+}) {
   const { text, mime, isLoading, error } = useWorkspaceFile(path);
   const kind = kindFor(name, mime);
   const language = kind === "code" ? languageFor(name, kind) : undefined;
+
+  const [editedText, setEditedText] = useState<string>("");
+
+  // Sync editedText when source view opens or text loads
+  const prevSourceView = useRef(sourceView);
+  useEffect(() => {
+    if (sourceView && !prevSourceView.current) {
+      // Entering source view — initialize from loaded text
+      const initial = text ?? "";
+      setEditedText(initial);
+      onEditedTextChange(initial);
+      onDirtyChange(false);
+    }
+    prevSourceView.current = sourceView;
+  }, [sourceView, text, onEditedTextChange, onDirtyChange]);
+
+  // Reset when text changes externally (e.g. re-fetch after save)
+  useEffect(() => {
+    if (!sourceView && text != null) {
+      setEditedText(text);
+      onEditedTextChange(text);
+    }
+  }, [text, sourceView, onEditedTextChange]);
+
+  if (sourceView) {
+    return (
+      <textarea
+        className="h-full w-full resize-none bg-background p-4 font-mono text-sm whitespace-pre"
+        value={editedText}
+        onChange={(e) => {
+          const val = e.target.value;
+          setEditedText(val);
+          onEditedTextChange(val);
+          onDirtyChange(val !== (text ?? ""));
+        }}
+        spellCheck={false}
+      />
+    );
+  }
 
   return (
     <>
