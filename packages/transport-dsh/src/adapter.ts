@@ -37,7 +37,6 @@ import {
   writeSubagentPatch,
   type DshCommandBridge,
 } from "./bridge.js";
- import { TranscriptMirror } from "./mirror.js";
 import { createDshBehavior } from "./behavior.js";
 import { applyRouteSettings } from "./route-settings.js";
 import { readChildTranscript } from "./child-transcript.js";
@@ -66,7 +65,13 @@ export interface DshRuntimeAdapterOptions {
    * `createGateway` seam.
    */
   createClient?: (options: DshClientLaunchOptions) => DshTurnClient;
-  /** Override the canonical-transcript mirror directory (tests use a tmp dir). */
+  /**
+   * Retained config — RETIRED for durability: the record store (docs/adr/0019)
+   * is now the durable session-transcript home, so this no longer feeds an
+   * adapter-owned mirror. Kept as a valid (stored, not-yet-consumed) option for
+   * config/binding/desktop/test compat; its full retirement (the desktop config
+   * surface + `binding.transcriptDir`) is a follow-on.
+   */
   transcriptDir?: string;
   /**
    * The child-side bridge plugin this adapter's launch patch mounts. Defaults to
@@ -119,9 +124,9 @@ export interface DshRuntimeAdapterOptions {
  *   answers itself (`/status`, `/new` — see commands.ts and docs/adr/0010) with
  *   the harness's OWN registry, which the child-side bridge plugin exposes over
  *   a private socket mounted by a per-launch profile patch (docs/adr/0011).
- * - Cold start restores each session's canonical transcript from Science
- *   Studio's OWN mirror file (not dsh's internal session log — see
- *   docs/adr/0004).
+ * - Cold start restores each session's canonical transcript from the RECORD
+ *   STORE (its durable home — docs/adr/0019), not dsh's internal session log
+ *   (docs/adr/0004).
  *
  * The run lifecycle lives in the shared kit `SessionRuntime` (docs/adr/0005);
  * this adapter holds one runtime per session and supplies the dsh behavior.
@@ -134,7 +139,6 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private dshHome: string | undefined = undefined;
   private launchCwd: string | undefined = undefined;
   private recordStore: RecordStoreLike | null = null;
-  private mirror: TranscriptMirror | null = null;
   private ready: Promise<void> | null = null;
   /** This adapter's parsed launch surface (private to the dsh binding). */
   private binding: DshBinding = {};
@@ -256,11 +260,9 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     const provider = binding.provider ?? env("DSH_PROVIDER") ?? DEFAULT_PROVIDER;
     const model = binding.model ?? env("DSH_MODEL") ?? DEFAULT_MODEL;
     const maxTokens = binding.maxTokens;
-    const dir =
-      this.transcriptDir ||
-      binding.transcriptDir ||
-      env("DSH_TRANSCRIPT_DIR") ||
-      join(tmpdir(), "science-studio", "transcripts");
+    // The session transcript's durable home is the record store (bound above),
+    // not an adapter-owned file (docs/adr/0019). `transcriptDir` remains a
+    // retained (retired-for-durability) config surface for compat.
     // The harness home the child's session logs live under, kept for the
     // child-transcript reads: an explicit binding/env home wins, then the
     // constructor seam (tests), then the harness default directory.
@@ -348,7 +350,6 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       ...(routeEnv === undefined ? {} : { env: { ...process.env, ...routeEnv } }),
       ...(patches.length > 0 ? { patches } : {}),
     });
-    this.mirror = new TranscriptMirror(dir);
     // The subagent ledger is DURABLE through the record (docs/adr/0019): each
     // run is a record `Subagent` row keyed by its stable id, so a restart
     // restores the session's finished runs + their transcripts instead of
