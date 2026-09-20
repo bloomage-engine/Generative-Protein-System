@@ -21,6 +21,7 @@ import {
 } from "@science-studio/transport-client";
 import { useStudioStore } from "@/store/studio-store";
 import { desktopBridge } from "@/lib/desktop-bridge";
+import { SkillsTab } from "@/components/studio/skills-tab";
 
 export const SETTINGS_API = process.env.NEXT_PUBLIC_SETTINGS_URL ?? DEFAULT_SETTINGS_API;
 
@@ -29,6 +30,7 @@ type Status = "idle" | "loading" | "saving" | "saved" | "error";
 export function SettingsDialog() {
   const open = useStudioStore((s) => s.settingsOpen);
   const closeSettings = useStudioStore((s) => s.closeSettings);
+  const projectId = useStudioStore((s) => s.projectId);
   const [view, setView] = React.useState<RuntimeSettingsView | null>(null);
   const [provider, setProvider] = React.useState("");
   const [model, setModel] = React.useState("");
@@ -133,6 +135,7 @@ export function SettingsDialog() {
             <TabsTrigger value="plugins">Plugins</TabsTrigger>
             <TabsTrigger value="agent">Agent</TabsTrigger>
             <TabsTrigger value="subagents">Subagents</TabsTrigger>
+            <TabsTrigger value="skills">Skills</TabsTrigger>
           </TabsList>
           <TabsContent value="model" className="space-y-6">
             {status === "loading" ? (
@@ -271,6 +274,9 @@ export function SettingsDialog() {
                 </div>
               </>
             )}
+          </TabsContent>
+          <TabsContent value="skills">
+            <SkillsTab projectId={projectId} />
           </TabsContent>
         </Tabs>
       </DialogContent>

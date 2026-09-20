@@ -95,6 +95,21 @@ export type {
   RuntimeSettingsPatch,
 } from "@science-studio/transport";
 export {
+  DEFAULT_SKILLS_API,
+  SkillsRequestError,
+  fetchSkills,
+  installSkill,
+  removeSkill,
+  type SkillsApiOptions,
+  type SkillsView,
+} from "./skills.js";
+export type {
+  SkillInfo,
+  SkillInstallInput,
+  SkillInvocationPolicy,
+  SkillScope,
+} from "@science-studio/transport";
+export {
   DEFAULT_TRANSPORT_API,
   fetchSubagents,
   useSubagents,

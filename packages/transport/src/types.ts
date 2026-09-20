@@ -1,5 +1,6 @@
 import type { Id, Run, RunStatus, PersistedTranscript, Subagent } from "@science-studio/record";
 import type { RuntimeBinding } from "./runtime.js";
+import type { SkillInfo, SkillInstallInput } from "./skills.js";
 import type { Workspace } from "./workspace.js";
 
 /**
@@ -251,6 +252,25 @@ export interface RuntimeAdapter {
    * unrecognized format).
    */
   subagentTranscript?(sessionKey: string, childId: string): Promise<SubagentTranscript | null>;
+  /**
+   * The skills the runtime discovers for this Project and globally, as
+   * best-effort live state. OPTIONAL: a runtime without a skill system omits it
+   * and the caller treats the whole skill surface as unavailable
+   * (docs/adr/0020, the same optional-surface pattern as `subagents?`). A
+   * discovery read must NOT start or wake a backing process.
+   */
+  skills?(): Promise<SkillInfo[]>;
+  /**
+   * Install (or, with `overwrite`, replace) one Project skill. OPTIONAL; pairs
+   * with `skills?`. Implementations throw `SkillNameInvalidError`,
+   * `SkillExistsError`, or the workspace seam's `WorkspaceUnavailableError`.
+   */
+  installSkill?(input: SkillInstallInput): Promise<SkillInfo>;
+  /**
+   * Remove one Project skill. OPTIONAL; pairs with `skills?`. Throws
+   * `SkillNameInvalidError` or `SkillNotFoundError`.
+   */
+  removeSkill?(name: string): Promise<void>;
   /**
    * The canonical session key a client `threadId` targets. Runtimes whose
    * session namespace differs from raw client thread ids implement this and

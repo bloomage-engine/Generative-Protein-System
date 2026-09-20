@@ -52,6 +52,7 @@ import {
   saveSettings,
   viewOf,
 } from "./settings.js";
+import { parseSkillInstall, parseSkillRemove, sendSkillError } from "./skills.js";
 import { encodeOp, parseClaimedState, WireOpsBuilder } from "./wire.js";
 
 declare module "fastify" {
@@ -423,6 +424,69 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       return reply.code(404).send({ error: "the subagent record is not available" });
     }
     return { transcript };
+  });
+
+  // -- Skills (the dsh adapter's optional surface, docs/adr/0020) ------------
+  // The catalog belongs to the Project's OWN adapter (one per Project,
+  // docs/adr/0008). A runtime without the surface answers "unavailable" so the
+  // workbench tab degrades instead of needing a runtime-specific branch.
+  app.get("/api/skills", async (request) => {
+    const { environment } = await scope.acquire(request);
+    const adapter = environment.adapter;
+    if (typeof adapter.skills !== "function") {
+      return { available: false, runtime: adapter.runtime, skills: [] };
+    }
+    try {
+      return { available: true, runtime: adapter.runtime, skills: await adapter.skills() };
+    } catch (err) {
+      console.error("[transport-service] skills.list failed", err);
+      return { available: true, runtime: adapter.runtime, skills: [] };
+    }
+  });
+
+  app.post("/api/skills/install", async (request, reply) => {
+    // Skills are shared Project state: hosted mode gates the write like
+    // /api/settings, while the read stays principal-only.
+    const principal = request.principal!;
+    if (!principal.local && !principal.roles.includes("manager")) {
+      return reply
+        .code(403)
+        .send({ error: "changing skills requires a local or manager principal" });
+    }
+    const parsed = parseSkillInstall(request.body);
+    if ("error" in parsed) return reply.code(400).send({ error: parsed.error });
+    const { environment } = await scope.acquire(request);
+    const adapter = environment.adapter;
+    if (typeof adapter.installSkill !== "function") {
+      return reply.code(501).send({ error: `runtime "${adapter.runtime}" has no skills surface` });
+    }
+    try {
+      return { skill: await adapter.installSkill(parsed.input) };
+    } catch (err) {
+      return sendSkillError(reply, err);
+    }
+  });
+
+  app.post("/api/skills/remove", async (request, reply) => {
+    const principal = request.principal!;
+    if (!principal.local && !principal.roles.includes("manager")) {
+      return reply
+        .code(403)
+        .send({ error: "changing skills requires a local or manager principal" });
+    }
+    const parsed = parseSkillRemove(request.body);
+    if ("error" in parsed) return reply.code(400).send({ error: parsed.error });
+    const { environment } = await scope.acquire(request);
+    const adapter = environment.adapter;
+    if (typeof adapter.removeSkill !== "function") {
+      return reply.code(501).send({ error: `runtime "${adapter.runtime}" has no skills surface` });
+    }
+    try {
+      await adapter.removeSkill(parsed.name);
+      return { removed: parsed.name };
+    } catch (err) {
+      return sendSkillError(reply, err);
+    }
   });
 
   // -- Scheduled tasks (per-Project, service-owned) --------------------------

@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   SessionRuntime,
+  SkillNotFoundError,
+  WorkspaceUnavailableError,
   isCommandText,
   type CommandDescriptor,
   type RecordStoreLike,
@@ -11,11 +13,14 @@ import {
   type RuntimeInitOptions,
   type SessionBehavior,
   type SessionState,
+  type SkillInfo,
+  type SkillInstallInput,
   type StateDelta,
   type SubagentRun,
   type SubagentTranscript,
   type TransportCommand,
   type WatchSnapshot,
+  type Workspace,
 } from "@science-studio/transport";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
 import type { HarnessNotification } from "@deepseek-ai/dsh-sdk-client";
@@ -40,6 +45,15 @@ import {
 import { createDshBehavior } from "./behavior.js";
 import { applyRouteSettings } from "./route-settings.js";
 import { readChildTranscript } from "./child-transcript.js";
+import {
+  PROJECT_SKILL_DIR,
+  discoverSkills,
+  installProjectSkill,
+  readSkillBundle,
+  removeProjectSkill,
+  serializeSkill,
+  type ProjectSkillInstall,
+} from "./skills.js";
 import { RESTORED_WIRE_PREFIX, SubagentRegistry } from "./subagents.js";
 
 const DEFAULT_PROVIDER = "deepseek-official";
@@ -138,6 +152,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private client: DshTurnClient | null = null;
   private dshHome: string | undefined = undefined;
   private launchCwd: string | undefined = undefined;
+  private workspace: Workspace | null = null;
   private recordStore: RecordStoreLike | null = null;
   private ready: Promise<void> | null = null;
   /** This adapter's parsed launch surface (private to the dsh binding). */
@@ -229,6 +244,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   /** The body of {@link init}; the wrapper settles every waiter either way. */
   private async initialize(opts: RuntimeInitOptions): Promise<void> {
     this.recordStore = opts.recordStore;
+    this.workspace = opts.workspace ?? null;
     const binding = parseDshBinding(opts.binding);
     this.binding = binding;
 
@@ -647,6 +663,66 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       parentId: sessionKey,
       ...(run.stopReason === undefined ? {} : { stopReason: run.stopReason }),
     };
+  }
+
+  /**
+   * The skills the harness would discover for this Project and globally
+   * (docs/adr/0020). A filesystem scan only — it never starts or wakes the
+   * harness child, so a catalog read is cheap and answers while cold. Global
+   * entries carry a host path; project entries a workspace-relative path.
+   */
+  async skills(): Promise<SkillInfo[]> {
+    await this.initialized;
+    if (this.launchCwd === undefined || this.dshHome === undefined) return [];
+    return discoverSkills({
+      cwd: this.launchCwd,
+      dshHome: this.dshHome,
+      agentsHome: this.agentsHome(),
+    });
+  }
+
+  /** Install (or, with `overwrite`, replace) one Project skill. */
+  async installSkill(input: SkillInstallInput): Promise<SkillInfo> {
+    await this.initialized;
+    if (this.workspace === null) throw new WorkspaceUnavailableError(PROJECT_SKILL_DIR);
+    return installProjectSkill(this.workspace, await this.resolveInstall(input));
+  }
+
+  /** Remove one Project skill. */
+  async removeSkill(name: string): Promise<void> {
+    await this.initialized;
+    if (this.workspace === null) throw new WorkspaceUnavailableError(PROJECT_SKILL_DIR);
+    await removeProjectSkill(this.workspace, name);
+  }
+
+  /** The shared agents home whose `skills/` is the user-agents root. */
+  private agentsHome(): string {
+    return process.env.DSH_AGENTS_HOME ?? join(homedir(), ".agents");
+  }
+
+  /**
+   * Turn the structured install input into the bundle to write: the form fields
+   * serialized, or a global skill's files copied verbatim.
+   */
+  private async resolveInstall(input: SkillInstallInput): Promise<ProjectSkillInstall> {
+    const overwrite = input.overwrite === true;
+    if (input.copyFrom) {
+      const source = (await this.skills()).find(
+        (skill) =>
+          skill.name === input.copyFrom?.name && skill.scope === "global" && skill.shadowed !== true,
+      );
+      if (source === undefined) throw new SkillNotFoundError(input.copyFrom.name);
+      const bundle = await readSkillBundle(source.path);
+      if (bundle === null) throw new SkillNotFoundError(input.copyFrom.name);
+      return { skill: bundle.skill, files: bundle.files, ...(overwrite ? { overwrite } : {}) };
+    }
+    const skill = serializeSkill({
+      name: input.name ?? "",
+      description: input.description ?? "",
+      body: input.body ?? "",
+      ...(input.invocation ? { invocation: input.invocation } : {}),
+    });
+    return { skill, ...(overwrite ? { overwrite } : {}) };
   }
 
   /** Quiesce in-flight ledger saves (tests and graceful shutdown). */

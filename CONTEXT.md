@@ -65,6 +65,45 @@ reads/writes files in). Supplied by the host at initialize time; under a Project
 it is that Project's Project Workspace.
 _Avoid_: Workspace (collides with Project Workspace), Sandbox, Home
 
+## Skills (dsh)
+
+Vocabulary for the dsh skills system as the workbench exposes it
+(docs/adr/0020). A skill is a runtime-owned file or registration, never a record
+entity.
+
+**Skill**:
+A dsh on-demand capability description: instructions the model loads into
+context only when a task matches, rather than every session carrying the full
+text. It is discovered from ranked filesystem roots, or registered at runtime by
+a plugin; the model is told its name and description and loads the full content
+through the `skill` tool. _Avoid_: Tool (skills are instructions, not callable
+functions), Prompt, Template
+
+**Global Skill** vs **Project Skill**:
+A Global Skill lives in a user-level root and is shared across every Project; a
+Project Skill lives in one Project's Project Workspace and is visible only to
+that Project's agent. The workbench lists Global Skills read-only and installs /
+removes Project Skills (docs/adr/0020). _Avoid_: User skill, System skill
+
+**Project Skill Root**:
+The Project Workspace directory `.dsh/skills/` — a Project Skill is the bundle
+`.dsh/skills/<name>/SKILL.md`. (`.agents/skills/` is a cross-agent shared
+convention the workbench only reads.) _Avoid_: Skill dir, Skills folder
+
+**Skill Source** (rank):
+Which root a Skill was discovered under, in dsh's priority order: `project-dsh`
+(100), `project-agents` (200), then user-level `user-dsh` (400) and
+`user-agents` (500). A nearer source's same-name Skill shadows the farther one.
+_Avoid_: Layer, Priority, Origin
+
+**Skill Invocation Policy** (also **Skill Invocation**):
+The two independent booleans a Skill declares — `modelInvocable` (may the model
+see it in its catalog and load it) and `userInvocable` (may a user trigger it
+with a `/name` gesture). dsh reads them from the frontmatter
+(`disable-model-invocation`, `user-invocable`); they are the only per-skill
+switch, as the runtime has no enable/disable API. _Avoid_: Enabled, Visibility,
+Permission
+
 ## Research Work
 
 **Project**:

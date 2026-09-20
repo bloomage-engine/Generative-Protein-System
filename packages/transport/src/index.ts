@@ -71,6 +71,18 @@ export type {
   SubagentSettings,
   SubagentSettingsPatch,
 } from "./settings.js";
+export type {
+  SkillInfo,
+  SkillInstallInput,
+  SkillInvocationPolicy,
+  SkillScope,
+} from "./skills.js";
+export {
+  SkillExistsError,
+  SkillInvalidError,
+  SkillNameInvalidError,
+  SkillNotFoundError,
+} from "./skills.js";
 
 // -- 2. Kit ------------------------------------------------------------------
 export { foldState, sameMessages, sameConversation } from "./fold.js";
