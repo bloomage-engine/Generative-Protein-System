@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { partToContent } from "../src/converter.js";
-import type { MessagePart } from "@science-studio/transport";
+import { partToContent, pendingUserMessages } from "../src/converter.js";
+import type { AssistantTransportCommand } from "@assistant-ui/react";
+import type { Message, MessagePart } from "@science-studio/transport";
 
 test("text part maps to a text content part", () => {
   const part: MessagePart = { type: "text", text: "hello" };
@@ -90,4 +91,77 @@ test("file part becomes a chip carrying its workspace path", () => {
     data: "analysis/plot.png",
     sourceType: "id",
   });
+});
+
+// -- pendingUserMessages ----------------------------------------------------
+
+function send(text: string, extra: Partial<{ sourceId: string | null }> = {}): AssistantTransportCommand {
+  return {
+    type: "add-message",
+    message: { role: "user", parts: [{ type: "text", text }] },
+    parentId: null,
+    sourceId: extra.sourceId ?? null,
+  };
+}
+
+function userMessage(id: string, text: string): Message {
+  return { id, role: "user", parts: [{ type: "text", text }] };
+}
+
+test("pending user messages not in the state become optimistic stand-ins", () => {
+  const out = pendingUserMessages([], [send("hello there")]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.role, "user");
+  assert.deepEqual(out[0]!.parts, [{ type: "text", text: "hello there" }]);
+  assert.match(out[0]!.id, /^pending-/);
+});
+
+test("a pending message already echoed in the state is deduped out", () => {
+  const out = pendingUserMessages([userMessage("u1", "hello there")], [send("hello there")]);
+  assert.equal(out.length, 0);
+});
+
+test("the echo's server-minted id does not block the dedup (text-based)", () => {
+  const out = pendingUserMessages([userMessage("msg-123", "hello there")], [send("hello there")]);
+  assert.equal(out.length, 0);
+});
+
+test("mention directives are stripped on both sides before the dedup", () => {
+  const sent = "see :file[plot.png]{name=analysis/plot.png} for the curve";
+  const echoed = "see  for the curve".replace(/[ \t]{2,}/g, " ").trim();
+  assert.equal(pendingUserMessages([userMessage("u1", echoed)], [send(sent)]).length, 0);
+  assert.equal(pendingUserMessages([], [send(sent)]).length, 1);
+});
+
+test("only user add-message commands are carried; assistant and non-message commands are skipped", () => {
+  const commands: AssistantTransportCommand[] = [
+    { type: "add-message", message: { role: "assistant", parts: [{ type: "text", text: "x" }] }, parentId: null, sourceId: null },
+    send("user send"),
+  ];
+  const out = pendingUserMessages([], commands);
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.parts[0]!.type, "text");
+});
+
+test("image-only sends carry no parts (the domain union has no image part)", () => {
+  const out = pendingUserMessages([], [
+    {
+      type: "add-message",
+      message: { role: "user", parts: [{ type: "image", image: "data:image/png;base64,AAAA" }] },
+      parentId: null,
+      sourceId: null,
+    },
+  ]);
+  assert.equal(out.length, 0);
+});
+
+test("the stand-in id is stable across calls for the same send", () => {
+  const a = pendingUserMessages([], [send("same text")]);
+  const b = pendingUserMessages([], [send("same text")]);
+  assert.equal(a[0]!.id, b[0]!.id);
+});
+
+test("a sourceId wins as the stand-in id when the runtime carries one", () => {
+  const out = pendingUserMessages([], [send("hi", { sourceId: "src-9" })]);
+  assert.equal(out[0]!.id, "pending-src-9");
 });

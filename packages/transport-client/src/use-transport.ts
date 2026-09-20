@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import type { AssistantRuntime } from "@assistant-ui/react";
 import { useAssistantTransportRuntime } from "@assistant-ui/react";
-import { messageConverter } from "./converter.js";
+import { messageConverter, pendingUserMessages } from "./converter.js";
 import {
   canImportThread,
   createInitialRuntimeState,
@@ -105,10 +105,17 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
     protocol: "assistant-transport",
     headers: options.headers ?? {},
     initialState: createInitialRuntimeState(),
-    converter: (state) => {
+    converter: (state, { pendingCommands }) => {
       const isRunning = state.status === "running";
+      const stateMessages = Object.values(state.messages);
+      // The send is held in transit until the server's first frame, and the
+      // state only gains the user's row when the server echoes it — so a
+      // just-sent message is invisible to the state. Render the un-echoed
+      // pending sends as optimistic stand-ins so the user sees it immediately
+      // (they dedupe out the moment the echo lands in the state).
+      const messages = [...stateMessages, ...pendingUserMessages(stateMessages, pendingCommands)];
       return {
-        messages: messageConverter.toThreadMessages(Object.values(state.messages), isRunning),
+        messages: messageConverter.toThreadMessages(messages, isRunning),
         isRunning,
       };
     },
