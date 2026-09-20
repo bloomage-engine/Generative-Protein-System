@@ -38,6 +38,15 @@ export interface SubagentDescriptorInfo {
   provider?: string;
 }
 
+/**
+ * The placeholder wire key a RESTORED entry carries: the record does not store
+ * the wire id (the `subagent.*` notification's child id), so the `wire→stable`
+ * bridge stays 1:1 without a real one. The read surface recognises the prefix
+ * as "no harness child log exists for this entry" (its transcript lives in the
+ * record row — docs/adr/0019).
+ */
+export const RESTORED_WIRE_PREFIX = "restored-";
+
 export interface SubagentFinishedInfo {
   provider?: string;
   status: "ok" | "error";
@@ -251,8 +260,8 @@ export class SubagentRegistry {
       const entry: Entry = {
         stableId: row.id,
         // The record does not store the wire key; a placeholder keeps the bridge 1:1.
-        harnessChildId: "restored-" + row.id,
-        parentHarnessId: "restored-" + row.id,
+        harnessChildId: RESTORED_WIRE_PREFIX + row.id,
+        parentHarnessId: RESTORED_WIRE_PREFIX + row.id,
         parentSessionId: row.parentSessionId,
         status: row.status,
         ...(row.label === undefined ? {} : { label: row.label }),

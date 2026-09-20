@@ -9,7 +9,7 @@ import type { RecordStoreLike, SessionState, StateDelta, SubagentRun } from "@sc
 import { sessionState } from "@science-studio/contract-tests";
 import type { Run, Subagent } from "@science-studio/record";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
-import { TranscriptMirror } from "../src/mirror.js";
+import type { PersistedTranscript } from "@science-studio/record";
 
 function ev(type: string, data: unknown, seq = 1): SessionEvent {
   return { type, seq, time: Date.now(), data } as unknown as SessionEvent;
@@ -107,8 +107,17 @@ class CollidingHomeClient implements DshTurnClient {
 class FakeRecordStore implements RecordStoreLike {
   readonly runs: Run[] = [];
   readonly subagents = new Map<string, Subagent>();
+  /** The record's durable session transcripts (docs/adr/0019). */
+  readonly transcripts = new Map<string, PersistedTranscript>();
   async addRun(run: Run): Promise<void> {
     this.runs.push(run);
+  }
+  async saveSessionTranscript(sessionId: string, doc: PersistedTranscript): Promise<void> {
+    this.transcripts.set(sessionId, structuredClone(doc));
+  }
+  async loadSessionTranscript(sessionId: string): Promise<PersistedTranscript | null> {
+    const doc = this.transcripts.get(sessionId);
+    return doc === undefined ? null : structuredClone(doc);
   }
   async upsertSubagent(subagent: Subagent): Promise<void> {
     this.subagents.set(subagent.id, {...subagent});
@@ -143,7 +152,7 @@ async function collect(iter: AsyncIterable<StateDelta>): Promise<StateDelta[]> {
   return out;
 }
 
-test("run() streams user + assistant deltas, persists a Run, and writes the mirror", async () => {
+test("run() streams user + assistant deltas, persists a Run, and saves the transcript to the record", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-adapter-"));
   const store = new FakeRecordStore();
   const client = new FakeDshClient((_sid, _text) => completedReply("am1", "Hello from dsh."));
@@ -167,10 +176,10 @@ test("run() streams user + assistant deltas, persists a Run, and writes the mirr
     assert.ok(running && idle, "the run must flip running then settle idle");
 
     // The run persists BEFORE its stream ends (settle is awaited post-drain),
-    // so the Run and the mirror are already final when collect() returns.
-    const mirror = new TranscriptMirror(dir);
-    const loaded = await mirror.load("sess-1");
-    assert.ok(loaded, "the mirror must be written before the run stream settles");
+    // so the Run and the record's transcript are already final when
+    // collect() returns.
+    const loaded = await store.loadSessionTranscript("sess-1");
+    assert.ok(loaded, "the record's transcript must be saved before the run stream settles");
     assert.equal(store.runs.length, 1);
     const run = store.runs[0]!;
     assert.equal(run.status, "completed");
@@ -178,7 +187,7 @@ test("run() streams user + assistant deltas, persists a Run, and writes the mirr
     assert.equal(run.output, "Hello from dsh.");
     assert.equal(run.id, "u1");
 
-    assert.ok(loaded && loaded.messages.length >= 2, "the mirror must persist the transcript");
+    assert.ok(loaded && (loaded.messages as unknown[]).length >= 2, "the record must persist the full transcript");
   } finally {
     await adapter.abort();
     await rm(dir, { recursive: true, force: true });
@@ -250,7 +259,7 @@ test("a request that beats the background init waits for it instead of failing",
   }
 });
 
-test("a fresh adapter instance cold-starts from the mirror and reconciles history", async () => {
+test("a fresh adapter instance cold-starts from the record and reconciles history", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-cold-"));
   const store = new FakeRecordStore();
   const adapter1 = new DshRuntimeAdapter({
@@ -262,18 +271,17 @@ test("a fresh adapter instance cold-starts from the mirror and reconciles histor
     await collect(adapter1.run(session(), [
       { type: "add-message", message: { id: "u1", role: "user", content: "hi" } },
     ]));
-    const mirror = new TranscriptMirror(dir);
-    assert.ok(await mirror.load("sess-1"), "the first run persists the mirror before it returns");
+    assert.ok(await store.loadSessionTranscript("sess-1"), "the first run persists the transcript to the record before it returns");
     assert.equal(store.runs.length, 1);
 
-    // Simulate a service restart: brand-new adapter, same transcript dir, no
-    // shared memory. A probe must reconcile the FULL prior history.
-    const store2 = new FakeRecordStore();
+    // Simulate a service restart: brand-new adapter over the SAME record
+    // (docs/adr/0019: the record IS the durable home), no shared memory.
+    // A probe must reconcile the FULL prior history.
     const adapter2 = new DshRuntimeAdapter({
       createClient: () => new FakeDshClient(() => []),
       transcriptDir: dir,
     });
-    await adapter2.init({ binding: { runtime: "dsh", config: {} }, recordStore: store2 });
+    await adapter2.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
     const deltas = await collect(adapter2.run(session(), []));
     const reconcile = deltas.find((d) => d.type === "reconcile") as
       | { messages: { id: string; role: string }[] }
@@ -282,7 +290,7 @@ test("a fresh adapter instance cold-starts from the mirror and reconciles histor
     assert.deepEqual(
       reconcile.messages.map((m) => m.id),
       ["u1", "am1"],
-      "cold start must restore the full canonical transcript from the mirror",
+      "cold start must restore the full canonical transcript from the record",
     );
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -313,8 +321,7 @@ test("harness session ids are generation-scoped, so a restart never prompts an i
     );
     assert.deepEqual([...home.materialized], [harnessId], "the turn created exactly that one harness session");
 
-    const mirror = new TranscriptMirror(dir);
-    assert.ok(await mirror.load("sess-1"), "the run persists its mirror before the stream ends");
+    assert.ok(await store.loadSessionTranscript("sess-1"), "the run persists its transcript to the record before the stream ends");
     assert.equal(store.runs.length, 1);
     assert.equal(store.runs[0]!.status, "completed");
     assert.equal(store.runs[0]!.output, "Hello from dsh.");
@@ -370,8 +377,7 @@ test("a harness id another process already took falls back to a fresh harness se
     const fresh = client.sessionIds[1]!;
     assert.ok(fresh.startsWith(`${client.sessionIds[0]}-`), "the retry stays in this generation's id space");
 
-    const mirror = new TranscriptMirror(dir);
-    assert.ok(await mirror.load("sess-1"), "the fallback run persists before its stream ends");
+    assert.ok(await store.loadSessionTranscript("sess-1"), "the fallback run persists to the record before its stream ends");
     assert.equal(store.runs.length, 1);
     assert.equal(store.runs[0]!.status, "completed", "the fallback turn is recorded as a completed Run");
     assert.equal(store.runs[0]!.output, "Hello from dsh.");
@@ -458,8 +464,7 @@ test("a turn/end reason of error settles the session to error and persists an er
     ]));
     const error = deltas.find((d) => d.type === "session-status" && d.status === "error");
     assert.ok(error, "the session must settle to error");
-    const mirror = new TranscriptMirror(dir);
-    assert.ok(await mirror.load("sess-1"), "an error turn persists before its stream ends");
+    assert.ok(await store.loadSessionTranscript("sess-1"), "an error turn persists to the record before its stream ends");
     assert.equal(store.runs.length, 1);
     assert.equal(store.runs[0]!.status, "error", "failed turns are still recorded as Runs");
   } finally {

@@ -13,7 +13,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
-import { DshRuntimeAdapter, TranscriptMirror } from "@science-studio/transport-dsh";
+import { DshRuntimeAdapter } from "@science-studio/transport-dsh";
 import type { DshTurnClient } from "@science-studio/transport-dsh";
 import { createTransportService } from "@science-studio/transport-service";
 
@@ -144,16 +144,9 @@ async function post(base: string, body: unknown): Promise<{ ops: WireOp[]; done:
   return parseSse(await res.text());
 }
 
-/** settleRun persists the mirror after the run stream ends — wait for it before cleanup. */
-async function waitForMirror(dir: string): Promise<void> {
-  const mirror = new TranscriptMirror(dir);
-  const start = Date.now();
-  for (;;) {
-    if ((await mirror.load(SESSION)) !== null) return;
-    if (Date.now() - start > 2_000) throw new Error("mirror never settled");
-    await new Promise((r) => setTimeout(r, 5));
-  }
-}
+// The settle pipeline is awaited BEFORE the run stream ends ([DONE] is last),
+// so by the time the POST resolves, the run's persistence is already final — no
+// extra settle wait is needed (the dsh adapter test suite pins the same).
 
 test("run (add-message) streams the scripted dsh turn as set ops and terminates with [DONE]", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-example-"));
@@ -219,7 +212,6 @@ test("run (add-message) streams the scripted dsh turn as set ops and terminates 
       ops.every((op) => op.type === "set" || op.type === "append-text"),
       "only client-safe op types may appear on the wire",
     );
-    await waitForMirror(dir);
   } finally {
     await close();
     await rm(dir, { recursive: true, force: true });
@@ -240,7 +232,6 @@ test("a drifted probe re-converges to the full canonical transcript and terminat
       state: { status: "idle", messages: {} },
       threadId: SESSION,
     });
-    await waitForMirror(dir);
 
     // A fresh client (empty claimed state) probes: the service must reconcile
     // it to the adapter's canonical transcript.

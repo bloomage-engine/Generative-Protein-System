@@ -41,7 +41,7 @@ import {
 import { createDshBehavior } from "./behavior.js";
 import { applyRouteSettings } from "./route-settings.js";
 import { readChildTranscript } from "./child-transcript.js";
-import { SubagentRegistry } from "./subagents.js";
+import { RESTORED_WIRE_PREFIX, SubagentRegistry } from "./subagents.js";
 
 const DEFAULT_PROVIDER = "deepseek-official";
 const DEFAULT_MODEL = "deepseek-v4-flash";
@@ -359,7 +359,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     this.model = model;
     this.behavior = createDshBehavior({
       client: this.client,
-      mirror: this.mirror,
+      recordStore: this.recordStore,
       harnessSessions: this.harnessSessions,
       profile,
       provider,
@@ -560,15 +560,19 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   }
 
   /**
-   * One delegated session's readable record: the child's own durable log in
-   * the harness home (docs/adr/0016 addendum). `childId` is the STABLE id the
+   * One delegated session's readable record. `childId` is the STABLE id the
    * panel lists (the record's key) — the membership gate is "one of this
-   * Session's runs", and the stable→wire bridge is what finds the harness's
-   * own child log. The read is fail-soft (absent/mismatched/unreadable logs
-   * are `null`, never a throw).
+   * Session's runs". The read is fail-soft (absent/unreadable sources are
+   * `null`, never a throw), and the source depends on the entry's generation:
+   *
+   * - A LIVE entry is served from the harness's own durable child log
+   *   (docs/adr/0016 addendum) through the stable→wire bridge.
+   * - A RESTORED entry (docs/adr/0019) carries the `"restored-<id>"`
+   *   placeholder as its wire key: its harness child died with the previous
+   *   process, so there is no child log to read — the RECORD row holds the
+   *   child's own captured transcript, and that is the authoritative read.
    */
   async subagentTranscript(sessionKey: string, childId: string): Promise<SubagentTranscript | null> {
-    if (this.dshHome === undefined || this.launchCwd === undefined) return null;
     const runs = await this.subagents(sessionKey);
     const run = runs.find((r) => r.id === childId);
     if (run === undefined) return null;
@@ -576,6 +580,23 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     // session id) is what the harness's own durable log is keyed by.
     const wireId = this.subagentRegistry.harnessIdFor(childId);
     if (wireId === undefined) return null;
+    if (wireId.startsWith(RESTORED_WIRE_PREFIX)) {
+      const row = await this.recordStore?.loadSubagent?.(childId);
+      const transcript = row?.transcript;
+      if (transcript === undefined) return null;
+      return {
+        id: run.id,
+        parentId: sessionKey,
+        ...(run.label === undefined ? {} : { label: run.label }),
+        ...(run.provider === undefined ? {} : { provider: run.provider }),
+        status: run.status,
+        ...(run.stopReason === undefined ? {} : { stopReason: run.stopReason }),
+        ...(run.startedAt === undefined ? {} : { startedAt: run.startedAt }),
+        ...(run.finishedAt === undefined ? {} : { finishedAt: run.finishedAt }),
+        messages: transcript.messages as SubagentTranscript["messages"],
+      };
+    }
+    if (this.dshHome === undefined || this.launchCwd === undefined) return null;
     const transcript = await readChildTranscript({ home: this.dshHome, cwd: this.launchCwd, sessionKey, childId: wireId });
     if (transcript === null) return null;
     return {

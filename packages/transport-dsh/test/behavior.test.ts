@@ -26,7 +26,7 @@ const noopClient: DshTurnClient = {
 function behavior(over: Partial<Parameters<typeof createDshBehavior>[0]> = {}) {
   return createDshBehavior({
     client: noopClient,
-    mirror: null,
+    recordStore: null,
     harnessSessions: new Map(),
     profile: "sdk",
     provider: "p",

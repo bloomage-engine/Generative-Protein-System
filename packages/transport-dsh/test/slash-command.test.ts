@@ -7,7 +7,6 @@ import type { SessionEvent } from "@deepseek-ai/dsh-session";
 import type { RecordStoreLike, StateDelta } from "@science-studio/transport";
 import type { Run } from "@science-studio/record";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
-import { TranscriptMirror } from "../src/mirror.js";
 import {
   collect,
   command,
@@ -25,8 +24,8 @@ import {
  * Two layers answer them: the ADAPTER's own commands (`/status`, `/new`) come
  * from its own state, and the harness's registry (docs/adr/0011) is reached over
  * the child bridge. Either way a command never prompts the child, never records
- * a `Run`, and still lands in the transcript — and in the mirror, so it survives
- * a reload.
+ * a `Run`, and still lands in the transcript — and in the record's saved
+ * transcript, so it survives a reload (docs/adr/0019).
  */
 
 /**
@@ -132,12 +131,12 @@ for (const [line, expected, prompts] of [
         "the session must settle idle after the reply",
       );
 
-      const loaded = await new TranscriptMirror(dir).load("sess-1");
-      const texts = loaded?.messages.flatMap((m) =>
-        m.parts.filter((p) => p.type === "text").map((p) => (p as { text: string }).text),
+      const loaded = await store.loadSessionTranscript("sess-1");
+      const texts = (loaded?.messages as { parts: Array<{ type: string; text?: string }> }[] | undefined)?.flatMap(
+        (m) => m.parts.filter((p) => p.type === "text").map((p) => p.text as string),
       );
       assert.equal(texts?.[0], line, "the command row is visible in the transcript");
-      assert.ok(texts?.some((t) => t === reply[0]), "the reply is mirrored, so it survives a reload");
+      assert.ok(texts?.some((t) => t === reply[0]), "the reply is in the record, so it survives a reload");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

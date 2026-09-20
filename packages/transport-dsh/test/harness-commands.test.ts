@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { DshRuntimeAdapter } from "../src/index.js";
-import { TranscriptMirror } from "../src/mirror.js";
 import {
   collect,
   command,
@@ -91,11 +90,13 @@ test("a harness command runs in the child: one result row, no prompt, no Run", a
     );
     assert.equal(store.runs.length, 1, "only the model turn is a Run (docs/adr/0003)");
 
-    const loaded = await new TranscriptMirror(dir).load("sess-1");
-    const texts = loaded?.messages.flatMap((m) =>
-      m.parts.filter((p) => p.type === "text").map((p) => (p as { text: string }).text),
+    // The command row and the reply are in the RECORD's saved transcript
+    // (docs/adr/0019), so they survive a reload.
+    const loaded = await store.loadSessionTranscript("sess-1");
+    const texts = (loaded?.messages as { parts: Array<{ type: string; text?: string }> }[] | undefined)?.flatMap(
+      (m) => m.parts.filter((p) => p.type === "text").map((p) => p.text as string),
     );
-    assert.ok(texts?.includes("/compact"), "the command row is in the mirror");
+    assert.ok(texts?.includes("/compact"), "the command row is in the record's transcript");
     assert.ok(texts?.includes("Condensed 12 items"), "and so is the harness's result");
   } finally {
     await rm(dir, { recursive: true, force: true });

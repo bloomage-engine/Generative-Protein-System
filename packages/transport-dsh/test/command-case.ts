@@ -13,7 +13,7 @@ import { join } from "node:path";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
 import type { RecordStoreLike, SessionState, StateDelta } from "@science-studio/transport";
 import { sessionState } from "@science-studio/contract-tests";
-import type { Run } from "@science-studio/record";
+import type { PersistedTranscript, Run } from "@science-studio/record";
 import type { DshTurnClient } from "../src/index.js";
 import type { DshCommandBridge, HarnessCommandEntry } from "../src/bridge.js";
 import type { HarnessBridgeOutcome } from "../src/commands.js";
@@ -120,8 +120,17 @@ export class InterceptingDshClient implements ScriptedClient {
 
 export class FakeRecordStore implements RecordStoreLike {
   readonly runs: Run[] = [];
+  /** The record's durable session transcripts (docs/adr/0019). */
+  readonly transcripts = new Map<string, PersistedTranscript>();
   async addRun(run: Run): Promise<void> {
     this.runs.push(run);
+  }
+  async saveSessionTranscript(sessionId: string, doc: PersistedTranscript): Promise<void> {
+    this.transcripts.set(sessionId, structuredClone(doc));
+  }
+  async loadSessionTranscript(sessionId: string): Promise<PersistedTranscript | null> {
+    const doc = this.transcripts.get(sessionId);
+    return doc === undefined ? null : structuredClone(doc);
   }
 }
 

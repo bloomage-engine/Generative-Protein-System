@@ -7,6 +7,7 @@ import type { SessionEvent } from "@deepseek-ai/dsh-session";
 import type { SessionState, StateDelta, WatchSnapshot } from "@science-studio/transport";
 import { sessionState } from "@science-studio/contract-tests";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
+import { FakeRecordStore } from "./command-case.js";
 
 function ev(type: string, data: unknown, seq = 1): SessionEvent {
   return { type, seq, time: Date.now(), data } as unknown as SessionEvent;
@@ -84,28 +85,31 @@ test("a warm attach pushes a baseline, then one push per settled run", async () 
   }
 });
 
-test("a cold attach (restart, mirror on disk) baselines asynchronously from the mirror", async () => {
+test("a cold attach (restart, transcript in the record) baselines asynchronously from the record", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-watch-cold-"));
+  // A restart shares the RECORD (docs/adr/0019), never an adapter-owned mirror.
+  const store = new FakeRecordStore();
   try {
-    // Generation 1 persists the mirror.
+    // Generation 1 persists the transcript to the record.
     const adapter1 = new DshRuntimeAdapter({
       createClient: () => new FakeDshClient(() => reply("am1", "Hello from dsh.")),
       transcriptDir: dir,
     });
-    await adapter1.init({ binding: { runtime: "dsh", config: {} }, recordStore: noRecordStore });
+    await adapter1.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
     await collect(adapter1.run(session(), [{ type: "add-message", message: { id: "u1", role: "user", content: "hi" } }]));
 
-    // Generation 2: brand-new adapter, no in-memory transcript — the watcher
-    // must still receive the baseline (from our own mirror), not hang.
+    // Generation 2: brand-new adapter over the same record, no in-memory
+    // transcript — the watcher must still receive the baseline (from the
+    // record), not hang.
     const adapter2 = new DshRuntimeAdapter({
       createClient: () => new FakeDshClient(() => []),
       transcriptDir: dir,
     });
-    await adapter2.init({ binding: { runtime: "dsh", config: {} }, recordStore: noRecordStore });
+    await adapter2.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
     const frames: WatchSnapshot[] = [];
     adapter2.subscribe("sess-1", (s) => frames.push(s));
-    await tick(); // the mirror baseline is async
-    assert.equal(frames.length, 1, "a cold attach with a mirror on disk must baseline");
+    await tick(); // the record baseline is async
+    assert.equal(frames.length, 1, "a cold attach with a record-backed transcript must baseline");
     const ids = Object.keys(frames[0]!.messages).sort();
     assert.deepEqual(ids, ["am1", "u1"], "the cold baseline must carry the persisted transcript");
   } finally {

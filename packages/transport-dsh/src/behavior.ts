@@ -5,8 +5,9 @@
  * The kit owns the run loop, reconcile, settle pipeline, watch registry and Run
  * projection; this module supplies only the committed-event→delta mapping, the
  * launch surface (`runTurn` on a generation-scoped harness session id), and the hooks dsh
- * genuinely differs on: cold-start mirror restore, mirror durability at settle,
- * an async cold watch baseline, per-turn Run parameters, and the runtime commands
+ * genuinely differs on: cold-start restore from the record's saved transcript,
+ * record durability at settle, an async cold watch baseline, per-turn Run
+ * parameters, and the runtime commands
  * — the adapter's own two, plus the HARNESS's registry through the child command
  * bridge (docs/adr/0010, docs/adr/0011).
  * One prompt = one Harness turn = one persisted `Run`, for EVERY terminal
@@ -23,13 +24,15 @@ import {
   type ApplyContext,
   type ApplyResult,
   type CommandDescriptor,
+  type Message,
+  type RecordStoreLike,
   type RunControl,
   type SessionBehavior,
+  type SessionState,
   type WatchSnapshot,
   type Workspace,
 } from "@science-studio/transport";
 import type { DshTurnClient } from "./client.js";
-import type { TranscriptMirror } from "./mirror.js";
 import {
   DSH_COMMANDS,
   executeDshCommand,
@@ -64,7 +67,8 @@ function isSessionAlreadyExists(err: unknown): boolean {
 
 export interface DshBehaviorDeps {
   client: DshTurnClient;
-  mirror: TranscriptMirror | null;
+  /** The record store — the durable home of the session transcript (docs/adr/0019). */
+  recordStore: RecordStoreLike | null;
   /** Science Studio session key → the harness id this child actually created. */
   harnessSessions: Map<string, string>;
   /** Harness profile the child was launched with (reported by `/status`). */
@@ -82,7 +86,7 @@ export interface DshBehaviorDeps {
 }
 
 export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<SessionEvent> {
-  const { client, mirror, harnessSessions, profile, provider, model, cwd, workspace, harnessCommands, commandCatalog } = deps;
+  const { client, recordStore, harnessSessions, profile, provider, model, cwd, workspace, harnessCommands, commandCatalog } = deps;
   const log = deps.onError ?? ((message: string, error: unknown) => console.warn(`[dsh] ${message}`, error));
   /**
    * THIS child's harness id space (one generation per harness child — this
@@ -157,7 +161,7 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
       harnessSessionId = `${collided}-retry`;
       harnessSessions.set(sessionKey, harnessSessionId);
       log(
-        `harness session "${collided}" is already taken in this harness home; continuing on "${harnessSessionId}" (the agent does not carry the prior conversation across restarts — the Science Studio transcript mirror still does)`,
+        `harness session "${collided}" is already taken in this harness home; continuing on "${harnessSessionId}" (the agent does not carry the prior conversation across restarts — the record's saved transcript still does)`,
         err,
       );
       await client.runTurn(harnessSessionId, text, (event) => run.ingest(event));
@@ -231,7 +235,8 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
     run.emit({ type: "session-status", status: "idle" });
     // Not a research turn (docs/adr/0003): `projectRun` projects nothing for a
     // command line, so the settle pipeline records no `Run` — it still saves the
-    // mirror and notifies watchers, so the command rows survive a reload.
+    // transcript to the record and notifies watchers, so the command rows
+    // survive a reload (docs/adr/0019).
     run.settle();
   }
 
@@ -398,11 +403,16 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
 
     async prepare(handle) {
       // Cold start only: the SDK wire has no history-replay request, so restore
-      // OUR mirror before reconciling (never reconcile an unverifiable empty
-      // transcript against a claiming client — docs/adr/0004).
-      if (handle.state.messages.length > 0 || !mirror) return;
-      const loaded = await mirror.load(handle.sessionKey);
-      if (loaded) handle.replaceMessages(loaded.messages, loaded.status);
+      // the RECORD's saved transcript before reconciling (never reconcile an
+      // unverifiable empty transcript against a claiming client —
+      // docs/adr/0004, docs/adr/0019: the record is the durable home).
+      if (handle.state.messages.length > 0) return;
+      // A `?.`-guarded optional: the 5 record methods on the seam are OPTIONAL
+      // (Task 4), and a miswired non-record store must no-op, not null-deref.
+      const loaded = await recordStore?.loadSessionTranscript?.(handle.sessionKey);
+      if (!loaded) return;
+      // The dsh adapter wrote this blob, so the cast is safe.
+      handle.replaceMessages(loaded.messages as Message[], loaded.status as SessionState["status"]);
     },
 
     dispatch(request, run) {
@@ -437,7 +447,12 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
     },
 
     async beforePersist(ctx) {
-      await mirror?.save(ctx.sessionKey, ctx.state.status, ctx.state.messages);
+      // `?.`-guarded (the seam method is optional; a non-record store no-ops).
+      await recordStore?.saveSessionTranscript?.(ctx.sessionKey, {
+        v: 1,
+        status: ctx.state.status,
+        messages: structuredClone(ctx.state.messages),
+      });
     },
 
     projectRun(ctx) {
@@ -459,14 +474,16 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
     },
 
     watch: {
-      /** A cold Session baselines asynchronously from our own mirror. */
+      /** A cold Session baselines asynchronously from the record's saved transcript. */
       async readBaseline(sessionKey): Promise<WatchSnapshot | null> {
-        if (!mirror) return null;
-        const loaded = await mirror.load(sessionKey);
+        // `?.`-guarded (the seam method is optional; a non-record store no-ops).
+        const loaded = await recordStore?.loadSessionTranscript?.(sessionKey);
         if (!loaded) return null;
+        // The dsh adapter wrote this blob, so the cast is safe.
+        const messages = loaded.messages as Message[];
         return {
-          status: loaded.status,
-          messages: Object.fromEntries(loaded.messages.map((m) => [m.id, structuredClone(m)])),
+          status: loaded.status as SessionState["status"],
+          messages: Object.fromEntries(messages.map((m) => [m.id, structuredClone(m)])),
         };
       },
     },
