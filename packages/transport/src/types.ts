@@ -1,4 +1,4 @@
-import type { Id, Run, RunStatus } from "@science-studio/record";
+import type { Id, Run, RunStatus, PersistedTranscript, Subagent } from "@science-studio/record";
 import type { RuntimeBinding } from "./runtime.js";
 import type { Workspace } from "./workspace.js";
 
@@ -314,4 +314,14 @@ export interface RuntimeInitOptions {
 /** Narrow view of the record store an adapter uses to persist Runs. */
 export interface RecordStoreLike {
   addRun(run: Run): Promise<void>;
+  /** The runtime's canonical transcript (durable, keyed by stable Session id). dsh only. */
+  saveSessionTranscript?(sessionId: Id, doc: PersistedTranscript): Promise<void>;
+  /** The runtime's canonical transcript (durable, keyed by stable Session id). dsh only. */
+  loadSessionTranscript?(sessionId: Id): Promise<PersistedTranscript | null>;
+  /** A durable, stably-identified subagent (docs/adr/0019). dsh only. */
+  upsertSubagent?(subagent: Subagent): Promise<void>;
+  /** A durable, stably-identified subagent (docs/adr/0019). dsh only. */
+  loadSubagent?(id: Id): Promise<Subagent | null>;
+  /** A durable, stably-identified subagent (docs/adr/0019). dsh only. */
+  listSubagents?(parentSessionId: Id): Promise<Subagent[]>;
 }
