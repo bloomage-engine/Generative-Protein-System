@@ -28,11 +28,41 @@ Provide a MolQL (Mol* mol-script) expression. The viewer compiles it and highlig
 
 Symbols are bare; element symbols take a leading underscore (_Fe). Load the "molql" skill for the complete syntax reference.`;
 
+/** The interaction tool asks the Science Studio service, which owns file access. */
+const INTERACTION_TOOL_NAME = "computeInteraction";
+
+const INTERACTION_DESCRIPTION = `Compute the non-covalent interactions (hydrogen bonds, pi-stacking, cation-pi, halogen bonds, metal coordination) that involve a selection in a workspace structure file, using Mol*'s interaction module.
+
+Call this when the user asks about the interactions of a residue, chemical bond or ligand that appears in the conversation as a mention of the form \`@<project>/<path>/<molql>\`. Split that mention into the three arguments:
+- project: the first segment, e.g. "project-default"
+- path: the workspace-relative file path, e.g. "boltz_holo.pdb"
+- molql: the parenthesized MolQL selection expression
+
+Returns a Markdown table: interaction type, the two atom/residue endpoints, and the distance in Å.`;
+
+const SERVICE_URL = process.env.SCIENCE_STUDIO_SERVICE_URL ?? "http://127.0.0.1:3001";
+
+async function fetchInteractions(args: {
+  project: string;
+  path: string;
+  molql: string;
+}): Promise<{ table: string }> {
+  const url = `${SERVICE_URL}/api/workspace/interactions?project=${encodeURIComponent(
+    args.project,
+  )}&path=${encodeURIComponent(args.path)}&molql=${encodeURIComponent(args.molql)}`;
+  const response = await fetch(url);
+  const body = (await response.json().catch(() => null)) as { table?: string; error?: string } | null;
+  if (!response.ok) {
+    throw new Error(body?.error ?? `interaction service answered ${response.status}`);
+  }
+  return { table: body?.table ?? "" };
+}
+
 export default defineToolPlugin({
   id: "molql-tool",
   name: "MolQL",
   description:
-    "Translate a natural-language molecular structure query into a Mol* mol-script selection and return it as structured JSON for the Science Studio viewer to apply.",
+    "Science Studio structure tools: translate a query into a Mol* mol-script selection for the viewer to apply, and compute the non-covalent interactions of a selection.",
 
   tools: (tool) => [
     tool({
@@ -66,6 +96,23 @@ export default defineToolPlugin({
         focus: focus ?? true,
         mode: mode ?? "select",
       }),
+    }),
+
+    tool({
+      name: INTERACTION_TOOL_NAME,
+      description: INTERACTION_DESCRIPTION,
+      parameters: Type.Object({
+        project: Type.String({
+          description: 'The Project id from the mention, e.g. "project-default".',
+        }),
+        path: Type.String({
+          description: 'The workspace-relative structure file path, e.g. "boltz_holo.pdb".',
+        }),
+        molql: Type.String({
+          description: "The MolQL (mol-script) selection expression from the mention.",
+        }),
+      }),
+      execute: fetchInteractions,
     }),
   ],
 });

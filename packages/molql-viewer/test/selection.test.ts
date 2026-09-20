@@ -4,6 +4,7 @@ import {
   formatBondMolql,
   formatResidueMolql,
   formatStructureMention,
+  molqlTargetKey,
 } from "../src/selection.js";
 
 test("a residue becomes a grouped atom.chain/resno/resname expression", () => {
@@ -44,9 +45,33 @@ test("a bond is the union of its two endpoint atoms", () => {
   );
 });
 
-test("a structure mention pairs the workspace path with the expression", () => {
+test("a structure mention carries the project, path and expression", () => {
   assert.equal(
-    formatStructureMention("boltz_holo.pdb", "(sel.atom.all)"),
+    formatStructureMention("project-default", "boltz_holo.pdb", "(sel.atom.all)"),
+    "@project-default/boltz_holo.pdb/(sel.atom.all)",
+  );
+});
+
+test("a structure mention without a project falls back to the bare path", () => {
+  assert.equal(
+    formatStructureMention(null, "boltz_holo.pdb", "(sel.atom.all)"),
     "@boltz_holo.pdb/(sel.atom.all)",
+  );
+});
+
+test("target keys distinguish residues and either bond endpoint", () => {
+  assert.equal(
+    molqlTargetKey({ kind: "residue", residue: { chain: "A", resno: 42, resname: "ALA" } }),
+    "residue:A:42:ALA",
+  );
+  const bond = {
+    kind: "bond" as const,
+    a: { chain: "A", resno: 93, resname: "CYS", atomName: "N" },
+    b: { chain: "A", resno: 89, resname: "ILE", atomName: "O" },
+  };
+  assert.equal(molqlTargetKey(bond), "bond:A:93:CYS:N:A:89:ILE:O");
+  assert.notEqual(
+    molqlTargetKey(bond),
+    molqlTargetKey({ ...bond, b: { chain: "A", resno: 90, resname: "ILE", atomName: "O" } }),
   );
 });

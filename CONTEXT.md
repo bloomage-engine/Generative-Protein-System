@@ -134,12 +134,22 @@ the web app parses it and applies it. The tool does not validate against a
 structure — only the browser can.
 _Avoid_: Molstar tool, Structure tool, Viewer command
 
+**`computeInteraction` Tool**:
+The agent tool (both runtime plugins) that computes the non-covalent interactions
+— hydrogen bonds, pi-stacking, cation-pi, halogen bonds, metal coordination,
+molstar's defaults — involving a selection. It fetches the service's
+`/api/workspace/interactions` (the service owns file access and runs molstar
+headlessly), passing the `@<project>/<path>/<molql>` mention split into
+`project`/`path`/`molql`, and returns a Markdown table.
+_Avoid_: Interaction tool, Contact tool, Molstar interaction
+
 **Selection Mention**:
-The composer text `@<workspace path>/<MolQL expression>` produced when the user
-clicks a residue or a bond in the structure preview while Mol*'s selection mode
-is on. The viewer reports the target as domain data (chain/resno/resname, or the
-two endpoint atoms of a bond) and the app formats and appends it to the draft, so
-the next message names both the file and the selection.
+The composer text `@<project>/<workspace path>/<MolQL expression>` produced when
+the user clicks a residue or a bond in the structure preview while Mol*'s
+selection mode is on. The viewer reports the target as domain data (chain/resno/
+resname, or the two endpoint atoms of a bond) and the app toggles it in the draft
+— a second click on the same target removes the mention, matching Mol*'s
+`clickToggle` — so the next message names both the file and the selection.
 _Avoid_: Highlight text, Residue link, Click command
 
 **Workflow** (also **DAG**):

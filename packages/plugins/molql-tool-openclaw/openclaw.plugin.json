@@ -2,7 +2,7 @@
   "id": "molql-tool",
   "name": "MolQL",
   "version": "0.0.0",
-  "description": "Translate a natural-language molecular structure query into a Mol* mol-script selection and return it as structured JSON for the Science Studio viewer to apply.",
+  "description": "Science Studio structure tools: translate a query into a Mol* mol-script selection for the viewer to apply, and compute the non-covalent interactions of a selection.",
   "configSchema": {
     "type": "object",
     "properties": {},
@@ -13,7 +13,8 @@
   },
   "contracts": {
     "tools": [
-      "molql"
+      "molql",
+      "computeInteraction"
     ]
   }
 }

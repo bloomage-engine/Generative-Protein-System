@@ -1,9 +1,12 @@
 # @science-studio/molql-tool-dsh
 
-A DeepSeek Harness plugin that registers the **`molql`** tool. The model turns a
-natural-language request ("highlight chain A", "show residues within 5 Å of the
-iron") into a Mol* `mol-script` selection and the tool returns it as structured
-JSON:
+A DeepSeek Harness plugin that registers two tools: **`molql`** (select/highlight
+atoms in the open structure) and **`computeInteraction`** (non-covalent
+interactions for a selection).
+
+The model turns a natural-language request ("highlight chain A", "show residues
+within 5 Å of the iron") into a Mol* `mol-script` selection and the `molql` tool
+returns it as structured JSON:
 
 ```json
 {
@@ -19,6 +22,11 @@ parses it (via `@science-studio/molql-viewer`) and highlights/focuses the atoms
 in the open structure. The tool never touches a structure — semantic validation
 (does the selection match anything) happens in the browser.
 
+`computeInteraction` fetches the Science Studio service's
+`/api/workspace/interactions` route (the service owns workspace file access and
+runs Mol* headlessly) from the `@<project>/<path>/<molql>` mention, and returns a
+Markdown interaction table.
+
 It also registers the full MolQL syntax manual as an embedded skill (when the
 skill registry is mounted), so the model can load it on demand; the tool
 description carries a cheat-sheet for the common cases.
@@ -26,7 +34,7 @@ description carries a cheat-sheet for the common cases.
 ## Layout
 
 ```
-src/index.ts            cordis plugin: ctx.tools.register(defineTool({...}))
+src/index.ts            cordis plugin: ctx.tools.register(defineTool({...})) for molql + computeInteraction
 scripts/sync-skill.mjs  copies packages/skills/molql -> ./skill before build
 skill/                  generated; not edited by hand
 ```

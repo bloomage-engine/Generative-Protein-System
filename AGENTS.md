@@ -27,8 +27,8 @@ packages/transport-client         assistant-ui client boundary (single `useTrans
 packages/transport-openclaw       openclaw runtime adapter — owns its OWN launch surface (`GatewayBinding`), factory, capabilities and `runtimePlugins`; ports gateway WS
 packages/transport-dsh            dsh runtime adapter — owns `DshBinding` + factory + `runtimePlugins` (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC)
 packages/molql-viewer             structure preview + Mol* integration. Compiles the agent's MolQL (Mol* `mol-script`) into a Selection and selects/highlights/focuses it. Entries `./formats` and `./directive` are molstar-runtime-free (Node-testable); `.` imports molstar and is browser-only (dynamic `ssr:false`). Exposes `MolqlViewer`/`MolqlViewerPanel`, `applyMolqlSelection`, `applyMolqlToolResult`, `parseMolqlToolResult`, and the active-viewer registry. Pinned to molstar 5.9.0
-packages/plugins/molql-tool-dsh   dsh harness plugin registering the `molql` tool (`ctx.tools.register(defineTool(...))`) and an embedded MolQL skill. Agent-side deployable — deliberately NOT a root workspace and NOT in the root build (own `scripts/sync-skill.mjs` + `tsc`)
-packages/plugins/molql-tool-openclaw  openclaw gateway plugin registering the same `molql` tool (`defineToolPlugin`; `openclaw.plugin.json`). Needs the large `openclaw` package (absent from the root install) — built/deployed on its own; NOT a root workspace/build
+packages/plugins/molql-tool-dsh   dsh harness plugin registering the `molql` tool (`ctx.tools.register(defineTool(...))`), the `computeInteraction` tool (fetches the service), and an embedded MolQL skill. Agent-side deployable — deliberately NOT a root workspace and NOT in the root build (own `scripts/sync-skill.mjs` + `tsc`)
+packages/plugins/molql-tool-openclaw  openclaw gateway plugin registering the same `molql` + `computeInteraction` tools (`defineToolPlugin`; `openclaw.plugin.json`). Agent-side deployable — NOT a root workspace/build. `esbuild` bundles `typebox` into `dist` and `openclaw` is a peerDependency, so the installed plugin has NO runtime deps and `openclaw plugins install` skips its slow/flaky npm step; `scripts/install.mjs` installs from an `npm pack` tarball (a directory install copies `node_modules` recursively) with `--accept-capabilities`. `typebox`/`openclaw` stay devDependencies for the local `tsc`/bundle build and the root-installed `esbuild` is borrowed for the bundle
 packages/skills/molql             the canonical MolQL skill (`SKILL.md` + `references/molql-syntax.md`); the single source of truth, copied into each plugin's `skill/` by its `sync-skill.mjs`. Not an npm package (workspaces negations exclude `packages/skills` and `packages/plugins`)
 services/transport-service        backend assistant-transport service — Fastify, port 3001. Composition root: `src/composition.ts`. `TRANSPORT_RUNTIME` picks the runtime product; runtime modules are loaded DYNAMICALLY by specifier, so the service statically imports NO runtime package. The DEFAULT module list is DATA — `scienceStudio.runtimeModules` in this package's own `package.json` — and `SS_RUNTIME_MODULES` overrides it entirely, so adding a runtime edits no core code. `SS_ENTERPRISE_MODULE` swaps in the private multi-user backend; unset = the complete single-user product.
 examples/transport-openclaw-example  minimal assistant-ui example app over the openclaw adapter (Vite + core primitives; dev-only, not in the root build)
@@ -72,9 +72,11 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `WORKSPACE_MAX_INLINE_BYTES` is the inline cap; unset `PROJECT_ROOT` means
   `NullWorkspace` and no file surface. Routes live on the SAME service behind the
   same principal/environment preamble and take `?project=`: `GET
-  /api/workspace/{entries,stat,file}`. `file` streams inline up to the cap (413
-  over it) and `?download=1` streams any size; a missing path is 404, a
-  traversal/absolute path 400, no workspace 503. Uploads are `POST
+  /api/workspace/{entries,stat,file}`, plus `GET
+  /api/workspace/interactions?path=&molql=` (molstar-computed non-covalent
+  interactions for a selection; see the MolQL section). `file` streams inline up
+  to the cap (413 over it) and `?download=1` streams any size; a missing path is
+  404, a traversal/absolute path 400, no workspace 503. Uploads are `POST
   /api/workspace/upload?path=&project=` with a **raw** body
   (`application/octet-stream`, one file per request — no multipart parser);
   `maxUploadBytes` (`WORKSPACE_MAX_UPLOAD_BYTES`, default 100 MB) answers 413 and
@@ -264,15 +266,36 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `plugin.behaviors.interaction.click`, and ONLY while `plugin.selectionMode` is
   on resolves the clicked loci (`StructureElement.Loci` → residue via
   `StructureProperties`; `Bond.Loci` → its two endpoint atoms) and calls
-  `onResidueClick`. `MolqlViewerPanel` forwards it; `StructureRenderer` formats
-  `@<workspace path>/<molql>` (`selection.ts`'s `formatResidueMolql` /
-  `formatBondMolql` / `formatStructureMention` — pure, Node-tested) and appends
-  it to the composer through `ComposerInsertProvider` (an app-local context seam
-  modelled on `WorkspaceOpenProvider`, since the center preview and the left
-  `Thread` are siblings), then reveals the conversation pane via the store's
-  `revealLeftView`. The visible selection is Mol*'s own selection-mode behavior —
-  the app adds no second selection. The mention is plain text (not a `:file`
-  directive), so the service does not lift it into an `AttachmentRef`.
+  `onResidueClick` (`null` for an empty click, which clears Mol*'s selection).
+  `MolqlViewerPanel` forwards it; `StructureRenderer` formats
+  `@<project>/<workspace path>/<molql>` (`selection.ts`'s `formatResidueMolql` /
+  `formatBondMolql` / `formatStructureMention` / `molqlTargetKey` — pure,
+  Node-tested) and toggles it in the composer through `ComposerInsertProvider`
+  (an app-local context seam modelled on `WorkspaceOpenProvider`, since the center
+  preview and the left `Thread` are siblings), then reveals the conversation pane
+  via the store's `revealLeftView`. A second click on the same target REMOVES the
+  mention (keyed by `molqlTargetKey`), matching Mol*'s default `clickToggle`
+  action; an empty click removes them all. The visible selection is Mol*'s own
+  selection-mode behavior — the app adds no second selection. The mention is plain
+  text (not a `:file` directive), so the service does not lift it into an
+  `AttachmentRef`.
+- **`computeInteraction` is the one place the browser is NOT enough.** The agent
+  can only receive the computed result if the computation happens where its tool
+  runs, and molstar's interaction module is pure computation (no WebGL), so the
+  service computes it: molstar's CommonJS build is loaded lazily through
+  `createRequire` in `services/transport-service/src/interactions.ts`, which
+  parses the workspace file, compiles the MolQL selection, runs
+  `computeInteractions` (molstar's default providers: hydrogen-bonds, pi-stacking,
+  cation-pi, halogen-bonds, metal-coordination) and returns the contacts touching
+  the selection as a Markdown table. The route is `GET
+  /api/workspace/interactions?project=&path=&molql=` (same workspace preamble;
+  404/400/503 as the other workspace routes; `molstar` is a service dependency).
+  Both agent-side plugins register the same `computeInteraction` tool, which
+  fetches that route (`SCIENCE_STUDIO_SERVICE_URL`, default
+  `http://127.0.0.1:3001`) from the `@<project>/<path>/<molql>` mention. There is
+  deliberately NO browser→agent tool-result channel: `TransportCommand` declares
+  `add-tool-result` but no adapter implements it, and openclaw's chat protocol has
+  no client tool result — so browser-computed data could not reach the model.
 
 ## Architecture rules
 

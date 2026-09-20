@@ -28,6 +28,7 @@ export {
   formatResidueMolql,
   formatBondMolql,
   formatStructureMention,
+  molqlTargetKey,
   type ResidueSelection,
   type AtomSelection,
   type MolqlTarget,

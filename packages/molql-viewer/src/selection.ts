@@ -69,9 +69,29 @@ export function formatBondMolql(a: AtomSelection, b: AtomSelection): string {
 
 /**
  * The composer mention for a structure file plus a MolQL target:
- * `@boltz_holo.pdb/(sel.atom.res (and …))`. `path` is the workspace-relative
- * path, exactly as the file tree lists it.
+ * `@project-default/boltz_holo.pdb/(sel.atom.res (and …))`. `path` is the
+ * workspace-relative path the file tree lists; `project` is the Project id it
+ * belongs to (omitted only when the deployment scopes no Project).
  */
-export function formatStructureMention(path: string, molql: string): string {
-  return `@${path}/${molql}`;
+export function formatStructureMention(
+  project: string | null | undefined,
+  path: string,
+  molql: string,
+): string {
+  return `@${project ? `${project}/` : ""}${path}/${molql}`;
+}
+
+/**
+ * A stable identity for a click target, used by the host to decide whether a
+ * click is toggling the same item back off. The residue and bond forms carry
+ * exactly the fields the expressions use.
+ */
+export function molqlTargetKey(target: MolqlTarget): string {
+  if (target.kind === "residue") {
+    const { chain, resno, resname } = target.residue;
+    return `residue:${chain}:${resno}:${resname}`;
+  }
+  const { chain: ac, resno: ar, resname: an, atomName: aa } = target.a;
+  const { chain: bc, resno: br, resname: bn, atomName: ba } = target.b;
+  return `bond:${ac}:${ar}:${an}:${aa}:${bc}:${br}:${bn}:${ba}`;
 }

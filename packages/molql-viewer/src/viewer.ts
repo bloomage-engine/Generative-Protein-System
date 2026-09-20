@@ -92,10 +92,12 @@ export class MolqlViewer implements MolqlSelectionTarget {
   plugin: PluginUIContext | undefined;
   /**
    * Called when the user clicks a residue or bond WHILE Mol*'s selection mode
-   * is on (the mode's own click behavior does the visible selecting). Assign
-   * before or after `init` — the click subscription reads it on every click.
+   * is on (the mode's own click behavior does the visible selecting). `null`
+   * means the click hit empty space, which Mol* answers by clearing the whole
+   * selection. Assign before or after `init` — the click subscription reads it
+   * on every click.
    */
-  onResidueClick: ((target: MolqlTarget) => void) | undefined;
+  onResidueClick: ((target: MolqlTarget | null) => void) | undefined;
   private initialized = false;
   private disposed = false;
   private host: HTMLElement | undefined;
@@ -171,12 +173,17 @@ export class MolqlViewer implements MolqlSelectionTarget {
   /**
    * Selection-mode click → `onResidueClick`. Gated on `plugin.selectionMode`
    * so a normal click (rotate/focus) never types into the composer; the mode's
-   * own behavior is what highlights the clicked element.
+   * own behavior is what highlights the clicked element. An empty click reports
+   * `null` (Mol* has just cleared the selection).
    */
   private handleClick(reprLoci: { loci: ModelLoci }): void {
     if (!this.plugin?.selectionMode) return;
     const handler = this.onResidueClick;
     if (!handler) return;
+    if (reprLoci.loci.kind === "empty-loci") {
+      handler(null);
+      return;
+    }
     const target = describeMolqlTarget(reprLoci.loci);
     if (target) handler(target);
   }

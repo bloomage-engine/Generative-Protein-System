@@ -9,6 +9,7 @@ import {
   formatBondMolql,
   formatResidueMolql,
   formatStructureMention,
+  molqlTargetKey,
   MolqlError,
   MolqlViewerPanel,
   type MolqlTarget,
@@ -38,21 +39,28 @@ export function StructureRenderer({ path, name }: { path: string; name: string }
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [expression, setExpression] = useState("");
-  const insert = useComposerInsert();
+  const composer = useComposerInsert();
   const revealLeftView = useStudioStore((s) => s.revealLeftView);
 
-  // Selection-mode click → `@<path>/<molql>` appended to the composer draft.
+  // Selection-mode click → toggle `@<project>/<path>/<molql>` in the composer
+  // draft (a second click on the same target removes it; an empty click — which
+  // clears Mol*'s selection — removes all of them).
   const handleResidueClick = useCallback(
-    (target: MolqlTarget) => {
-      if (!insert) return;
+    (target: MolqlTarget | null) => {
+      if (!composer) return;
+      if (target === null) {
+        composer.clearMentions();
+        return;
+      }
       const molql =
         target.kind === "residue"
           ? formatResidueMolql(target.residue)
           : formatBondMolql(target.a, target.b);
-      insert(formatStructureMention(path, molql));
+      const key = `${project ?? ""}/${path}::${molqlTargetKey(target)}`;
+      composer.toggleMention(key, formatStructureMention(project, path, molql));
       revealLeftView("thread");
     },
-    [insert, path, revealLeftView],
+    [composer, project, path, revealLeftView],
   );
 
   const apply = async () => {

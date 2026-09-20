@@ -19,6 +19,7 @@ import { createInMemoryRecordStore } from "@science-studio/record";
 import type {
   AttachmentRef,
   CommandDescriptor,
+  FileContent,
   FileStat,
   Principal,
   SessionState,
@@ -35,6 +36,12 @@ import {
 } from "@science-studio/transport";
 import type { Backend, CorsConfig } from "./composition.js";
 import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS } from "./directory.js";
+import {
+  computeInteractionsForSelection,
+  INTERACTIONS_MAX_BYTES,
+  MolqlCompileError,
+  UnsupportedStructureFormatError,
+} from "./interactions.js";
 import { encodeOp, parseClaimedState, WireOpsBuilder } from "./wire.js";
 
 declare module "fastify" {
@@ -352,6 +359,32 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     }
   });
 
+  // Non-covalent interactions for a MolQL selection over a workspace structure
+  // file. Mol* runs headlessly here; the agent's `computeInteraction` tool calls
+  // this route because the service is what owns the Project's file access.
+  app.get("/api/workspace/interactions", async (request, reply) => {
+    const { path, project, molql } = request.query as {
+      path?: string;
+      project?: string;
+      molql?: string;
+    };
+    if (!path) return reply.code(400).send({ error: "path is required" });
+    if (!molql) return reply.code(400).send({ error: "molql is required" });
+    try {
+      const environment = await backend.environments.acquire(request.principal!, projectOf(project));
+      const content = await environment.workspace.open(path, {
+        maxBytes: INTERACTIONS_MAX_BYTES,
+      });
+      const data = await readAll(content.body);
+      return await computeInteractionsForSelection({ fileName: path, data, molql });
+    } catch (err) {
+      if (err instanceof UnsupportedStructureFormatError || err instanceof MolqlCompileError) {
+        return reply.code(400).send({ error: err.message });
+      }
+      return sendWorkspaceError(reply, err);
+    }
+  });
+
   app.post("/api/workspace/upload", async (request, reply) => {
     const { path, project } = request.query as { path?: string; project?: string };
     if (!path) return reply.code(400).send({ error: "path is required" });
@@ -420,6 +453,14 @@ function sendWorkspaceError(reply: FastifyReply, err: unknown): FastifyReply {
   if (err instanceof WorkspacePathError) return reply.code(400).send({ error: err.message });
   if (err instanceof WorkspaceUnavailableError) return reply.code(503).send({ error: err.message });
   throw err;
+}
+
+/** Drain a workspace file stream into one buffer (structure parsing needs it all). */
+async function readAll(body: FileContent["body"]): Promise<Buffer> {
+  const stream = Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]);
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk as Uint8Array));
+  return Buffer.concat(chunks);
 }
 
 function sseHeaders(): Record<string, string> {

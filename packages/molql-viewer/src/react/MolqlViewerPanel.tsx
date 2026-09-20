@@ -20,9 +20,10 @@ export interface MolqlViewerPanelProps {
   onReady?: (viewer: MolqlViewer) => void;
   /**
    * Called when the user clicks a residue/bond while Mol*'s selection mode is
-   * on. The viewer reports the domain target; the host decides what to do.
+   * on (`null` for an empty click, which clears Mol*'s selection). The viewer
+   * reports the domain target; the host decides what to do.
    */
-  onResidueClick?: (target: MolqlTarget) => void;
+  onResidueClick?: (target: MolqlTarget | null) => void;
   /** Called when initialization or loading fails. */
   onError?: (error: Error) => void;
 }

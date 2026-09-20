@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "DeepSeek Harness plugin registering the `molql` tool: the agent emits a Mol* mol-script selection as structured JSON that the Science Studio viewer applies.",
+  "description": "DeepSeek Harness plugin registering the `molql` (viewer selection) and `computeInteraction` (non-covalent interactions) tools for Science Studio.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {

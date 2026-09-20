@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "OpenClaw gateway plugin registering the `molql` tool: the agent emits a Mol* mol-script selection as structured JSON that the Science Studio viewer applies.",
+  "description": "OpenClaw gateway plugin registering the `molql` (viewer selection) and `computeInteraction` (non-covalent interactions) tools for Science Studio.",
   "license": "MIT",
   "files": [
     "dist",
@@ -12,16 +12,19 @@
   ],
   "scripts": {
     "sync-skill": "node scripts/sync-skill.mjs",
-    "build": "node scripts/sync-skill.mjs && tsc",
+    "build": "node scripts/sync-skill.mjs && node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
     "plugin:build": "npm run build && openclaw plugins build --entry ./dist/index.js",
     "plugin:validate": "openclaw plugins validate --entry ./dist/index.js",
-    "plugin:install": "openclaw plugins uninstall molql-tool && npm run plugin:build && openclaw plugins install . && openclaw plugins enable molql-tool"
+    "plugin:install": "openclaw plugins uninstall molql-tool && npm run plugin:build && node scripts/install.mjs && openclaw plugins enable molql-tool --accept-capabilities"
   },
-  "dependencies": {
-    "openclaw": "^2026.8.1",
-    "typebox": "^1.1.38"
+  "peerDependencies": {
+    "openclaw": "^2026.8.1"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
+    "openclaw": "^2026.8.1",
+    "typebox": "^1.1.38",
     "typescript": "^5.5.0"
   },
   "openclaw": {
