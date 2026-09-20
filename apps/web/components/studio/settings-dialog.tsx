@@ -119,7 +119,7 @@ export function SettingsDialog() {
         closeSettings();
       }}
     >
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="flex max-h-[85vh] min-h-[20rem] flex-col sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <SettingsIcon className="size-4" />
@@ -129,7 +129,7 @@ export function SettingsDialog() {
             Deployment configuration. Saving persists it; a service restart applies it.
           </DialogDescription>
         </DialogHeader>
-        <Tabs defaultValue="model" orientation="vertical" className="min-h-[20rem]">
+        <Tabs defaultValue="model" orientation="vertical" className="min-h-0 flex-1">
           <TabsList className="h-fit w-40 shrink-0">
             <TabsTrigger value="model">Model</TabsTrigger>
             <TabsTrigger value="plugins">Plugins</TabsTrigger>
@@ -137,7 +137,7 @@ export function SettingsDialog() {
             <TabsTrigger value="subagents">Subagents</TabsTrigger>
             <TabsTrigger value="skills">Skills</TabsTrigger>
           </TabsList>
-          <TabsContent value="model" className="space-y-6">
+          <TabsContent value="model" className="min-h-0 space-y-6 overflow-y-auto pr-1">
             {status === "loading" ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
@@ -217,13 +217,13 @@ export function SettingsDialog() {
               </>
             )}
           </TabsContent>
-          <TabsContent value="plugins">
+          <TabsContent value="plugins" className="min-h-0 overflow-y-auto pr-1">
             <EmptySection title="Plugins" body="Plugin configuration is coming soon." />
           </TabsContent>
-          <TabsContent value="agent">
+          <TabsContent value="agent" className="min-h-0 overflow-y-auto pr-1">
             <EmptySection title="Agent" body="Agent configuration is coming soon." />
           </TabsContent>
-          <TabsContent value="subagents" className="space-y-6">
+          <TabsContent value="subagents" className="min-h-0 space-y-6 overflow-y-auto pr-1">
             {status === "loading" ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
@@ -275,7 +275,7 @@ export function SettingsDialog() {
               </>
             )}
           </TabsContent>
-          <TabsContent value="skills">
+          <TabsContent value="skills" className="min-h-0 overflow-y-auto pr-1">
             <SkillsTab projectId={projectId} />
           </TabsContent>
         </Tabs>

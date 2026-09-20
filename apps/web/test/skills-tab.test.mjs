@@ -137,6 +137,29 @@ test(
       assert.equal(remove.body.name, "alpha");
       assert.equal(remove.body.confirm, true);
 
+      // A long catalog scrolls INSIDE the dialog instead of overflowing the viewport.
+      skills = Array.from({ length: 40 }, (_, i) => skill(`s${i}`, "project", `Skill ${i}`));
+      await page.getByRole("tab", { name: "Model" }).click();
+      await page.getByRole("tab", { name: "Skills" }).click();
+      await page.getByText("Skill 39").waitFor({ state: "attached", timeout: 10_000 });
+      const layout = await page.evaluate(() => {
+        const dialog = document.querySelector('[data-slot="dialog-content"]');
+        const contents = [...document.querySelectorAll('[data-slot="tabs-content"]')];
+        const content = contents.find((el) => el.getBoundingClientRect().height > 0) ?? contents[0];
+        if (!dialog || !content) return null;
+        const before = content.scrollTop;
+        content.scrollTop = 100_000;
+        return {
+          dialogFits: dialog.getBoundingClientRect().height <= window.innerHeight,
+          overflowY: getComputedStyle(content).overflowY,
+          scrolled: content.scrollTop > before,
+        };
+      });
+      assert.ok(layout, "the dialog and its active tab content exist");
+      assert.equal(layout.dialogFits, true, "the dialog fits the viewport");
+      assert.equal(layout.overflowY, "auto", "the tab content is a scroll container");
+      assert.equal(layout.scrolled, true, "the tab content scrolls");
+
       // A runtime without the surface shows the neutral unavailable copy.
       available = false;
       await page.getByRole("tab", { name: "Model" }).click();
