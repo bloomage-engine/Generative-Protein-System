@@ -39,6 +39,8 @@ export function SettingsDialog() {
   const [clearKey, setClearKey] = React.useState(false);
   const [subagentsWindow, setSubagentsWindow] = React.useState("");
   const [subagentsWindowCleared, setSubagentsWindowCleared] = React.useState(false);
+  const [threadVisibleCount, setThreadVisibleCount] = React.useState("");
+  const [threadVisibleCountCleared, setThreadVisibleCountCleared] = React.useState(false);
   const [status, setStatus] = React.useState<Status>("idle");
   const [error, setError] = React.useState<string | null>(null);
 
@@ -59,6 +61,9 @@ export function SettingsDialog() {
         const n = next.subagents?.visibleWindowHours;
         setSubagentsWindow(n === undefined ? "" : String(n));
         setSubagentsWindowCleared(false);
+        const t = next.thread?.visibleMessageCount;
+        setThreadVisibleCount(t === undefined ? "" : String(t));
+        setThreadVisibleCountCleared(false);
         setStatus("idle");
       })
       .catch((err: unknown) => {
@@ -86,6 +91,12 @@ export function SettingsDialog() {
     if (!(subagentsWindow === "" && !subagentsWindowCleared)) {
       patch.subagents = {
         visibleWindowHours: subagentsWindow === "" ? null : Number(subagentsWindow),
+      };
+    }
+    // Blank + not an explicit reset = leave the stored thread count untouched.
+    if (!(threadVisibleCount === "" && !threadVisibleCountCleared)) {
+      patch.thread = {
+        visibleMessageCount: threadVisibleCount === "" ? null : Number(threadVisibleCount),
       };
     }
     try {
@@ -135,6 +146,7 @@ export function SettingsDialog() {
             <TabsTrigger value="plugins">Plugins</TabsTrigger>
             <TabsTrigger value="agent">Agent</TabsTrigger>
             <TabsTrigger value="subagents">Subagents</TabsTrigger>
+            <TabsTrigger value="thread">Thread</TabsTrigger>
             <TabsTrigger value="skills">Skills</TabsTrigger>
           </TabsList>
           <TabsContent value="model" className="min-h-0 space-y-6 overflow-y-auto pr-1">
@@ -260,6 +272,58 @@ export function SettingsDialog() {
                     }}
                   >
                     Reset to default (24h)
+                  </Button>
+                </section>
+                <div className="flex items-center gap-3">
+                  <Button type="button" onClick={() => void save()} disabled={status === "saving"}>
+                    {status === "saving" ? <Loader2 className="size-4 animate-spin" /> : null}
+                    Save
+                  </Button>
+                  {status === "saved" ? (
+                    <span className="text-xs text-muted-foreground">Saved.</span>
+                  ) : null}
+                  {error ? <span className="text-xs text-destructive">{error}</span> : null}
+                </div>
+              </>
+            )}
+          </TabsContent>
+          <TabsContent value="thread" className="min-h-0 space-y-6 overflow-y-auto pr-1">
+            {status === "loading" ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Loading…
+              </p>
+            ) : (
+              <>
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold">Thread</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Number of messages to show by default in the conversation view.
+                  </p>
+                  <label className="grid gap-1 text-xs">
+                    <span className="text-muted-foreground">Visible messages (10–100; default 20)</span>
+                    <Input
+                      type="number"
+                      min={10}
+                      max={100}
+                      value={threadVisibleCount}
+                      placeholder="20"
+                      onChange={(e) => {
+                        setThreadVisibleCount(e.target.value.trim());
+                        setThreadVisibleCountCleared(false);
+                      }}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setThreadVisibleCount("");
+                      setThreadVisibleCountCleared(true);
+                    }}
+                  >
+                    Reset to default (20)
                   </Button>
                 </section>
                 <div className="flex items-center gap-3">
