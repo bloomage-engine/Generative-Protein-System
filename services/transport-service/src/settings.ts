@@ -16,6 +16,8 @@ import type {
   RuntimeSettingsView,
   SubagentSettings,
   SubagentSettingsPatch,
+  ThreadSettings,
+  ThreadSettingsPatch,
 } from "@science-studio/transport";
 
 export function resolveSettingsPath(env: NodeJS.ProcessEnv = process.env): string {
@@ -25,7 +27,7 @@ export function resolveSettingsPath(env: NodeJS.ProcessEnv = process.env): strin
 }
 
 export function emptySettings(): RuntimeSettings {
-  return { model: {}, plugins: {}, agent: {}, subagents: {} };
+  return { model: {}, plugins: {}, agent: {}, subagents: {}, thread: {} };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -41,6 +43,7 @@ export async function loadSettings(path: string): Promise<RuntimeSettings> {
       plugins: isPlainObject(parsed.plugins) ? parsed.plugins : {},
       agent: isPlainObject(parsed.agent) ? parsed.agent : {},
       subagents: isPlainObject(parsed.subagents) ? (parsed.subagents as SubagentSettings) : {},
+      thread: isPlainObject(parsed.thread) ? (parsed.thread as ThreadSettings) : {},
     };
   } catch (err) {
     if ((err as { code?: string }).code !== "ENOENT") {
@@ -85,11 +88,18 @@ export function mergeSettings(current: RuntimeSettings, patch: RuntimeSettingsPa
     if (value === null) delete subagents.visibleWindowHours;
     else if (value !== undefined) subagents.visibleWindowHours = value;
   }
+  const thread: ThreadSettings = { ...(current.thread ?? {}) };
+  if (patch.thread !== undefined && "visibleMessageCount" in patch.thread) {
+    const value = patch.thread.visibleMessageCount;
+    if (value === null) delete thread.visibleMessageCount;
+    else if (value !== undefined) thread.visibleMessageCount = value;
+  }
   return {
     model,
     plugins: patch.plugins ? { ...current.plugins, ...patch.plugins } : current.plugins,
     agent: patch.agent ? { ...current.agent, ...patch.agent } : current.agent,
     subagents,
+    thread,
   };
 }
 
@@ -104,6 +114,7 @@ export function viewOf(
     plugins: settings.plugins,
     agent: settings.agent,
     subagents: { ...(settings.subagents ?? {}) },
+    thread: { ...(settings.thread ?? {}) },
     runtime: env.TRANSPORT_RUNTIME ?? "openclaw",
     settingsPath,
   };
@@ -169,6 +180,18 @@ export function parseSettingsPatch(
       else return { error: "subagents.visibleWindowHours must be an integer between 1 and 720" };
     }
     patch.subagents = sub;
+  }
+  if ("thread" in body) {
+    if (!isPlainObject(body.thread)) return { error: "thread must be an object" };
+    const thr: ThreadSettingsPatch = {};
+    if ("visibleMessageCount" in body.thread) {
+      const value = body.thread.visibleMessageCount;
+      if (value === null) thr.visibleMessageCount = null;
+      else if (typeof value === "number" && Number.isInteger(value) && value >= 10 && value <= 100)
+        thr.visibleMessageCount = value;
+      else return { error: "thread.visibleMessageCount must be an integer between 10 and 100" };
+    }
+    patch.thread = thr;
   }
   return { patch };
 }

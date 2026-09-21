@@ -85,6 +85,7 @@ test("the settings contract types are importable and usable", () => {
     plugins: {},
     agent: {},
     subagents: {},
+    thread: {},
     runtime: "dsh",
     settingsPath: "/tmp/settings.json",
   };

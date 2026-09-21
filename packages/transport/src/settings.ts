@@ -23,11 +23,17 @@ export interface SubagentSettings {
   visibleWindowHours?: number;
 }
 
+export interface ThreadSettings {
+  /** Number of messages to show by default in the conversation view. */
+  visibleMessageCount?: number;
+}
+
 export interface RuntimeSettings {
   model: ModelSettings;
   plugins: Record<string, unknown>;
   agent: Record<string, unknown>;
   subagents?: SubagentSettings;
+  thread?: ThreadSettings;
 }
 
 /** The `GET`/`PUT` response: `apiKey` is replaced by a configured flag. */
@@ -36,6 +42,7 @@ export interface RuntimeSettingsView {
   plugins: Record<string, unknown>;
   agent: Record<string, unknown>;
   subagents: SubagentSettings;
+  thread: ThreadSettings;
   /** The active runtime product (`TRANSPORT_RUNTIME`). */
   runtime: string;
   /** The settings file the service read/wrote, for diagnosis. */
@@ -54,9 +61,14 @@ export interface SubagentSettingsPatch {
   visibleWindowHours?: number | null;
 }
 
+export interface ThreadSettingsPatch {
+  visibleMessageCount?: number | null;
+}
+
 export interface RuntimeSettingsPatch {
   model?: ModelSettingsPatch;
   plugins?: Record<string, unknown>;
   agent?: Record<string, unknown>;
   subagents?: SubagentSettingsPatch;
+  thread?: ThreadSettingsPatch;
 }

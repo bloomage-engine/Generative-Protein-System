@@ -70,6 +70,8 @@ export type {
   RuntimeSettingsPatch,
   SubagentSettings,
   SubagentSettingsPatch,
+  ThreadSettings,
+  ThreadSettingsPatch,
 } from "./settings.js";
 export type {
   SkillInfo,
