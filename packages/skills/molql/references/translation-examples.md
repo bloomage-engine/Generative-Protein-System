@@ -324,6 +324,56 @@ A typical interface selection might be: 'Select residues in chain A within 5Å o
 
 ---
 
+## Measurements (the `measurements` tool)
+
+Measurement requests are answered with the `measurements` tool, not `molql`.
+Translate the user's words into an **ordered** list of MolQL selection items and
+pick the `kind` (see arity in the table).
+
+**User**: "What is the distance between residue 42 and residue 87?"
+```json
+{ "kind": "distance", "selections": ["(sel.atom.res (= atom.resno 42))", "(sel.atom.res (= atom.resno 87))"] }
+```
+**Explanation**: Two residues, order A→B; the tool returns the distance in Å and
+draws it.
+
+**User**: "Measure the distance between the CA atoms of residues 42 and 87"
+```json
+{ "kind": "distance", "selections": ["(sel.atom.atoms (and (= atom.resno 42) (= atom.name CA)))", "(sel.atom.atoms (and (= atom.resno 87) (= atom.name CA)))"] }
+```
+**Explanation**: Atom-level selections are needed to measure a specific atom pair.
+
+**User**: "What is the angle at the iron?"
+```json
+{ "kind": "angle", "selections": ["<ligand atom A>", "(sel.atom.atoms (= atom.el _Fe))", "<ligand atom C>"] }
+```
+**Explanation**: Three items, ordered A—B—C; the angle is measured at B (the iron).
+
+**User**: "Give me the dihedral of these four atoms" (four click mentions)
+```json
+{ "kind": "dihedral", "selections": ["@<project>/<path>/(sel.atom.atoms ...)", "...", "...", "..."] }
+```
+**Explanation**: Pass the four mentions in click order unchanged.
+
+**User**: "Show the principal axes / oriented box of the ligand"
+```json
+{ "kind": "orientation", "selections": ["(sel.atom.res (= atom.resname HEM))"] }
+```
+
+**User**: "Fit a plane through the heme"
+```json
+{ "kind": "plane", "selections": ["(sel.atom.res (= atom.resname HEM))"] }
+```
+
+| Kind | Selection items | Returns |
+|------|-----------------|---------|
+| `label` | 1 | the residue/atom label |
+| `distance` | 2 (A—B) | distance in Å |
+| `angle` | 3 (A—B—C) | angle in degrees at B |
+| `dihedral` | 4 (A—B—C—D) | dihedral in degrees |
+| `orientation` | 1+ | origin, principal axes, extents |
+| `plane` | 1+ | centroid + best-fit plane normal |
+
 ## Quick Reference Card
 
 | User Says | MolQL Pattern |

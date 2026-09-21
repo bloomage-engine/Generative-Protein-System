@@ -174,3 +174,48 @@ test("a deployment with no workspace answers 503, not an empty listing", async (
     assert.equal(res.status, 503);
   });
 });
+
+/** One water molecule — enough to exercise parse → compile → measure. */
+const WATER_PDB = [
+  "HETATM    1  O   HOH A   1       0.000   0.000   0.000  1.00  0.00           O",
+  "HETATM    2  H1  HOH A   1       0.957   0.000   0.000  1.00  0.00           H",
+  "HETATM    3  H2  HOH A   1      -0.240   0.927   0.000  1.00  0.00           H",
+  "END",
+  "",
+].join("\n");
+
+test("POST /api/workspace/measurements computes a distance, 400 on a bad request", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ss-ws-measure-"));
+  await writeFile(join(root, "water.pdb"), WATER_PDB);
+  try {
+    await withServer(wsFor(root), async (base) => {
+      const post = (body: unknown) =>
+        fetch(`${base}/api/workspace/measurements`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+      const ok = await post({
+        path: "water.pdb",
+        kind: "distance",
+        selections: [
+          "(sel.atom.atoms (= atom.name O))",
+          "(sel.atom.atoms (= atom.name H1))",
+        ],
+      });
+      assert.equal(ok.status, 200);
+      const result = (await ok.json()) as { kind: string; text: string };
+      assert.equal(result.kind, "distance");
+      assert.match(result.text, /Distance: 0\.96 Å/);
+
+      const badKind = await post({ path: "water.pdb", kind: "volume", selections: ["(sel.atom.all)"] });
+      assert.equal(badKind.status, 400);
+
+      const missingPath = await post({ path: "nope.pdb", kind: "distance", selections: ["(sel.atom.all)", "(sel.atom.all)"] });
+      assert.equal(missingPath.status, 404);
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

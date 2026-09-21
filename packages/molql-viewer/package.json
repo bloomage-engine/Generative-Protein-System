@@ -17,6 +17,10 @@
     "./directive": {
       "types": "./dist/directive.d.ts",
       "default": "./dist/directive.js"
+    },
+    "./measurement": {
+      "types": "./dist/measurement.d.ts",
+      "default": "./dist/measurement.js"
     }
   },
   "scripts": {

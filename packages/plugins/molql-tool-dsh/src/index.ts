@@ -2,20 +2,26 @@ import { readFileSync } from "node:fs";
 import type { Context } from "@deepseek-ai/cordis";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { ContentBlock } from "@deepseek-ai/dsh-llm";
-// Type-only: brings in the `ctx.skills` module augmentation.
-import type {} from "@deepseek-ai/dsh-skill";
 import {
   TOOL_DESCRIPTION,
   INTERACTION_TOOL_NAME,
   INTERACTION_DESCRIPTION,
+  MEASUREMENTS_TOOL_NAME,
+  MEASUREMENTS_DESCRIPTION,
   createMolqlResult,
   fetchInteractions,
+  fetchMeasurements,
 } from "@science-studio/molql-shared";
 
 export const SKILL_DESCRIPTION =
   "Translate natural-language molecular structure queries into MolQL (Mol* mol-script) selections for the Science Studio structure viewer.";
 
 const SKILL_NAME = "molql";
+
+/** The optional `skills` service shape (see the skill registration below). */
+interface SkillRegistry {
+  register(skill: { name: string; description: string; source: string; content: string }): void;
+}
 
 export const name = "molql-tool";
 
@@ -119,13 +125,73 @@ export function apply(ctx: Context): void {
     }),
   );
 
+  ctx.tools.register(
+    defineTool({
+      name: MEASUREMENTS_TOOL_NAME,
+      description: MEASUREMENTS_DESCRIPTION,
+      parameters: {
+        kind: {
+          type: "string",
+          required: true,
+          enum: ["label", "distance", "angle", "dihedral", "orientation", "plane"],
+          description: "Which measurement to compute and draw.",
+        },
+        selections: {
+          type: "array",
+          items: { type: "string" },
+          required: true,
+          description:
+            "Ordered selection items (A, B, C, D): a bare MolQL expression or a full @project/path/molql mention.",
+        },
+        project: {
+          type: "string",
+          description: "The Project id; read from the first mention when omitted.",
+        },
+        path: {
+          type: "string",
+          description: "The workspace-relative structure file path; read from the first mention when omitted.",
+        },
+        description: {
+          type: "string",
+          description: "Short human-readable explanation of what is being measured.",
+        },
+      },
+      output: {
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            type: { type: "string", required: true },
+            kind: { type: "string", required: true },
+            project: { type: "string", required: true },
+            path: { type: "string", required: true },
+            selections: { type: "array", items: { type: "string" }, required: true },
+            values: { type: "json", required: true },
+            text: { type: "string", required: true },
+          },
+        },
+        render: (_args, value): ContentBlock[] => [
+          { type: "text", text: JSON.stringify(value) },
+        ],
+      },
+      async execute(args) {
+        return fetchMeasurements(args);
+      },
+    }),
+  );
+
   // Optional: publish the full manual as an embedded skill when the skill
   // registry is mounted. The tool works without it (the description is the
-  // cheat-sheet), so `skills` is injected lazily rather than required.
+  // cheat-sheet), so `skills` is injected lazily rather than required. The
+  // service is described structurally: @deepseek-ai/dsh-skill is an OPTIONAL
+  // peer, and its module augmentation targets the root cordis copy, which does
+  // not merge with the copy this package is built against.
   ctx.inject(["skills"], (sk) => {
+    const skills = (sk as unknown as { skills?: SkillRegistry }).skills;
+    if (!skills) return;
     const content = loadSkillContent();
     if (!content) return;
-    sk.skills.register({
+    skills.register({
       name: SKILL_NAME,
       description: SKILL_DESCRIPTION,
       source: "runtime",

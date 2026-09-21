@@ -4,38 +4,26 @@
  * Mol* computes interactions in pure JS (no WebGL), so the service can answer
  * the `computeInteraction` tool without the browser: parse the workspace file,
  * compile the MolQL selection, run molstar's `computeInteractions`, and return
- * the contacts that touch the selection.
- *
- * molstar ships ESM `lib/*.js` without `"type": "module"`, so a Node ESM service
- * cannot `import` it; this module loads its CommonJS build through
- * `createRequire` lazily (molstar is heavy — never pay for it until a tool call
- * asks).
+ * the contacts that touch the selection. The headless molstar loading lives in
+ * `structure.ts`, shared with the measurements route.
  */
-import { createRequire } from "node:module";
+import {
+  compileLoci,
+  loadMolstar,
+  parseStructure,
+  structureKind,
+  UnsupportedStructureFormatError,
+  type Molstar,
+} from "./structure.js";
 
-const require = createRequire(import.meta.url);
-
-/** Cap on the structure file parsed for one computation. */
-export const INTERACTIONS_MAX_BYTES = 50 * 1024 * 1024;
+export {
+  MolqlCompileError,
+  UnsupportedStructureFormatError,
+  STRUCTURE_MAX_BYTES as INTERACTIONS_MAX_BYTES,
+} from "./structure.js";
 
 /** Upper bound on returned rows; the table notes when it clips. */
 const MAX_ROWS = 500;
-
-/** Thrown when the file name is not a structure format this route can parse. */
-export class UnsupportedStructureFormatError extends Error {
-  constructor(fileName: string) {
-    super(`not a supported structure file: ${fileName}`);
-    this.name = "UnsupportedStructureFormatError";
-  }
-}
-
-/** Thrown when the MolQL expression does not compile against the structure. */
-export class MolqlCompileError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "MolqlCompileError";
-  }
-}
 
 export interface InteractionRow {
   type: string;
@@ -56,90 +44,6 @@ export interface InteractionResult {
   truncated: boolean;
   /** Human/agent-readable Markdown table. */
   table: string;
-}
-
-type StructureKind = "pdb" | "mmcif" | "bcif";
-
-function structureKind(fileName: string): StructureKind | null {
-  const lower = fileName.toLowerCase().replace(/\.gz$/, "");
-  const ext = lower.slice(lower.lastIndexOf(".") + 1);
-  if (ext === "pdb" || ext === "ent") return "pdb";
-  if (ext === "cif" || ext === "mmcif") return "mmcif";
-  if (ext === "bcif") return "bcif";
-  return null;
-}
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-type Molstar = {
-  parsePDB: any;
-  trajectoryFromPDB: any;
-  parseCifText: any;
-  parseCifBinary: any;
-  trajectoryFromMmCIF: any;
-  Structure: any;
-  Unit: any;
-  OrderedSet: any;
-  Vec3: any;
-  Script: any;
-  RuntimeContext: any;
-  ParamDefinition: any;
-  InteractionsProvider: any;
-  computeInteractions: any;
-  interactionTypeLabel: any;
-  InteractionFlag: any;
-  StructureElement: any;
-  StructureProperties: any;
-};
-
-let cachedMolstar: Molstar | undefined;
-
-/** Load molstar's CommonJS build once, on the first computation. */
-function loadMolstar(): Molstar {
-  if (cachedMolstar) return cachedMolstar;
-  const m = (path: string): any => require(`molstar/lib/commonjs/${path}`);
-  cachedMolstar = {
-    parsePDB: m("mol-io/reader/pdb/parser.js").parsePDB,
-    trajectoryFromPDB: m("mol-model-formats/structure/pdb.js").trajectoryFromPDB,
-    parseCifText: m("mol-io/reader/cif/text/parser.js").parseCifText,
-    parseCifBinary: m("mol-io/reader/cif/binary/parser.js").parseCifBinary,
-    trajectoryFromMmCIF: m("mol-model-formats/structure/mmcif.js").trajectoryFromMmCIF,
-    Structure: m("mol-model/structure.js").Structure,
-    Unit: m("mol-model/structure.js").Unit,
-    StructureElement: m("mol-model/structure.js").StructureElement,
-    StructureProperties: m("mol-model/structure.js").StructureProperties,
-    OrderedSet: m("mol-data/int.js").OrderedSet,
-    Vec3: m("mol-math/linear-algebra.js").Vec3,
-    Script: m("mol-script/script.js").Script,
-    RuntimeContext: m("mol-task/index.js").RuntimeContext,
-    ParamDefinition: m("mol-util/param-definition.js").ParamDefinition,
-    InteractionsProvider: m("mol-model-props/computed/interactions.js").InteractionsProvider,
-    computeInteractions: m("mol-model-props/computed/interactions/interactions.js")
-      .computeInteractions,
-    interactionTypeLabel: m("mol-model-props/computed/interactions/common.js")
-      .interactionTypeLabel,
-    InteractionFlag: m("mol-model-props/computed/interactions/common.js").InteractionFlag,
-  };
-  return cachedMolstar;
-}
-
-async function parseStructure(
-  m: Molstar,
-  kind: StructureKind,
-  data: Uint8Array,
-): Promise<any> {
-  if (kind === "pdb") {
-    const parsed = await m.parsePDB(new TextDecoder().decode(data)).run();
-    const trajectory = await m.trajectoryFromPDB(parsed.result).run();
-    return m.Structure.ofModel(trajectory.representative);
-  }
-  if (kind === "mmcif") {
-    const parsed = await m.parseCifText(new TextDecoder().decode(data)).run();
-    const trajectory = await m.trajectoryFromMmCIF(parsed.result).run();
-    return m.Structure.ofModel(trajectory.representative);
-  }
-  const parsed = await m.parseCifBinary(data).run();
-  const trajectory = await m.trajectoryFromMmCIF(parsed.result).run();
-  return m.Structure.ofModel(trajectory.representative);
 }
 
 interface FeatureLabel {
@@ -279,14 +183,7 @@ export async function computeInteractionsForSelection(input: {
   const structure = await parseStructure(m, kind, input.data);
 
   const target = input.molql.trim();
-  let loci: any;
-  try {
-    loci = m.Script.toLoci({ expression: target, language: "mol-script" }, structure);
-  } catch (err) {
-    throw new MolqlCompileError(
-      err instanceof Error ? err.message : `invalid MolQL: ${String(err)}`,
-    );
-  }
+  const loci = compileLoci(m, structure, target);
 
   const props = m.ParamDefinition.getDefaultValues(m.InteractionsProvider.defaultParams);
   const context = { runtime: m.RuntimeContext.Synchronous, assetManager: {} };

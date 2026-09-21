@@ -1,15 +1,15 @@
 ---
 name: molql
-description: This skill should be used when users need to translate natural language molecular structure queries into MolQL (Mol-Script) expressions. It handles basic atom/residue/chain selection, distance-based queries, property-based filtering, complex multi-part queries, and provides clarification for ambiguous requests.
+description: This skill should be used when users need to translate natural language molecular structure queries into MolQL (Mol-Script) expressions, or to measure a structure (distance, angle, dihedral, orientation, plane). It handles basic atom/residue/chain selection, distance-based queries, property-based filtering, complex multi-part queries, and provides clarification for ambiguous requests.
 ---
 
 # MolQL Translator Skill
 
 ## Purpose
 
-This skill translates natural language molecular structure queries into valid MolQL (Mol-Script) expressions. It enables users to describe what they want to select or visualize in natural language, and applies the resulting selection to the molecular structure viewer that is open in the Science Studio web app.
+This skill translates natural language molecular structure queries into valid MolQL (Mol-Script) expressions. It enables users to describe what they want to select, visualize or measure in natural language, and applies the resulting selection to the molecular structure viewer that is open in the Science Studio web app.
 
-The selection is delivered by calling the `molql` **tool** — never by printing the expression in a code block. The tool forwards the expression to the viewer, which compiles it with Mol* and highlights/focuses the matching atoms.
+The selection is delivered by calling the `molql` **tool** — never by printing the expression in a code block. The tool forwards the expression to the viewer, which compiles it with Mol* and highlights/focuses the matching atoms. Measurements are delivered by the separate `measurements` tool (see "Measuring" below).
 
 ## When to Use
 
@@ -53,6 +53,39 @@ Trigger this skill when users:
    Then, in your reply, give the expression and a one-line explanation as plain
    text for the user. Do not use the tool until you are confident the expression
    is valid; the viewer reports a syntax error if it is not.
+
+## Measuring (the `measurements` tool)
+
+Selection answers "what"; measurement answers "how much". When the user asks for a
+distance, angle, dihedral, label, orientation or best-fit plane, call the
+**`measurements`** tool:
+
+- `kind`: `label` | `distance` | `angle` | `dihedral` | `orientation` | `plane`
+- `selections` (required): the **ordered** selection items, each a MolQL
+  expression or a full `@project/path/molql` mention produced by clicking in the
+  viewer. Order is A, B, C, D and matters:
+  - `label` → 1 item
+  - `distance` → 2 items (A—B)
+  - `angle` → 3 items (A—B—C; the angle is at the middle item B)
+  - `dihedral` → 4 items (A—B—C—D)
+  - `orientation` / `plane` → 1 or more items (a set)
+- `project` / `path` (optional): read from the first mention when the items are
+  mentions; otherwise pass them explicitly.
+
+Examples of the MolQL you pass as selection items:
+
+| User asks | selection item |
+|---|---|
+| "the distance between residue 42 and residue 87" | `(sel.atom.res (= atom.resno 42))`, `(sel.atom.res (= atom.resno 87))` |
+| "distance between the CA atoms of residues 42 and 87" | `(sel.atom.atoms (and (= atom.resno 42) (= atom.name CA)))`, `(sel.atom.atoms (and (= atom.resno 87) (= atom.name CA)))` |
+| "the angle at the iron between His 45 and His 90" | `(sel.atom.atoms (= atom.name NE2))`… prefer explicit atoms |
+| "the plane of the heme" | `(sel.atom.res (= atom.resname HEM))` |
+
+The tool returns the value (Å for distance, degrees for angle/dihedral, or the
+fitted axes/plane) **and** draws the same measurement in the 3D view. A click
+mention already contains a complete MolQL expression — pass it through unchanged
+as the ordered selection item; only translate when the user describes the
+selection in words.
 
 ### Query Categories and Patterns
 

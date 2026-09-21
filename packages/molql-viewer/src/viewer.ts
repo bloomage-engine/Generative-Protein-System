@@ -6,72 +6,20 @@ import type { BuiltInTrajectoryFormat } from "molstar/lib/mol-plugin-state/forma
 import type { PluginStateObject as SO } from "molstar/lib/mol-plugin-state/objects";
 import type { StateObjectRef } from "molstar/lib/mol-state";
 import type { Loci as ModelLoci } from "molstar/lib/mol-model/loci.js";
-import {
-  Bond,
-  Structure,
-  StructureElement,
-  StructureProperties,
-  type Unit,
-} from "molstar/lib/mol-model/structure";
+import { Structure, StructureElement } from "molstar/lib/mol-model/structure";
 import { Asset } from "molstar/lib/mol-util/assets";
 import { Color } from "molstar/lib/mol-util/color";
 import type { ReactElement } from "react";
 import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { MolqlError } from "./directive.js";
-import type { AtomSelection, MolqlTarget, ResidueSelection } from "./selection.js";
+import type { MeasurementKind } from "./measurement.js";
+import { describeMolqlTarget } from "./resolve.js";
+import type { MolqlTarget } from "./selection.js";
 import type { MolqlSelectionTarget } from "./target.js";
 
 /** Default ceiling for `whenReady` before it gives up as NOT_READY. */
 const READY_TIMEOUT_MS = 15000;
-
-/** Read the residue identity off a location, or `undefined` for coarse models. */
-function readResidue(loc: StructureElement.Location): ResidueSelection | undefined {
-  try {
-    const chain = StructureProperties.chain.auth_asym_id(loc);
-    const resno = StructureProperties.residue.auth_seq_id(loc);
-    const resname = StructureProperties.residue.auth_comp_id(loc);
-    if (!chain || !resname || typeof resno !== "number") return undefined;
-    return { chain, resno, resname };
-  } catch {
-    return undefined;
-  }
-}
-
-/** Read one atom (residue identity plus its name) off a unit element. */
-function readAtom(
-  structure: Structure,
-  unit: Unit,
-  unitIndex: StructureElement.UnitIndex,
-): AtomSelection | undefined {
-  const loc = StructureElement.Location.create(structure, unit, unit.elements[unitIndex]);
-  const residue = readResidue(loc);
-  if (!residue) return undefined;
-  try {
-    const atomName = StructureProperties.atom.auth_atom_id(loc);
-    if (!atomName) return undefined;
-    return { ...residue, atomName };
-  } catch {
-    return undefined;
-  }
-}
-
-/** Resolve a click's loci into a residue or a bond (its two endpoint atoms). */
-function describeMolqlTarget(loci: ModelLoci): MolqlTarget | undefined {
-  if (StructureElement.Loci.is(loci)) {
-    const loc = StructureElement.Loci.getFirstLocation(loci);
-    const residue = loc ? readResidue(loc) : undefined;
-    return residue ? { kind: "residue", residue } : undefined;
-  }
-  if (Bond.isLoci(loci)) {
-    const bond = loci.bonds[0];
-    if (!bond) return undefined;
-    const a = readAtom(loci.structure, bond.aUnit, bond.aIndex);
-    const b = readAtom(loci.structure, bond.bUnit, bond.bIndex);
-    return a && b ? { kind: "bond", a, b } : undefined;
-  }
-  return undefined;
-}
 
 /**
  * A standalone Mol* viewer wrapped for the science-studio preview pane.
@@ -175,16 +123,24 @@ export class MolqlViewer implements MolqlSelectionTarget {
    * so a normal click (rotate/focus) never types into the composer; the mode's
    * own behavior is what highlights the clicked element. An empty click reports
    * `null` (Mol* has just cleared the selection).
+   *
+   * The picking level (`plugin.managers.interactivity.props.granularity`)
+   * decides whether an element click becomes an atom (Atom/Coarse Element) or a
+   * residue.
    */
   private handleClick(reprLoci: { loci: ModelLoci }): void {
-    if (!this.plugin?.selectionMode) return;
+    const plugin = this.plugin;
+    if (!plugin?.selectionMode) return;
     const handler = this.onResidueClick;
     if (!handler) return;
     if (reprLoci.loci.kind === "empty-loci") {
       handler(null);
       return;
     }
-    const target = describeMolqlTarget(reprLoci.loci);
+    const target = describeMolqlTarget(
+      reprLoci.loci,
+      plugin.managers.interactivity.props.granularity,
+    );
     if (target) handler(target);
   }
 
@@ -241,6 +197,39 @@ export class MolqlViewer implements MolqlSelectionTarget {
 
   focus(loci: StructureElement.Loci): void {
     this.plugin?.managers.camera.focusLoci(loci, { durationMs: 300 });
+  }
+
+  /**
+   * Draw a Mol* measurement. Delegates to `plugin.managers.structure.
+   * measurement`, which builds the selection + representation state transforms
+   * and renders the value as a 3D label. `label`/`distance`/`angle`/`dihedral`
+   * consume the first 1/2/3/4 loci; `orientation`/`plane` take the whole set.
+   */
+  async measure(kind: MeasurementKind, locis: StructureElement.Loci[]): Promise<void> {
+    const manager = this.plugin?.managers.structure.measurement;
+    if (!manager) return;
+    switch (kind) {
+      case "label":
+        if (locis[0]) await manager.addLabel(locis[0]);
+        return;
+      case "distance":
+        if (locis.length >= 2) await manager.addDistance(locis[0]!, locis[1]!);
+        return;
+      case "angle":
+        if (locis.length >= 3) await manager.addAngle(locis[0]!, locis[1]!, locis[2]!);
+        return;
+      case "dihedral":
+        if (locis.length >= 4) {
+          await manager.addDihedral(locis[0]!, locis[1]!, locis[2]!, locis[3]!);
+        }
+        return;
+      case "orientation":
+        if (locis.length >= 1) await manager.addOrientation(locis);
+        return;
+      case "plane":
+        if (locis.length >= 1) await manager.addPlane(locis);
+        return;
+    }
   }
 
   // -- Loading ----------------------------------------------------------------

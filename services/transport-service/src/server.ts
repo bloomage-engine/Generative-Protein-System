@@ -39,7 +39,6 @@ import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS } from "./directory.js";
 import { canonicalSessionKey, createProjectScopes } from "./project-scope.js";
 import {
   computeInteractionsForSelection,
-  INTERACTIONS_MAX_BYTES,
   MolqlCompileError,
   UnsupportedStructureFormatError,
 } from "./interactions.js";
@@ -52,6 +51,8 @@ import {
   viewOf,
 } from "./settings.js";
 import { parseSkillInstall, parseSkillRemove, sendSkillError } from "./skills.js";
+import { computeMeasurements, MeasurementError } from "./measurements.js";
+import { STRUCTURE_MAX_BYTES } from "./structure.js";
 import { encodeOp, parseClaimedState, WireOpsBuilder } from "./wire.js";
 
 declare module "fastify" {
@@ -592,13 +593,51 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     if (!molql) return reply.code(400).send({ error: "molql is required" });
     return scope.withWorkspace(request, reply, async ({ environment }) => {
       const content = await environment.workspace.open(path, {
-        maxBytes: INTERACTIONS_MAX_BYTES,
+        maxBytes: STRUCTURE_MAX_BYTES,
       });
       const data = await readAll(content.body);
       try {
         return await computeInteractionsForSelection({ fileName: path, data, molql });
       } catch (err) {
         if (err instanceof UnsupportedStructureFormatError || err instanceof MolqlCompileError) {
+          return reply.code(400).send({ error: err.message });
+        }
+        throw err;
+      }
+    });
+  });
+
+  // Mol* measurements (label/distance/angle/dihedral/orientation/plane) over a
+  // set of MolQL selections in a workspace structure file. Same headless molstar
+  // path as the interactions route; the agent's `measurements` tool calls it.
+  app.post("/api/workspace/measurements", async (request, reply) => {
+    const body = (request.body ?? {}) as {
+      path?: unknown;
+      project?: unknown;
+      kind?: unknown;
+      selections?: unknown;
+    };
+    const path = typeof body.path === "string" ? body.path : "";
+    if (!path) return reply.code(400).send({ error: "path is required" });
+    const kind = typeof body.kind === "string" ? body.kind : "";
+    if (!kind) return reply.code(400).send({ error: "kind is required" });
+    const selections = Array.isArray(body.selections)
+      ? body.selections.filter((s): s is string => typeof s === "string")
+      : [];
+    if (selections.length === 0) {
+      return reply.code(400).send({ error: "selections (string[]) is required" });
+    }
+    return scope.withWorkspace(request, reply, async ({ environment }) => {
+      const content = await environment.workspace.open(path, { maxBytes: STRUCTURE_MAX_BYTES });
+      const data = await readAll(content.body);
+      try {
+        return await computeMeasurements({ fileName: path, data, kind, selections });
+      } catch (err) {
+        if (
+          err instanceof UnsupportedStructureFormatError ||
+          err instanceof MolqlCompileError ||
+          err instanceof MeasurementError
+        ) {
           return reply.code(400).send({ error: err.message });
         }
         throw err;

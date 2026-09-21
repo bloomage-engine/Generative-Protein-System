@@ -260,13 +260,26 @@ headlessly), passing the `@<project>/<path>/<molql>` mention split into
 `project`/`path`/`molql`, and returns a Markdown table.
 _Avoid_: Interaction tool, Contact tool, Molstar interaction
 
+**`measurements` Tool**:
+The agent tool (both runtime plugins) that measures a structure and draws the
+same measurement in the viewer. `kind` is `label`/`distance`/`angle`/`dihedral`/
+`orientation`/`plane`; `selections` is the ordered list of MolQL expressions (or
+`@<project>/<path>/<molql>` mentions, parsed deterministically) that defines
+A/B/C/D. The service computes the value with the same molstar formulas the viewer
+draws and returns it, so one result serves both the model and the 3D view.
+_Avoid_: Measure tool, Geometry tool, Molstar measurement
+
 **Selection Mention**:
 The composer text `@<project>/<workspace path>/<MolQL expression>` produced when
-the user clicks a residue or a bond in the structure preview while Mol*'s
-selection mode is on. The viewer reports the target as domain data (chain/resno/
-resname, or the two endpoint atoms of a bond) and the app toggles it in the draft
-— a second click on the same target removes the mention, matching Mol*'s
-`clickToggle` — so the next message names both the file and the selection.
+the user clicks a residue, an atom or a bond/dashed interaction in the structure
+preview while Mol*'s selection mode is on. The viewer reports the target as domain
+data: chain/resno/resname (a residue, or a single atom at Mol*'s "Atom/Coarse
+Element" picking level), the two endpoint atoms of a bond, or the two
+representative endpoint atoms of a non-covalent interaction — the last carrying a
+` #<interaction type>` suffix (e.g. ` #Hydrogen Bond`), which the agent-side tools
+strip. The app toggles the mention in the draft — a second click on the same
+target removes it, matching Mol*'s `clickToggle` — so the next message names both
+the file and the selection.
 _Avoid_: Highlight text, Residue link, Click command
 
 **Workflow** (also **DAG**):

@@ -4,8 +4,11 @@ import {
   TOOL_DESCRIPTION,
   INTERACTION_TOOL_NAME,
   INTERACTION_DESCRIPTION,
+  MEASUREMENTS_TOOL_NAME,
+  MEASUREMENTS_DESCRIPTION,
   createMolqlResult,
   fetchInteractions,
+  fetchMeasurements,
 } from "@science-studio/molql-shared";
 
 /**
@@ -24,7 +27,7 @@ export default defineToolPlugin({
   id: "molql-tool",
   name: "MolQL",
   description:
-    "Science Studio structure tools: translate a query into a Mol* mol-script selection for the viewer to apply, and compute the non-covalent interactions of a selection.",
+    "Science Studio structure tools: translate a query into a Mol* mol-script selection for the viewer to apply, compute the non-covalent interactions of a selection, and measure distances/angles/dihedrals/orientation/plane for a set of selections.",
 
   tools: (tool) => [
     tool({
@@ -69,6 +72,43 @@ export default defineToolPlugin({
         }),
       }),
       execute: fetchInteractions,
+    }),
+
+    tool({
+      name: MEASUREMENTS_TOOL_NAME,
+      description: MEASUREMENTS_DESCRIPTION,
+      parameters: Type.Object({
+        kind: Type.Union(
+          [
+            Type.Literal("label"),
+            Type.Literal("distance"),
+            Type.Literal("angle"),
+            Type.Literal("dihedral"),
+            Type.Literal("orientation"),
+            Type.Literal("plane"),
+          ],
+          { description: "Which measurement to compute and draw." },
+        ),
+        selections: Type.Array(Type.String(), {
+          description:
+            "Ordered selection items (A, B, C, D): a bare MolQL expression or a full @project/path/molql mention.",
+        }),
+        project: Type.Optional(
+          Type.String({ description: "The Project id; read from the first mention when omitted." }),
+        ),
+        path: Type.Optional(
+          Type.String({
+            description:
+              "The workspace-relative structure file path; read from the first mention when omitted.",
+          }),
+        ),
+        description: Type.Optional(
+          Type.String({
+            description: "Short human-readable explanation of what is being measured.",
+          }),
+        ),
+      }),
+      execute: fetchMeasurements,
     }),
   ],
 });
