@@ -214,9 +214,11 @@ export const useStudioStore = create<State>()((set) => ({
       // The pane's list IS the committed Project's list whenever the pane was
       // already expanded on it (that is how a Session gets picked).
       const paneHoldsTarget = state.panelProjectId === projectId;
+      const sessionChanged = state.activeSessionId !== sessionId;
       return {
         projectId,
         activeSessionId: sessionId,
+        visibleMessageCount: sessionChanged ? 20 : state.visibleMessageCount,
         // A committed scope is what the pane shows.
         panelProjectId: projectId,
         ...(state.projectId === projectId
