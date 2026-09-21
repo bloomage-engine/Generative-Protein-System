@@ -316,8 +316,9 @@ const MessageError: FC = () => {
 /**
  * The static-variant reasoning disclosure (assistant-ui "Reasoning" element,
  * step-panel design — docs /elements/reasoning#the-step-panel-design): one
- * titled step per `reasoning` part of the group. Auto-expanded while the
- * reasoning is still streaming; the reader's first manual toggle sticks.
+ * titled step per `reasoning` part of the group. Collapsed by default and
+ * opened only by the reader; streaming merely styles the trigger (shimmer
+ * label, active step). A long step list scrolls inside the panel.
  * The part → step mapping comes from the shared `buildReasoningTrace` so the
  * web app and the examples read the same fields and fallbacks.
  */
@@ -338,7 +339,9 @@ const ReasoningGroupPanel: FC<{ indices: readonly number[] }> = ({
     [parts, indices, status],
   );
   const timing = useMessageTiming();
-  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  // The disclosure is user-driven: streaming only styles the trigger (shimmer
+  // label / active step), it never opens the panel on its own.
+  const [open, setOpen] = useState(false);
 
   if (trace.steps.length === 0) return null;
 
@@ -347,8 +350,8 @@ const ReasoningGroupPanel: FC<{ indices: readonly number[] }> = ({
       steps={trace.steps}
       visibleSteps={trace.steps.length}
       streaming={trace.streaming}
-      open={userOpen ?? trace.streaming}
-      onOpenChange={setUserOpen}
+      open={open}
+      onOpenChange={setOpen}
       restingLabel={
         timing?.totalStreamTime
           ? `Thought for ${Math.round(timing.totalStreamTime / 1000)}s`

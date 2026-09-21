@@ -42,6 +42,14 @@ export const collapsePanel =
 
 export const live = "text-blue-500 dark:text-blue-400";
 
+/**
+ * Bounds an expanded disclosure so long reasoning/tool output scrolls inside
+ * its own region instead of growing the message to fill the viewport. The
+ * viewport-relative cap keeps it usable on short windows; the fixed cap stops
+ * it from taking over a tall one.
+ */
+export const scrollRegion = "max-h-[min(60vh,24rem)] overflow-y-auto";
+
 export const mono = "font-mono text-[11px] tracking-tight";
 
 export function ShimmerLabel({
