@@ -1,30 +1,41 @@
 "use client";
 
 /**
- * Composer with runtime slash commands (docs/adr/0003).
+ * Composer with runtime slash commands (docs/adr/0003) and `@` workspace
+ * mentions.
  *
  * The Thread's registry-generated `Composer` is extracted here so it can be
  * wrapped in an `Unstable_TriggerPopoverRoot`: typing "/" at a word start
- * opens a menu of the runtime adapter's command catalog. The catalog mapping,
- * the slash adapter and the enable rule live in the shared
- * `useRuntimeSlashMenu`; this file only skins the popover (icons + shadcn
- * styling) and the composer itself.
+ * opens a menu of the runtime adapter's command catalog, and "@" opens a
+ * browsable workspace picker. The catalog / mention mappings and the enable
+ * rules live in the shared `useRuntimeSlashMenu` / `useWorkspaceMentions`; this
+ * file skins the popovers and the composer itself.
+ *
+ * The input is assistant-ui's `LexicalComposerInput` (docs/adr/0023) instead of
+ * the plain `<textarea>`: a mention is an inline chip (icon + name) rather than
+ * the raw `:directory[…]` directive text, while the wire still carries that
+ * directive (the chip's `getTextContent()`).
  */
-
 import { ComposerAddAttachment, ComposerAttachments } from "@/components/assistant-ui/elements/attachment.aui";
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { useRuntimeSlashMenu, useWorkspaceMentions } from "@science-studio/transport-client";
 import {
   AuiIf,
   ComposerPrimitive,
+  unstable_useTriggerPopoverScopeContext,
 } from "@assistant-ui/react";
+import {
+  LexicalComposerInput,
+  type DirectiveChipProps,
+} from "@assistant-ui/react-lexical";
 import {
   ActivityIcon,
   ArrowUpIcon,
   BrainIcon,
+  ChevronRightIcon,
   CircleHelpIcon,
+  CornerLeftUpIcon,
   CpuIcon,
   FileIcon,
   FingerprintIcon,
@@ -42,7 +53,7 @@ import {
   ZapIcon,
   type LucideIcon,
 } from "lucide-react";
-import { type FC } from "react";
+import { useEffect, type FC } from "react";
 
 /**
  * Icons for known runtime commands, keyed by command id; unknown commands
@@ -66,6 +77,97 @@ const COMMAND_ICONS: Record<string, LucideIcon> = {
 };
 
 /**
+ * The inline `@` mention token: an icon chosen from the directive's type plus
+ * the entry's name. The raw directive text stays the node's content (what the
+ * wire and the service's `parseWorkspaceMentions` see); only its rendering is a
+ * chip. Kept at module scope so the Lexical chip provider gets a stable
+ * component identity.
+ */
+const WorkspaceDirectiveChip: FC<DirectiveChipProps> = ({ directiveType, label }) => {
+  const Icon = directiveType === "directory" ? FolderIcon : FileIcon;
+  return (
+    <span
+      className="aui-mention-chip border-border/60 bg-accent text-accent-foreground mx-0.5 inline-flex max-w-[18rem] items-center gap-1 rounded-md border px-1.5 py-0.5 align-baseline text-[13px] leading-5 font-medium"
+      data-directive-type={directiveType}
+    >
+      <Icon className="text-muted-foreground size-3.5 shrink-0" />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+};
+
+/**
+ * Directories are NAVIGATED, not inserted: register a selection override on
+ * the `@` trigger that walks into the picked directory and consumes the
+ * selection. Everything else (files) falls through to the normal insert.
+ *
+ * The trigger must therefore use a `TriggerPopover.Action` (not `.Directive`):
+ * a directive trigger is wired by the Lexical `DirectivePlugin`, which owns the
+ * single selection-override slot — an action trigger leaves that slot to us.
+ */
+const MentionDirectoryNavigation: FC<{ navigate: (path: string) => void }> = ({
+  navigate,
+}) => {
+  const scope = unstable_useTriggerPopoverScopeContext();
+  useEffect(
+    () =>
+      scope.registerSelectItemOverride((item) => {
+        if (item.type !== "directory") return false;
+        navigate(item.id);
+        return true;
+      }),
+    [scope, navigate],
+  );
+  return null;
+};
+
+/** Breadcrumb over the directory currently listed (`project / a / b`). */
+const MentionBreadcrumb: FC<{ path: string; navigate: (path: string) => void }> = ({
+  path,
+  navigate,
+}) => {
+  if (path === "") return null;
+  const segments = path.split("/").filter(Boolean);
+  return (
+    <div
+      className="text-muted-foreground border-border/50 mb-1 flex flex-wrap items-center gap-0.5 border-b px-1.5 pb-1.5 text-[11px]"
+      data-slot="aui-composer-mention-breadcrumb"
+    >
+      <button
+        type="button"
+        className="hover:bg-accent hover:text-foreground rounded-md px-1.5 py-0.5"
+        onClick={() => navigate("")}
+      >
+        project
+      </button>
+      {segments.map((segment, index) => {
+        const target = segments.slice(0, index + 1).join("/");
+        const isLast = index === segments.length - 1;
+        return (
+          <span key={target} className="flex items-center gap-0.5">
+            <ChevronRightIcon className="size-3 shrink-0 opacity-60" />
+            {isLast ? (
+              <span className="text-foreground px-1.5 py-0.5 font-medium">{segment}</span>
+            ) : (
+              <button
+                type="button"
+                className="hover:bg-accent hover:text-foreground rounded-md px-1.5 py-0.5"
+                onClick={() => navigate(target)}
+              >
+                {segment}
+              </button>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+};
+
+/** A stable no-op: the `@` action only exists to free the selection-override slot. */
+const noop = () => {};
+
+/**
  * Build the assistant-ui slash adapter from the runtime command catalog.
  * `execute` appends the command's invocation text as a user message through
  * the thread runtime (not the composer draft), so a partially typed draft is
@@ -73,7 +175,7 @@ const COMMAND_ICONS: Record<string, LucideIcon> = {
  */
 export const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
   const slash = useRuntimeSlashMenu();
-  const mentions = useWorkspaceMentions();
+  const mentions = useWorkspaceMentions({ withParent: true });
 
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverRoot>
@@ -124,30 +226,37 @@ export const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
         </ComposerPrimitive.Unstable_TriggerPopover>
       )}
 
-      {/* `@` workspace mentions: picking one inserts a directive chip, which the
-          service lifts back into a workspace AttachmentRef. */}
+      {/* `@` workspace mentions: the picker BROWSEs directories (a pick there
+          navigates) and only a FILE inserts the directive the service lifts
+          back into a workspace AttachmentRef. */}
       {mentions.enabled && (
         <ComposerPrimitive.Unstable_TriggerPopover
           char="@"
           adapter={mentions.adapter}
           aria-label="Workspace files"
         >
-          <ComposerPrimitive.Unstable_TriggerPopover.Directive
+          {/* An Action (not a Directive) deliberately: it leaves the selection
+              override to `MentionDirectoryNavigation` for directory browsing,
+              and still inserts the directive chip for everything else. */}
+          <ComposerPrimitive.Unstable_TriggerPopover.Action
             formatter={mentions.directive.formatter}
-            onInserted={mentions.directive.onInserted}
+            onExecute={noop}
           />
+          <MentionDirectoryNavigation navigate={mentions.navigate} />
           <ComposerPrimitive.Unstable_TriggerPopoverItems>
             {(items) => (
               <div
                 className="bg-popover text-popover-foreground border-border/60 absolute bottom-full z-10 mb-2 max-h-80 w-80 overflow-y-auto rounded-2xl border p-1.5 shadow-xl"
                 data-slot="aui-composer-mention-menu"
               >
+                <MentionBreadcrumb path={mentions.path} navigate={mentions.navigate} />
                 {items.map((item, index) => {
                   const isDir = item.type === "directory";
-                  const Icon = isDir ? FolderIcon : FileIcon;
+                  const isParent = item.label === "..";
+                  const Icon = isParent ? CornerLeftUpIcon : isDir ? FolderIcon : FileIcon;
                   return (
                     <ComposerPrimitive.Unstable_TriggerPopoverItem
-                      key={item.id}
+                      key={item.id || "__parent__"}
                       item={item}
                       index={index}
                       className="data-highlighted:bg-accent flex w-full cursor-pointer items-center gap-2 rounded-xl px-2.5 py-2 text-start outline-none"
@@ -156,9 +265,13 @@ export const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
                       <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">
                         {item.label}
                       </span>
-                      <span className="text-muted-foreground/60 shrink-0 font-mono text-[11px]">
-                        {isDir ? "dir" : "file"}
-                      </span>
+                      {isDir ? (
+                        <ChevronRightIcon className="text-muted-foreground/60 size-3.5 shrink-0" />
+                      ) : (
+                        <span className="text-muted-foreground/60 shrink-0 font-mono text-[11px]">
+                          file
+                        </span>
+                      )}
                     </ComposerPrimitive.Unstable_TriggerPopoverItem>
                   );
                 })}
@@ -175,13 +288,13 @@ export const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
             className="border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]"
           >
             <ComposerAttachments />
-            <ComposerPrimitive.Input
+            <LexicalComposerInput
               placeholder="Send a message..."
-              className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6 outline-none"
-              rows={1}
+              className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full bg-transparent px-2.5 py-1 text-base leading-6 outline-none"
               autoFocus={autoFocus}
-              enterKeyHint="send"
               aria-label="Message input"
+              directiveChip={WorkspaceDirectiveChip}
+              formatter={mentions.directive.formatter}
             />
             <ComposerAction />
           </div>

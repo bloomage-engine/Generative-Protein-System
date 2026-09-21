@@ -47,6 +47,7 @@ export {
   WorkspaceOpenProvider,
   useWorkspaceOpen,
   type WorkspaceOpenHandler,
+  workspaceParentPath,
 } from "./workspace.js";
 export type { DirListing, Entry, FileStat } from "./workspace.js";
 export { useWorkspaceMentions, type WorkspaceMentions } from "./mentions.js";

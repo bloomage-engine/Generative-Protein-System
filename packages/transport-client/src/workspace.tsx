@@ -70,6 +70,16 @@ function projectParam(project: string | null | undefined): string {
 }
 
 /**
+ * The parent of a workspace-relative directory path: `"a/b"` → `"a"`, `"a"` →
+ * `""` (the root). Workspace paths are POSIX-style with no leading slash.
+ */
+export function workspaceParentPath(path: string): string {
+  const trimmed = path.replace(/\/+$/, "");
+  const slash = trimmed.lastIndexOf("/");
+  return slash === -1 ? "" : trimmed.slice(0, slash);
+}
+
+/**
  * A workspace request that failed with an HTTP status. The status is kept
  * because it is meaningful: `503` means this deployment exposes NO workspace
  * (the service's `NullWorkspace`), which is a configuration state, not an error

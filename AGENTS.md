@@ -39,7 +39,7 @@ examples/transport-dsh-example     minimal assistant-ui example app over the dsh
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/design/                      design specs (research-agent-framework EN/ZH + implementation-plan)
-docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete, 0015 deployment settings are service-owned, 0016 subagent activity is an optional adapter surface (dsh keeps a durable ledger; addendum), 0017 cron scheduling is service-owned and a task is a workspace file, 0018 a dsh plugin instructs the parent to report subagent results, 0019 durable session and subagent transcript belongs to the record, 0020 dsh skills are configured through the workbench, 0021 the `/api` hop relays and the client surface owns failure policy)
+docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete, 0015 deployment settings are service-owned, 0016 subagent activity is an optional adapter surface (dsh keeps a durable ledger; addendum), 0017 cron scheduling is service-owned and a task is a workspace file, 0018 a dsh plugin instructs the parent to report subagent results, 0019 durable session and subagent transcript belongs to the record, 0020 dsh skills are configured through the workbench, 0021 the `/api` hop relays and the client surface owns failure policy, 0022 dsh live assistant streaming, 0023 the composer is a Lexical rich-text input)
 CONTEXT.md                        domain glossary (authoritative vocabulary)
 ```
 
@@ -134,10 +134,17 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `isWorkspaceUnavailable`, and `useWorkspaceAvailability` reads the same shared
   listing rather than probing on its own, so the UI disables its file affordance
   with friendly copy rather than opening into the
-  raw 503. The composer `@` picker is `useWorkspaceMentions`; a pick
-  inserts assistant-ui directive text (`:file[label]{name=id}` /
+  raw 503. The composer `@` picker is `useWorkspaceMentions`; it BROWSEs the
+  workspace one directory at a time (`{ withParent: true }` prepends a synthetic
+  `..`), so picking a directory navigates into it (breadcrumb + `..` row) and
+  only a file inserts assistant-ui directive text (`:file[label]{name=id}` /
   `:directory[...]`) which the service lifts into a workspace `AttachmentRef`
   (`parseWorkspaceMentions`) — a directory stays a reference, never expanded.
+  The composer input is assistant-ui's Lexical editor (`LexicalComposerInput`,
+  `@assistant-ui/react-lexical`, docs/adr/0023), so a mention renders inline as
+  an icon+name chip while the wire still carries that directive text; the `@`
+  trigger is an Action (not a Directive), leaving the trigger's single
+  selection-override slot to the directory-navigation override.
   The Project Workspace also carries the scheduled-run files under
   `.science-studio/cron/` (`<id>.md` + `<id>.log.md`), which the file tree lists
   like any other path; `apps/web/app/api/cron` proxies the `/api/cron*` surface to

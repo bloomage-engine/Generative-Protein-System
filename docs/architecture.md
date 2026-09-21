@@ -345,9 +345,14 @@ host-side `PROJECT_ROOT`.
 - Client-side: `useWorkspaceBrowser` / `useWorkspaceFile` /
   `useWorkspaceAvailability` / `useWorkspaceMentions` and `WorkspaceOpenProvider`
   (the seam that lets an agent file link in markdown open the viewer instead of
-  navigating). The composer `@` picker inserts assistant-ui directive text
-  (`:file[label]{name=id}` / `:directory[...]`) which the service lifts back into
-  a workspace `AttachmentRef` — a directory stays a reference, never expanded.
+  navigating). The composer `@` picker BROWSEs the workspace one directory at a
+  time (`withParent: true` adds a `..` and picking a directory navigates); only a
+  file inserts assistant-ui directive text (`:file[label]{name=id}` /
+  `:directory[...]`) which the service lifts back into a workspace
+  `AttachmentRef` — a directory stays a reference, never expanded. The composer
+  input is a Lexical rich-text editor (`@assistant-ui/react-lexical`,
+  docs/adr/0023), so the mention shows as an inline icon+name chip while the wire
+  still carries that directive.
   All of these are keyed by project.
 
 ## 7. Version 1 scope

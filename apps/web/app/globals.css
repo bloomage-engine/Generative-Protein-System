@@ -157,3 +157,34 @@ body {
 @custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
 
 @custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));
+
+/*
+ * The Lexical composer input (`@assistant-ui/react-lexical`) ships no stylesheet:
+ * the wrapper carries the Tailwind sizing from `composer.aui.tsx`, while the
+ * editable and its placeholder need these explicit rules. A directive chip is
+ * a Lexical decorator node (already `contenteditable=false`); its own look comes
+ * from the `directiveChip` component.
+ */
+.aui-lexical-editor {
+  position: relative;
+}
+
+.aui-lexical-input {
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.aui-lexical-input p {
+  margin: 0;
+}
+
+.aui-lexical-placeholder {
+  pointer-events: none;
+  position: absolute;
+  top: 0.25rem;
+  left: 0.625rem;
+  color: var(--muted-foreground);
+  opacity: 0.6;
+}

@@ -172,7 +172,9 @@ test(
       await page.goto(`${base}/projects/p1/sessions/s1`, {
         waitUntil: "domcontentloaded",
       });
-      const input = page.locator("textarea.aui-composer-input").first();
+      // The composer is a Lexical contenteditable now (docs/adr/0023), not a
+      // `<textarea>`; `.fill`/`.press` both work on `[contenteditable]`.
+      const input = page.locator(".aui-lexical-input").first();
       await input.waitFor({ timeout: 60_000 });
       await page.waitForTimeout(1500); // let the mount probe settle
 
