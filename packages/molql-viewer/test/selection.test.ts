@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  formatAtomMolql,
   formatBondMolql,
+  formatInteractionMolql,
   formatResidueMolql,
   formatStructureMention,
   molqlTargetKey,
@@ -35,6 +37,13 @@ test("a value with spaces falls back to the backtick literal form", () => {
   );
 });
 
+test("an atom is a single-atom expression", () => {
+  assert.equal(
+    formatAtomMolql({ chain: "A", resno: 42, resname: "ALA", atomName: "CA" }),
+    "(sel.atom.atoms (and (= atom.chain A) (= atom.resno 42) (= atom.resname ALA) (= atom.name CA)))",
+  );
+});
+
 test("a bond is the union of its two endpoint atoms", () => {
   assert.equal(
     formatBondMolql(
@@ -43,6 +52,12 @@ test("a bond is the union of its two endpoint atoms", () => {
     ),
     "(sel.atom.atoms (or (and (= atom.chain A) (= atom.resno 93) (= atom.resname CYS) (= atom.name N)) (and (= atom.chain A) (= atom.resno 89) (= atom.resname ILE) (= atom.name O))))",
   );
+});
+
+test("an interaction reuses the endpoint-union form", () => {
+  const a = { chain: "A", resno: 42, resname: "SER", atomName: "OG" };
+  const b = { chain: "A", resno: 88, resname: "ASP", atomName: "OD1" };
+  assert.equal(formatInteractionMolql(a, b), formatBondMolql(a, b));
 });
 
 test("a structure mention carries the project, path and expression", () => {
@@ -56,6 +71,13 @@ test("a structure mention without a project falls back to the bare path", () => 
   assert.equal(
     formatStructureMention(null, "boltz_holo.pdb", "(sel.atom.all)"),
     "@boltz_holo.pdb/(sel.atom.all)",
+  );
+});
+
+test("a mention label is appended as a # suffix", () => {
+  assert.equal(
+    formatStructureMention("project-default", "boltz_holo.pdb", "(sel.atom.all)", "Hydrogen Bond"),
+    "@project-default/boltz_holo.pdb/(sel.atom.all) #Hydrogen Bond",
   );
 });
 
@@ -73,5 +95,21 @@ test("target keys distinguish residues and either bond endpoint", () => {
   assert.notEqual(
     molqlTargetKey(bond),
     molqlTargetKey({ ...bond, b: { chain: "A", resno: 90, resname: "ILE", atomName: "O" } }),
+  );
+});
+
+test("target keys distinguish an atom and carry the interaction type", () => {
+  assert.equal(
+    molqlTargetKey({ kind: "atom", atom: { chain: "A", resno: 42, resname: "ALA", atomName: "CA" } }),
+    "atom:A:42:ALA:CA",
+  );
+  assert.equal(
+    molqlTargetKey({
+      kind: "interaction",
+      a: { chain: "A", resno: 42, resname: "SER", atomName: "OG" },
+      b: { chain: "A", resno: 88, resname: "ASP", atomName: "OD1" },
+      interactionType: "Hydrogen Bond",
+    }),
+    "interaction:Hydrogen Bond:A:42:SER:OG:A:88:ASP:OD1",
   );
 });

@@ -6,7 +6,9 @@ import { useCallback, useMemo, useState } from "react";
 import { useWorkspaceApi, workspaceFileUrl } from "@science-studio/transport-client";
 import {
   applyMolqlSelection,
+  formatAtomMolql,
   formatBondMolql,
+  formatInteractionMolql,
   formatResidueMolql,
   formatStructureMention,
   molqlTargetKey,
@@ -52,12 +54,24 @@ export function StructureRenderer({ path, name }: { path: string; name: string }
         composer.clearMentions();
         return;
       }
-      const molql =
-        target.kind === "residue"
-          ? formatResidueMolql(target.residue)
-          : formatBondMolql(target.a, target.b);
+      let molql: string;
+      let label: string | undefined;
+      switch (target.kind) {
+        case "residue":
+          molql = formatResidueMolql(target.residue);
+          break;
+        case "atom":
+          molql = formatAtomMolql(target.atom);
+          break;
+        case "interaction":
+          molql = formatInteractionMolql(target.a, target.b);
+          label = target.interactionType;
+          break;
+        default:
+          molql = formatBondMolql(target.a, target.b);
+      }
       const key = `${project ?? ""}/${path}::${molqlTargetKey(target)}`;
-      composer.toggleMention(key, formatStructureMention(project, path, molql));
+      composer.toggleMention(key, formatStructureMention(project, path, molql, label));
       revealLeftView("thread");
     },
     [composer, project, path, revealLeftView],

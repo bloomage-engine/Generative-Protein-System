@@ -265,18 +265,26 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 - **The reverse direction (viewer → composer) is a click, gated on Mol*'s
   selection mode.** `MolqlViewer` subscribes to
   `plugin.behaviors.interaction.click`, and ONLY while `plugin.selectionMode` is
-  on resolves the clicked loci (`StructureElement.Loci` → residue via
-  `StructureProperties`; `Bond.Loci` → its two endpoint atoms) and calls
-  `onResidueClick` (`null` for an empty click, which clears Mol*'s selection).
+  on resolves the clicked loci and calls `onResidueClick` (`null` for an empty
+  click, which clears Mol*'s selection). Resolution lives in `resolve.ts` (molstar
+  model only, Node-tested): `StructureElement.Loci` → an atom when the picking
+  level (`plugin.managers.interactivity.props.granularity`) is the element level
+  ("Atom/Coarse Element") and a residue otherwise; `Bond.Loci` → its two endpoint
+  atoms; `Interactions.Loci` (a dashed non-covalent interaction) → the two
+  representative endpoint atoms plus Mol*'s interaction-type label
+  (`Interactions.locationLabel`).
   `MolqlViewerPanel` forwards it; `StructureRenderer` formats
   `@<project>/<workspace path>/<molql>` (`selection.ts`'s `formatResidueMolql` /
-  `formatBondMolql` / `formatStructureMention` / `molqlTargetKey` — pure,
-  Node-tested) and toggles it in the composer through `ComposerInsertProvider`
-  (an app-local context seam modelled on `WorkspaceOpenProvider`, since the center
-  preview and the left `Thread` are siblings), then reveals the conversation pane
-  via the store's `revealLeftView`. A second click on the same target REMOVES the
-  mention (keyed by `molqlTargetKey`), matching Mol*'s default `clickToggle`
-  action; an empty click removes them all. The visible selection is Mol*'s own
+  `formatAtomMolql` / `formatBondMolql` / `formatInteractionMolql` /
+  `formatStructureMention` / `molqlTargetKey` — pure, Node-tested), appending a
+  ` #<interaction type>` suffix for interactions (metadata; the agent-side plugins
+  strip it in `parseSelectionItem` / the `molql` and `computeInteraction` tools),
+  and toggles it in the composer through `ComposerInsertProvider` (an app-local
+  context seam modelled on `WorkspaceOpenProvider`, since the center preview and
+  the left `Thread` are siblings), then reveals the conversation pane via the
+  store's `revealLeftView`. A second click on the same target REMOVES the mention
+  (keyed by `molqlTargetKey`), matching Mol*'s default `clickToggle` action; an
+  empty click removes them all. The visible selection is Mol*'s own
   selection-mode behavior — the app adds no second selection. The mention is plain
   text (not a `:file` directive), so the service does not lift it into an
   `AttachmentRef`.

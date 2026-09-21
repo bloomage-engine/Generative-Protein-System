@@ -26,7 +26,9 @@ export {
 } from "./molql.js";
 export {
   formatResidueMolql,
+  formatAtomMolql,
   formatBondMolql,
+  formatInteractionMolql,
   formatStructureMention,
   molqlTargetKey,
   type ResidueSelection,

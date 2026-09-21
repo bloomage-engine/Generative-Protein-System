@@ -36,6 +36,8 @@ Provide a MolQL (Mol* mol-script) expression. The viewer compiles it and highlig
 - union: (sel.atom.merge (sel.atom.chains (= atom.chain A)) (sel.atom.chains (= atom.chain B)))
 - exclude: (sel.atom.except-by (sel.atom.all) :by (sel.atom.chains (= atom.chain A)))
 
+A viewer mention of the form \`@<project>/<path>/<molql>\` may end with a \` #<interaction type>\` label (e.g. \` #Hydrogen Bond\`); pass only the parenthesized expression.
+
 Symbols are bare; element symbols take a leading underscore (_Fe). Load the "molql" skill for the complete syntax reference.`;
 
 export const SKILL_DESCRIPTION =
@@ -51,7 +53,7 @@ const INTERACTION_DESCRIPTION = `Compute the non-covalent interactions (hydrogen
 Call this when the user asks about the interactions of a residue, chemical bond or ligand that appears in the conversation as a mention of the form \`@<project>/<path>/<molql>\`. Split that mention into the three arguments:
 - project: the first segment, e.g. "project-default"
 - path: the workspace-relative file path, e.g. "boltz_holo.pdb"
-- molql: the parenthesized MolQL selection expression
+- molql: the parenthesized MolQL selection expression (drop a trailing \` #<interaction type>\` label if the mention carries one)
 
 Returns a Markdown table: interaction type, the two atom/residue endpoints, and the distance in Å.`;
 
@@ -68,11 +70,16 @@ Provide the ordered selection items as MolQL (mol-script) expressions, or as ful
 - orientation: 1 or more selections — principal axes / oriented box
 - plane: 1 or more selections — best-fit plane
 
-For a verbal request (e.g. "residue 42"), translate it to MolQL first, e.g. \`(sel.atom.res (= atom.resno 42))\`, or a specific atom with \`(sel.atom.atoms (and (= atom.resno 42) (= atom.name CA)))\`. When the items are mentions, project/path are read from the first one; otherwise pass project and path explicitly.
+For a verbal request (e.g. "residue 42"), translate it to MolQL first, e.g. \`(sel.atom.res (= atom.resno 42))\`, or a specific atom with \`(sel.atom.atoms (and (= atom.resno 42) (= atom.name CA)))\`. When the items are mentions, project/path are read from the first one; otherwise pass project and path explicitly. A mention may end with a \` #<interaction type>\` label; it is ignored.
 
 Returns the value plus a one-line summary.`;
 
 const SERVICE_URL = process.env.SCIENCE_STUDIO_SERVICE_URL ?? "http://127.0.0.1:3001";
+
+/** Drop a trailing ` #<interaction type>` label from a mention's molql. */
+function stripMentionLabel(molql: string): string {
+  return molql.replace(/\s+#[^#]*$/, "").trim();
+}
 
 /**
  * Normalize one measurement selection item: a full
@@ -81,11 +88,11 @@ const SERVICE_URL = process.env.SCIENCE_STUDIO_SERVICE_URL ?? "http://127.0.0.1:
  */
 function parseSelectionItem(item: string): { project?: string; path?: string; molql: string } {
   const trimmed = item.trim();
-  if (!trimmed.startsWith("@")) return { molql: trimmed };
+  if (!trimmed.startsWith("@")) return { molql: stripMentionLabel(trimmed) };
   const body = trimmed.slice(1);
   const paren = body.indexOf("(");
-  if (paren === -1) return { molql: trimmed };
-  const molql = body.slice(paren).trim();
+  if (paren === -1) return { molql: stripMentionLabel(trimmed) };
+  const molql = stripMentionLabel(body.slice(paren));
   const prefix = body.slice(0, paren).replace(/\/+$/, "");
   const slash = prefix.indexOf("/");
   if (slash === -1) return { path: prefix, molql };
@@ -146,7 +153,9 @@ async function fetchInteractions(args: {
 }): Promise<{ table: string }> {
   const url = `${SERVICE_URL}/api/workspace/interactions?project=${encodeURIComponent(
     args.project,
-  )}&path=${encodeURIComponent(args.path)}&molql=${encodeURIComponent(args.molql)}`;
+  )}&path=${encodeURIComponent(args.path)}&molql=${encodeURIComponent(
+    stripMentionLabel(args.molql),
+  )}`;
   const response = await fetch(url);
   const body = (await response.json().catch(() => null)) as { table?: string; error?: string } | null;
   if (!response.ok) {
@@ -218,7 +227,7 @@ export function apply(ctx: Context): void {
         const mode = args.mode === "highlight" ? "highlight" : "select";
         return {
           type: "molql-selection",
-          molql: args.molql.trim(),
+          molql: stripMentionLabel(args.molql),
           ...(args.description ? { description: args.description } : {}),
           focus: args.focus ?? true,
           mode,
