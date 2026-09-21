@@ -1,13 +1,13 @@
 /**
  * Regression: a file preview taller than its pane must scroll.
  *
- * The center preview pane renders each text file through a renderer whose root
- * is `flex-1 overflow-auto` — a contract that only holds when the renderer's
- * parent is a flex COLUMN of bounded height. When that wrapper is a plain block
- * with `overflow-hidden`, `flex-1` is a no-op, the renderer grows to its full
- * content height, and the pane silently CLIPS the tail: nothing scrolls and the
- * overflow is unreachable. This test opens a long file and asserts the renderer
- * is actually scrollable.
+ * The renderers' contract, whatever shape a renderer takes: the content lives
+ * in a bounded, scrollable box — either because the renderer IS the container
+ * (plain text: the `flex-1 overflow-auto` pre) or because its scrollable
+ * wrapper is (highlighted code: a shiki block inside the pane's `flex-1
+ * overflow-auto` div). The failure this guards against is the box GROWING to
+ * the content's full height in an unbounded parent: nothing scrolls and the
+ * tail is silently clipped out of reach.
  *
  * Prereq: `npm run build -w @science-studio/transport-client`.
  * Needs a Chromium; SKIPPED when none is found.
@@ -30,6 +30,29 @@ import {
 const LONG_BODY = Array.from({ length: 300 }, (_, i) => `line-${String(i).padStart(3, "0")}`).join(
   "\n",
 );
+
+/**
+ * Walk up from `el` to the nearest bounding scroll container, and report
+ * whether scrolling to the bottom actually reveals new content.
+ */
+const findContainer = (el) => {
+  let node = el;
+  while (node && node !== document.body) {
+    const cs = getComputedStyle(node);
+    if (/(auto|scroll)/.test(cs.overflowY) && node.scrollHeight > node.clientHeight) {
+      node.scrollTop = node.scrollHeight;
+      return {
+        tag: node.tagName,
+        className: String(node.className).slice(0, 80),
+        clientHeight: node.clientHeight,
+        scrollHeight: node.scrollHeight,
+        scrolled: node.scrollTop,
+      };
+    }
+    node = node.parentElement;
+  }
+  return null;
+};
 
 test(
   "an overflowing file preview scrolls instead of clipping",
@@ -76,21 +99,17 @@ test(
       const pre = page.locator("pre").filter({ hasText: "line-000" });
       await pre.waitFor({ timeout: 15_000 });
 
-      const metrics = await pre.evaluate((el) => ({
-        clientHeight: el.clientHeight,
-        scrollHeight: el.scrollHeight,
-        overflowY: getComputedStyle(el).overflowY,
-      }));
+      const box = await pre.evaluate(findContainer);
       assert.ok(
-        metrics.scrollHeight > metrics.clientHeight,
-        `the preview must be a bounded scroll container, got clientHeight=${metrics.clientHeight}, scrollHeight=${metrics.scrollHeight}`,
+        box !== null,
+        "no bounding scroll container anywhere above the content — the preview " +
+          "grows to the file's full height and the tail is unreachable",
       );
-
-      const scrolled = await pre.evaluate((el) => {
-        el.scrollTop = el.scrollHeight;
-        return el.scrollTop;
-      });
-      assert.ok(scrolled > 0, "the preview must actually scroll to reveal the clipped tail");
+      assert.ok(
+        box.clientHeight < box.scrollHeight,
+        `the container must be bounded, got clientHeight=${box.clientHeight}, scrollHeight=${box.scrollHeight}`,
+      );
+      assert.ok(box.scrolled > 0, "the preview must actually scroll to reveal the clipped tail");
     } catch (error) {
       throw new Error(`${error.message}\n--- web server log ---\n${server.log().slice(-2000)}`);
     } finally {

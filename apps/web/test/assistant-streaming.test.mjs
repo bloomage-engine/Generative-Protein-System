@@ -19,6 +19,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer as createHttpServer } from "node:http";
 import {
+  closeWithDeadline,
   findChromium,
   freePort,
   killTree,
@@ -44,9 +45,15 @@ const frame = (operations) =>
 const answerText = "lorem ipsum dolor sit amet consectetur adipiscing elit ".repeat(60);
 
 /**
- * A real-socket stub of `/api/transport`: one POST answers with the message
- * create, the whole token burst in a SINGLE `write`, then a hold (so the part
- * stays `running` while the reveal runs) and the settle + `[DONE]`.
+ * A real-socket stub of `/api/transport`: a real user send (an
+ * `add-message` command) answers with the message create, the whole token
+ * burst in a SINGLE `write`, then a hold (so the part stays `running` while
+ * the reveal runs) and the settle + `[DONE]`. The mount probe POSTs EMPTY
+ * commands (like the real service's first-use probe it answers a quiet settle
+ * — no burst, no transcript). The old stub bursted BOTH on the same message id,
+ * and that artificial interleave (two 1600-char streams + their settle/part
+ * flips colliding mid-reveal) is what occasionally produced one legitimate
+ * full repaint that the per-frame cap cannot tell apart from a regression.
  */
 async function startBurstStub() {
   const target = answerText.slice(0, BURST_CHARS);
@@ -61,8 +68,21 @@ async function startBurstStub() {
 
   const server = createHttpServer((req, res) => {
     if (req.method === "POST" && req.url.startsWith("/api/transport") && !req.url.includes("/watch")) {
-      req.resume();
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
       req.on("end", () => {
+        if (!body.includes("add-message")) {
+          res.writeHead(200, {
+            "content-type": "text/event-stream",
+            "cache-control": "no-cache",
+          });
+          res.write(frame([{ type: "set", path: ["status"], value: "idle" }]));
+          res.write(`data: [DONE]${NL}${NL}`);
+          res.end();
+          return;
+        }
         res.writeHead(200, {
           "content-type": "text/event-stream",
           "cache-control": "no-cache",
@@ -218,9 +238,9 @@ test(
     } catch (error) {
       throw new Error(`${error.message}\n--- web server log ---\n${server.log().slice(-2000)}`);
     } finally {
-      if (browser) await browser.close();
+      if (browser) await closeWithDeadline(browser.close(), 10_000);
       killTree(server.child, port);
-      await stub.close();
+      await closeWithDeadline(stub.close(), 5_000);
     }
   },
 );

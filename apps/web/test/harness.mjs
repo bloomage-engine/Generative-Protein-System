@@ -150,6 +150,25 @@ export async function startWatchStub() {
   };
 }
 
+/**
+ * A finished test's cleanup must not be able to wedge: `http.Server.close()`
+ * waits for every open socket to drain (an abandoned keep-alive or a
+ * pooled-socket browser never does), and `browser.close()` can wait on an
+ * unresponsive Chromium — either one then hangs the process, and the whole
+ * `--test` runner behind it (observed: a stuck child sat 20+ min holding its
+ * dev server and browser). At cleanup time the test is OVER and whatever is
+ * still streaming was aimed at nobody, so race the close against a short
+ * deadline. The timer is unref'd, so on the normal path it never keeps the
+ * process alive on its own.
+ */
+export function closeWithDeadline(close, ms) {
+  const timer = new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    t.unref?.();
+  });
+  return Promise.race([Promise.resolve(close).catch(() => {}), timer]);
+}
+
 export function killTree(child, port) {
   try {
     process.kill(-child.pid, "SIGKILL");

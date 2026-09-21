@@ -19,6 +19,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   HISTORY_MARKER,
+  closeWithDeadline,
   findChromium,
   freePort,
   killTree,
@@ -52,7 +53,7 @@ async function withWorkbench(t, opts = {}) {
     base,
     page,
     async done() {
-      await browser?.close();
+      await closeWithDeadline(browser?.close(), 10_000);
       killTree(server.child, port);
     },
     server,
@@ -84,8 +85,10 @@ test(
       await page.getByRole("button", { name: "Projects", exact: true }).click();
       await pane.getByRole("button", { name: "Alpha", exact: true }).waitFor({ timeout: 15_000 });
 
-      // Open a file of THIS Project: the tree lists `notes.txt`.
-      await page.getByRole("button", { name: /notes\.txt/ }).click();
+      // Open a file of THIS Project: the Files tree lists `notes.txt`.
+      const tree = page.getByRole("tree");
+      await tree.waitFor({ timeout: 30_000 });
+      await tree.getByRole("treeitem", { name: "notes.txt" }).click();
       await page.getByRole("tab").first().waitFor({ timeout: 15_000 });
       assert.equal(await page.getByRole("tab").count(), 1, "the file must open as a tab");
 
@@ -139,7 +142,7 @@ test(
     const stub = await startWatchStub();
     const bench = await withWorkbench(t, { env: { TRANSPORT_SERVICE_URL: stub.url }, transport: true });
     if (!bench) {
-      await stub.close();
+      await closeWithDeadline(stub.close(), 5_000);
       return;
     }
     const { base, page, done, server } = bench;
@@ -225,7 +228,7 @@ test(
       );
     } finally {
       await done();
-      await stub.close();
+      await closeWithDeadline(stub.close(), 5_000);
     }
   },
 );

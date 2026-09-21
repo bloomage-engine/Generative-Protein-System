@@ -64,6 +64,11 @@ const MANY_MESSAGES =
 
 /**
  * Mock surfaces with a configurable settings view and transport returning MANY_MESSAGES.
+ *
+ * The settings endpoint is STATEFUL like the service: a save `PUT`s a patch and
+ * the view is then read back on the next boot. A static mock would hand back
+ * the original view after every save, so "persists across reload" could never
+ * be exercised — the Thread count a test saves is the one the app next reads.
  */
 async function mockIntegrationSurfaces(page, view) {
   await page.route("**/api/transport*", (route) => {
@@ -98,9 +103,22 @@ async function mockIntegrationSurfaces(page, view) {
     route.fulfill({ status: 200, headers: { "content-type": "text/plain" }, body: "hi" }),
   );
   await mockRecordSurface(page);
-  await page.route("**/api/settings", (route) =>
-    route.fulfill({ json: view }),
-  );
+  const state = structuredClone(view);
+  await page.route("**/api/settings", (route) => {
+    const request = route.request();
+    if (request.method() === "PUT") {
+      const patch = request.postDataJSON() ?? {};
+      if (patch.thread !== undefined) {
+        state.thread = { ...(state.thread ?? {}) };
+        if (patch.thread.visibleMessageCount === null) {
+          delete state.thread.visibleMessageCount;
+        } else {
+          state.thread.visibleMessageCount = patch.thread.visibleMessageCount;
+        }
+      }
+    }
+    return route.fulfill({ json: state });
+  });
 }
 
 test(
@@ -184,23 +202,22 @@ test(
 
       await page.getByText("msg-5").waitFor({ timeout: 30_000 });
 
-      // Click Load more once → visibleCount becomes 4 (2+2), hidden = 5
-      await page.getByRole("button", { name: /load more/i }).click();
+      // 9 messages, 7 hidden behind the count=2 window, so Load more is on.
+      const loadMore = page.getByRole("button", { name: /load more/i });
+      await loadMore.waitFor({ timeout: 5_000 });
 
-      // msg-3 should now be visible (last 4: a2, u3, a3, u4, a4, u5 — actually 4 from end)
-      // 9 total, visible=4 → visible are msg-6..msg-9 → a3(reply-3), u4(msg-4), a4(reply-4), u5(msg-5)
-      await page.getByText("reply-3").waitFor({ timeout: 5_000 });
-      const msg1StillHidden = await page.getByText("msg-1").isVisible().catch(() => false);
-      assert.equal(msg1StillHidden, false, "msg-1 still hidden after first Load more");
-
-      // Load more again → visibleCount = 6, hidden = 3
-      const loadMore2 = page.getByRole("button", { name: /load more/i });
-      await loadMore2.waitFor({ timeout: 5_000 });
-      await loadMore2.click();
-
-      // msg-3 (reply-3) and msg-4 (msg-4) should now be visible
-      await page.getByText("reply-2").waitFor({ timeout: 5_000 });
+      // One Load more loads a DEFAULT-SIZE window (the store's pinned step is
+      // count + 20, not "double the window"), which covers all 9: the hidden
+      // messages are revealed in full and the button retires — there is nothing
+      // left to load.
+      await loadMore.click();
+      await page.getByText("reply-1").waitFor({ timeout: 5_000 });
       await page.getByText("msg-1").waitFor({ timeout: 5_000 });
+      const loadMoreGone = await page
+        .getByRole("button", { name: /load more/i })
+        .isVisible()
+        .catch(() => false);
+      assert.equal(loadMoreGone, false, "all messages revealed: Load more retires");
     } finally {
       if (browser) await browser.close();
       killTree(server.child, port);
@@ -306,26 +323,30 @@ test(
 
       await page.getByText("msg-5").waitFor({ timeout: 30_000 });
 
-      // Load more to increase visible count (visibleCount goes from 2 → 4)
-      await page.getByRole("button", { name: /load more/i }).click();
-      await page.getByText("reply-3").waitFor({ timeout: 5_000 });
+      // Premise: the persisted count=2 window is in force (7 of 9 hidden).
+      const loadMore = page.getByRole("button", { name: /load more/i });
+      await loadMore.waitFor({ timeout: 5_000 });
 
-      // Now switch to another session — visibleMessageCount should reset to 20 (default)
-      // Navigate to a different session (s9 under p2)
-      await page.goto(`http://localhost:${port}/projects/p2/sessions/s9`, {
-        waitUntil: "domcontentloaded",
-      });
+      // A Session switch is an in-page scope COMMIT (the workbench never
+      // navigates away to switch), not a page boot — so the app's state
+      // survives and the commit itself is what must reset the window. Commit
+      // it the way a reader would: open the Projects pane and double-click
+      // p2's Session.
+      await page.getByRole("button", { name: "Projects", exact: true }).click();
+      await page.getByRole("button", { name: "Beta", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Beta session", exact: true })
+        .dblclick();
 
-      // Wait for the new session to load
-      await page.waitForTimeout(3_000);
-
-      // The store should have reset visibleMessageCount to 20.
-      // We verify by checking that a session with the default view (20 visible)
-      // renders all messages. The new session has the same MANY_MESSAGES mock.
-      // With visibleMessageCount reset to 20, all 9 messages should be visible.
+      // The new Session's history (the same 9 mocked messages) must open with
+      // the DEFAULT window (20): all visible, nothing left to load. If the
+      // switch kept the 2-window, msg-1 would stay hidden.
       await page.getByText("msg-1").waitFor({ timeout: 30_000 });
-      const loadMoreAfterSwitch = await page.getByRole("button", { name: /load more/i }).isVisible().catch(() => false);
-      assert.equal(loadMoreAfterSwitch, false, "no Load more after session switch (count reset to 20)");
+      const loadMoreAfterSwitch = await page
+        .getByRole("button", { name: /load more/i })
+        .isVisible()
+        .catch(() => false);
+      assert.equal(loadMoreAfterSwitch, false, "no Load more after a Session switch (count reset to default)");
     } finally {
       if (browser) await browser.close();
       killTree(server.child, port);

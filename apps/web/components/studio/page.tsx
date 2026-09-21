@@ -51,6 +51,23 @@ export function StudioPage({
     let cancelled = false;
     const s = () => useStudioStore.getState();
 
+    // The persisted thread settings (e.g. visibleMessageCount) are applied
+    // AFTER the boot scope commit: the commit's "new Session → default window"
+    // reset would otherwise wipe a persisted value that arrived first (both are
+    // async at mount, and the record round-trip is the slower one — so the
+    // persisted value always won the race and was then erased).
+    const applyThreadSettings = () => {
+      void fetchSettings(SETTINGS_API)
+        .then((view) => {
+          if (cancelled) return;
+          const count = view.thread?.visibleMessageCount;
+          if (count !== undefined && count > 0) {
+            useStudioStore.setState({ visibleMessageCount: count });
+          }
+        })
+        .catch(() => {});
+    };
+
     void (async () => {
       try {
         const { projects, defaultProjectId } = await fetchProjectsOverview(api);
@@ -69,6 +86,7 @@ export function StudioPage({
           // A fresh install: the Projects pane is where the first one is created.
           s().setScope({ projectId: null, sessionId: null }, project.memory);
           s().setLeftView("project");
+          applyThreadSettings();
           setReady(true);
           return;
         }
@@ -87,11 +105,13 @@ export function StudioPage({
         // expanded on the active Project.
         s().setSessions(sessions);
         if (!session.sessionId) s().setLeftView("project");
+        applyThreadSettings();
         setReady(true);
       } catch (err) {
         if (cancelled) return;
         // The record did not answer: the remembered scope is not disproven.
         setError(err instanceof Error ? err.message : String(err));
+        applyThreadSettings();
         setReady(true);
       }
     })();
@@ -100,24 +120,6 @@ export function StudioPage({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Load thread settings (visibleMessageCount) on startup so the store matches
-  // the persisted value. The settings dialog only reads/writes on open/save.
-  useEffect(() => {
-    let active = true;
-    void fetchSettings(SETTINGS_API)
-      .then((view) => {
-        if (!active) return;
-        const count = view.thread?.visibleMessageCount;
-        if (count !== undefined && count > 0) {
-          useStudioStore.setState({ visibleMessageCount: count });
-        }
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
   }, []);
 
   if (!ready) {

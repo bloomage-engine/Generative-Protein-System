@@ -92,14 +92,29 @@ test(
 
       const aPre = page.locator("pre").filter({ hasText: "a-line-000" });
       await aPre.waitFor({ timeout: 15_000 });
-      const saved = await aPre.evaluate((el) => {
-        el.scrollTop = el.scrollHeight;
-        return el.scrollTop;
-      });
-      assert.ok(saved > 0, "the first tab must scroll before the switch");
 
-      // Switch to b: b becomes visible, a stays mounted but hidden.
-      await page.getByRole("tab").filter({ hasText: "b.txt" }).click();
+      // The scroll contract: the content lives in a bounded, scrollable box —
+      // the renderer's own `pre` for plain text, or the shiki block's wrapper
+      // div for code-kind files (a `.txt` is code-kind, so the box measured here
+      // is the nearest scrolled ancestor, not the `pre` itself).
+      const saved = await aPre.evaluate((el) => {
+        let node = el;
+        while (node && node !== document.body) {
+          const cs = getComputedStyle(node);
+          if (/(auto|scroll)/.test(cs.overflowY) && node.scrollHeight > node.clientHeight) {
+            node.scrollTop = node.scrollHeight;
+            return node.scrollTop;
+          }
+          node = node.parentElement;
+        }
+        return 0;
+      });
+      assert.ok(saved > 0, "the first tab's preview must be a bounded scrollable box");
+
+      // Switch to b: the tab strip lists only OPENED files, so open b from the
+      // tree first (its tab appears); b becomes visible, a stays mounted but
+      // hidden.
+      await tree.getByRole("treeitem", { name: "b.txt" }).click();
       await page.getByText("/b.txt", { exact: true }).waitFor({ timeout: 15_000 });
 
       const bPre = page.locator("pre").filter({ hasText: "b-line-000" });
@@ -113,7 +128,17 @@ test(
       await page.getByText("/a.txt", { exact: true }).waitFor({ timeout: 15_000 });
       assert.ok(await aPre.isVisible(), "a's content must be visible again");
       assert.equal(
-        await aPre.evaluate((el) => el.scrollTop),
+        await aPre.evaluate((el) => {
+          let node = el;
+          while (node && node !== document.body) {
+            const cs = getComputedStyle(node);
+            if (/(auto|scroll)/.test(cs.overflowY) && node.scrollHeight > node.clientHeight) {
+              return node.scrollTop;
+            }
+            node = node.parentElement;
+          }
+          return -1;
+        }),
         saved,
         "a's scroll position must survive the round trip",
       );
