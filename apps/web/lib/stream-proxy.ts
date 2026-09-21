@@ -13,7 +13,7 @@
  * that goes away, a `useTransport` re-render that abandons the watch) destroys
  * the upstream socket, so nothing is left streaming to nobody.
  */
-import { request as httpRequest, type IncomingMessage } from "node:http";
+import { request as httpRequest, type ClientRequest, type IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { Readable } from "node:stream";
 
@@ -40,7 +40,18 @@ export interface StreamUpstreamOptions {
   body?: string | Uint8Array;
   /** Response headers to forward, by name (only those the upstream sent). */
   forward?: readonly string[];
+  /**
+   * The inbound client's liveness (the route handler's `request.signal`).
+   * Aborting it destroys the upstream request/answer at once. A browser that
+   * abandons a fetch (Chrome pools its socket instead of resetting it) gives
+   * NO socket-level signal — this is the only cancellation the relay can see,
+   * and without it EVERY abandoned watch leaks one upstream connection.
+   */
+  signal?: AbortSignal;
 }
+
+/** A client that went away before the relay ever produced its answer. */
+const CANCELED: StreamUpstream = { status: 499, headers: {}, body: null, errorText: "" };
 
 /** Issue `target` and resolve with its answer, streaming a 2xx body. */
 export async function requestStream(
@@ -57,7 +68,27 @@ export async function requestStream(
   }
 
   return await new Promise<StreamUpstream>((resolve, reject) => {
+    const { signal } = options;
+
+    // The client is already gone — do not even open the upstream.
+    if (signal?.aborted) {
+      resolve(CANCELED);
+      return;
+    }
+
+    let req: ClientRequest | null = null;
+    let answer: IncomingMessage | null = null;
+    const onAbort = (): void => {
+      req?.destroy();
+      answer?.destroy();
+    };
+    const releaseAbort = (): void => {
+      if (signal) signal.removeEventListener("abort", onAbort);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+
     const onResponse = (res: IncomingMessage): void => {
+      answer = res;
       const status = res.statusCode ?? 502;
       const forwarded: Record<string, string> = {};
       for (const name of options.forward ?? []) {
@@ -65,6 +96,17 @@ export async function requestStream(
         if (typeof value === "string") forwarded[name] = value;
       }
       if (status >= 200 && status < 300) {
+        if (signal?.aborted) {
+          // Aborted between the response and this handler — release everything.
+          releaseAbort();
+          res.destroy();
+          resolve(CANCELED);
+          return;
+        }
+        // The abort listener stays armed: if the client vanishes mid-stream it
+        // destroys the upstream body directly (not relying on the host
+        // cancelling the response pipe — pooled-socket clients never
+        // reset, so that is the relay's own duty).
         resolve({
           status,
           headers: forwarded,
@@ -76,22 +118,38 @@ export async function requestStream(
       // An error answer is small and is re-shaped by the caller.
       const chunks: Buffer[] = [];
       res.on("data", (chunk: Buffer) => chunks.push(chunk));
-      res.on("end", () =>
+      res.on("end", () => {
+        releaseAbort();
         resolve({
           status,
           headers: forwarded,
           body: null,
           errorText: Buffer.concat(chunks).toString("utf8"),
-        }),
-      );
-      res.on("error", reject);
+        });
+      });
+      res.on("error", (err) => {
+        releaseAbort();
+        reject(err);
+      });
     };
 
-    const upstream =
+    req =
       url.protocol === "https:"
         ? httpsRequest(url, { method, headers }, onResponse)
         : httpRequest(url, { method, headers }, onResponse);
-    upstream.on("error", reject);
-    upstream.end(options.body);
+    req.on("error", (err) => {
+      releaseAbort();
+      reject(err);
+    });
+    req.on("close", () => {
+      // Aborted before any response landed: the socket was destroyed by
+      // `onAbort`, which is a CANCELLATION, not a failure — and without this
+      // check the relay's promise would dangle forever on a dead request.
+      if (signal?.aborted) {
+        releaseAbort();
+        resolve(CANCELED);
+      }
+    });
+    req.end(options.body);
   });
 }

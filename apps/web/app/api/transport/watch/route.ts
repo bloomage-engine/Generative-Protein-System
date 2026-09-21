@@ -27,5 +27,11 @@ export async function GET(request: Request): Promise<NextResponse> {
   return proxyToService(request, {
     path: `/api/transport/watch${qs}`,
     headers: { accept: "application/x-ndjson" },
+    // The watch streams NOTHING until a remote run settles — an abandoned one
+    // is dead weight that never resolves on its own, so it is the one hop that
+    // dies with the client. Chrome pools its socket on fetch abort instead of
+    // resetting it, so the relay sees no socket-level signal and must key off
+    // the request's own (leaking one upstream per abandoned watch otherwise).
+    signal: request.signal,
   });
 }

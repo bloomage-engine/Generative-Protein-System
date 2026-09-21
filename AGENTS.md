@@ -562,7 +562,13 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   response` and a 500 (`GET /api/transport/watch … 500 in 302671ms` was the
   tell). `node:http` has no idle deadline; the response is handed over as a
   `ReadableStream`, and cancelling it (tab closed, `useTransport` re-render)
-  destroys the upstream socket. Short JSON hops pay nothing for the same relay —
+  destroys the upstream socket. Chrome does NOT close its pooled socket on a
+  fetch abort, so the relay must tie the upstream's lifetime to the client
+  itself: the WATCH route is the one hop that passes `request.signal` through
+  (`hop.signal` → `requestStream`), and without it every abandoned watch leaks
+  one upstream socket per scope switch. A run or an upload deliberately does
+  NOT do that — those must keep going after the client goes. Short JSON hops
+  pay nothing for the same relay —
   one policy, no "which one does this route use?".
   `runtime`/`dynamic` stay literal in each route file (Next must statically
   analyze route segment config, so it cannot be re-exported). Each route keeps

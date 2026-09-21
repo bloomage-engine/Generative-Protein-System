@@ -34,6 +34,12 @@ export interface ServiceHop {
   headers?: Record<string, string>;
   /** Response headers to relay, by name. Defaults to {@link DEFAULT_FORWARD}. */
   forward?: readonly string[];
+  /**
+   * Tie the upstream's lifetime to the client's. Only hops that outlive a
+   * vanished client by design opt in (the standing WATCH) — a run or an upload
+   * must keep going server-side after the client goes.
+   */
+  signal?: AbortSignal;
 }
 
 /** What a proxied answer needs: its type, length, name and freshness. */
@@ -72,6 +78,7 @@ export async function proxyToService(
     method: hop.method ?? "GET",
     headers: { ...forwardedAuth(request), ...hop.headers },
     forward: hop.forward ?? DEFAULT_FORWARD,
+    ...(hop.signal !== undefined ? { signal: hop.signal } : {}),
     ...(hop.body !== undefined ? { body: hop.body } : {}),
   });
 
