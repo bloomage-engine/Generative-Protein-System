@@ -1,26 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { createHighlighter, type BundledLanguage, type Highlighter } from "shiki";
+import type { BundledLanguage } from "shiki";
 import { useTheme } from "next-themes";
+import { highlightToHtml } from "./highlight";
 
-let highlighterCache: Highlighter | null = null;
-let loadingPromise: Promise<Highlighter> | null = null;
-
-async function getHighlighter(): Promise<Highlighter> {
-  if (highlighterCache) return highlighterCache;
-  if (!loadingPromise) {
-    loadingPromise = createHighlighter({
-      themes: ["github-light", "github-dark"],
-      langs: ["python", "typescript", "javascript", "bash", "json", "markdown"],
-    }).then((h) => {
-      highlighterCache = h;
-      return h;
-    });
-  }
-  return loadingPromise;
-}
-
+/**
+ * A stand-alone code file: shiki-highlighted through the shared
+ * `highlight.ts` instance (the same one MarkdownRenderer's fenced blocks use),
+ * plain `<pre>` when the highlighter cannot load.
+ */
 export function CodeRenderer({
   content,
   language,
@@ -35,11 +24,9 @@ export function CodeRenderer({
 
   React.useEffect(() => {
     let alive = true;
-    getHighlighter()
-      .then((h) => {
-        if (!alive) return;
-        const mode = dark ? "github-dark" : "github-light";
-        setHtml(h.codeToHtml(content, { lang: language, theme: mode }));
+    highlightToHtml(content, language, dark)
+      .then((out) => {
+        if (alive) setHtml(out);
       })
       .catch(() => {
         if (alive) setError(true);
