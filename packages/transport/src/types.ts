@@ -97,6 +97,19 @@ export type StateDelta =
     }
   | {
       /**
+       * A streaming reasoning fragment: append to (or, with `replace`,
+       * replace) the message's trailing reasoning part. The reasoning twin of
+       * `stream-text`, kept separate because `stream-text` only grows a `text`
+       * part — a cumulative `set-part-text` stream would be O(n²) in the
+       * reasoning length (docs/adr/0022).
+       */
+      type: "stream-reasoning";
+      messageId: Id;
+      text: string;
+      replace?: boolean;
+    }
+  | {
+      /**
        * Replace the text of the part at `partIndex` (only text or reasoning
        * parts carry a `text` field). Collapses high-frequency full-cumulative-
        * text events (e.g. gateway `thinking` streams, ~13 Hz) into one part

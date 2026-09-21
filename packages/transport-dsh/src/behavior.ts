@@ -42,6 +42,10 @@ import {
   type DshHarnessCommands,
 } from "./commands.js";
 import { contentToParts, extractResultText, findToolCallMessage, runStatus, turnEndStatus } from "./mapping.js";
+import {
+  LiveAssistantMessage,
+  type DshAssistantStreamMessage,
+} from "./assistant-stream.js";
 
 /** A reply row's id: the transcript is keyed by message id, so it must be unique. */
 function newId(): string {
@@ -85,7 +89,17 @@ export interface DshBehaviorDeps {
   onError?: (message: string, error: unknown) => void;
 }
 
-export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<SessionEvent> {
+/**
+ * The dsh behavior plus the adapter's out-of-band door for the child's live
+ * assistant frames (`bridge.subscribeAssistantStream` → here). Frames are
+ * routed to the session's active Run; a frame for an unknown or subagent
+ * session is ignored (docs/adr/0022).
+ */
+export interface DshBehavior extends SessionBehavior<SessionEvent> {
+  ingestAssistantStream(message: DshAssistantStreamMessage): void;
+}
+
+export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
   const { client, recordStore, harnessSessions, profile, provider, model, cwd, workspace, harnessCommands, commandCatalog } = deps;
   const log = deps.onError ?? ((message: string, error: unknown) => console.warn(`[dsh] ${message}`, error));
   /**
@@ -135,6 +149,85 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
     string,
     { provider?: string; model?: string; contextWindow?: number }
   >();
+
+  /** The Run currently driving each Science Studio session (for live frames). */
+  const activeRuns = new Map<string, RunControl<SessionEvent>>();
+  /**
+   * Live assistant rows under construction, keyed by the GENERATION-scoped
+   * `${harnessSessionId}:${turn}:${step}`. Scoping by the harness id — not the
+   * stable Science Studio session key — is what keeps a reset/restart (which
+   * restarts at turn 1 step 1 on the SAME session key WITHOUT clearing the
+   * transcript) from colliding with the previous conversation's rows.
+   */
+  const liveRows = new Map<string, LiveAssistantMessage>();
+  /**
+   * attemptId → the live row key it belongs to. Only the `start` frame carries
+   * `turn`/`step`; a `chunk`/`end` frame has neither, so its live-row key can
+   * only be recovered from the attempt id the start frame bound (the real
+   * captured wire has no turn/step on chunk/end — docs/adr/0022). Normally
+   * removed when that attempt `end`s; the bound below is only a leak guard for a
+   * child that dies mid-turn.
+   */
+  const attemptKeys = new Map<string, string>();
+  /**
+   * Bound on {@link liveRows} and {@link attemptKeys}: recent steps only.
+   * Eviction is safe in practice — a step settles immediately, and an evicted
+   * in-flight row simply stops streaming until the durable event lands (live
+   * rendering is an optimization).
+   */
+  const LIVE_KEEP = 512;
+  /** Steps whose settlement already landed, so late frames cannot recreate a row. */
+  const finalizedSteps = new Set<string>();
+  /** Bound on {@link finalizedSteps}: recent steps only (monotonic turn/step). */
+  const FINALIZED_KEEP = 512;
+
+  /**
+   * The deterministic live row id for a step, scoped by the GENERATION-scoped
+   * harness session id (docs/adr/0022). Only the `start` frame carries
+   * `turn`/`step`, and it binds that key to the attempt id; the `chunk`/`end`
+   * frames carry no turn/step, so `ingestAssistantStream` resolves them through
+   * `attemptKeys` instead. The durable settlement resolves the same harness id
+   * and finalizes that same id.
+   */
+  function liveKey(harnessSessionId: string, turn: unknown, step: unknown): string | null {
+    return typeof turn === "number" && typeof step === "number" ? `${harnessSessionId}:${turn}:${step}` : null;
+  }
+
+  /** The Science Studio session key a harness session id belongs to. */
+  function sessionKeyForHarness(harnessId: string): string | undefined {
+    for (const [key, id] of harnessSessions) if (id === harnessId) return key;
+    return undefined;
+  }
+
+  function markFinalized(key: string): void {
+    finalizedSteps.add(key);
+    while (finalizedSteps.size > FINALIZED_KEEP) {
+      const oldest = finalizedSteps.values().next().value;
+      if (oldest === undefined) break;
+      finalizedSteps.delete(oldest);
+    }
+  }
+
+  /** Remember one live row, evicting the oldest when the bound is exceeded. */
+  function rememberLive(key: string, live: LiveAssistantMessage): void {
+    liveRows.set(key, live);
+    while (liveRows.size > LIVE_KEEP) {
+      const oldest = liveRows.keys().next().value;
+      if (oldest === undefined) break;
+      liveRows.delete(oldest);
+    }
+  }
+
+  /** Bind one attempt's id to its live row key, evicting the oldest over the bound. */
+  function rememberAttempt(attemptId: string, key: string): void {
+    attemptKeys.delete(attemptId);
+    attemptKeys.set(attemptId, key);
+    while (attemptKeys.size > LIVE_KEEP) {
+      const oldest = attemptKeys.keys().next().value;
+      if (oldest === undefined) break;
+      attemptKeys.delete(oldest);
+    }
+  }
 
   /**
    * Drive one prompt on this Session's harness conversation, minting the id on
@@ -344,8 +437,31 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
       case "assistant/message": {
         const data = event.data;
         if (data.message.role !== "assistant") return;
-        // Committed-event granularity: ONE whole message per step.
-        if (!ctx.state.messages.some((m) => m.id === data.message.id)) {
+        // The live row is keyed by the GENERATION-scoped harness id, which the
+        // adapter published before this turn ran; absent (never prompted), there
+        // is no live row to finalize and the durable-id path below applies.
+        const harnessId = harnessSessions.get(ctx.sessionKey);
+        const key = harnessId === undefined ? null : liveKey(harnessId, data.turn, data.step);
+        const settled = key !== null && finalizedSteps.has(key);
+        const live = key === null ? undefined : liveRows.get(key);
+        if (key !== null && live !== undefined) {
+          // The live row streamed this step: finalize it with the authoritative
+          // content and KEEP its id, so the client's row never remounts.
+          liveRows.delete(key);
+          markFinalized(key);
+          ctx.emit({
+            type: "update-message",
+            messageId: key,
+            patch: { parts: contentToParts(data.message.content) },
+          });
+        } else if (settled) {
+          // Already settled (a duplicate event, or a late live frame was
+          // ignored): never mint a second row for one step.
+        } else if (!ctx.state.messages.some((m) => m.id === data.message.id)) {
+          // No live row (bridge unavailable, a lagging stream, or a non-live
+          // build): the durable id path, unchanged. Mark the step settled so a
+          // late live frame cannot create a second row.
+          if (key !== null) markFinalized(key);
           ctx.emit({
             type: "add-message",
             message: {
@@ -396,10 +512,63 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
     }
   }
 
+  /**
+   * Route one forwarded live frame to the session's active Run. Best-effort and
+   * total: an unknown session, a subagent, or a frame outside a run is ignored,
+   * never thrown — this sits beside the run stream and must not break a turn.
+   */
+  function ingestAssistantStream({ sessionId, frame }: DshAssistantStreamMessage): void {
+    // Total guard: the stream sits beside the run stream, so a malformed/foreign
+    // payload must be ignored rather than throw.
+    if (frame === null || typeof frame !== "object") return;
+    const sessionKey = sessionKeyForHarness(sessionId);
+    if (sessionKey === undefined) return;
+    const run = activeRuns.get(sessionKey);
+    if (!run) return;
+
+    if (frame.type === "start") {
+      const key = liveKey(sessionId, frame.turn, frame.step);
+      if (key === null || finalizedSteps.has(key)) return;
+      const existing = liveRows.get(key);
+      if (existing) {
+        // A retried attempt reuses the row: clear it and rebuild.
+        existing.reset();
+      } else {
+        const live = new LiveAssistantMessage(key, (delta) => run.emit(delta));
+        live.begin();
+        rememberLive(key, live);
+      }
+      // Bind this attempt so its chunk/end frames — which carry no turn/step —
+      // resolve back to the row the start frame established.
+      if (typeof frame.attemptId === "string" && frame.attemptId !== "") {
+        rememberAttempt(frame.attemptId, key);
+      }
+      return;
+    }
+
+    // `chunk`/`end` frames have no turn/step: the live-row key comes from the
+    // attempt id the start frame bound.
+    const key = typeof frame.attemptId === "string" ? attemptKeys.get(frame.attemptId) : undefined;
+    if (key === undefined) return;
+
+    if (frame.type === "chunk") {
+      // A chunk with no payload is still routed; it must NOT drop the binding.
+      if (frame.chunk) liveRows.get(key)?.accept(frame.chunk);
+      return;
+    }
+    if (frame.type === "end") {
+      attemptKeys.delete(frame.attemptId!);
+      // keep the row for the durable finalize (an abandoned/attempt step leaves
+      // its partial row visible — docs/adr/0022)
+      return;
+    }
+  }
+
   return {
     apply(event, ctx) {
       return applyEvent(event, ctx);
     },
+    ingestAssistantStream,
 
     async prepare(handle) {
       // Cold start only: the SDK wire has no history-replay request, so restore
@@ -434,6 +603,11 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
         message.attachments,
         workspace ? { toAgentPath: (relPath) => workspace.toAgentPath(relPath) } : {},
       );
+      // A `/new` (or a restart) drops the harness conversation and the next turn
+      // restarts at turn 1 step 1 on the SAME session key, but the live rows are
+      // keyed by the GENERATION-scoped harness id, so the next mint cannot
+      // collide and no per-session clearing is needed (docs/adr/0022).
+      activeRuns.set(request.sessionKey, run);
       void (async () => {
         try {
           await driveTurn(request.sessionKey, prompt, run);
@@ -442,6 +616,8 @@ export function createDshBehavior(deps: DshBehaviorDeps): SessionBehavior<Sessio
           log("turn failed", err);
           run.emit({ type: "session-status", status: "error" });
           run.settle({ status: "error" });
+        } finally {
+          if (activeRuns.get(request.sessionKey) === run) activeRuns.delete(request.sessionKey);
         }
       })();
     },

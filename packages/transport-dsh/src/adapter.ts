@@ -11,7 +11,6 @@ import {
   type RuntimeAdapter,
   type RuntimeFactory,
   type RuntimeInitOptions,
-  type SessionBehavior,
   type SessionState,
   type SkillInfo,
   type SkillInstallInput,
@@ -42,7 +41,7 @@ import {
   writeSubagentPatch,
   type DshCommandBridge,
 } from "./bridge.js";
-import { createDshBehavior } from "./behavior.js";
+import { createDshBehavior, type DshBehavior } from "./behavior.js";
 import { applyRouteSettings } from "./route-settings.js";
 import { readChildTranscript } from "./child-transcript.js";
 import {
@@ -159,7 +158,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private binding: DshBinding = {};
   /** One shared run lifecycle per Session (docs/adr/0005). */
   private runtimes = new Map<string, SessionRuntime<SessionEvent>>();
-  private behavior: SessionBehavior<SessionEvent> | null = null;
+  private behavior: DshBehavior | null = null;
   /**
    * Science Studio session key → the harness session id this child generation
    * created for it. Ids are generation-scoped (a previous harness process can
@@ -192,6 +191,9 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private initFailure: unknown = null;
   private readonly subagentRegistry: SubagentRegistry;
   private subagentWatchAttached = false;
+  private assistantStreamAttached = false;
+  /** The live assistant-frame watch's close handle for this child generation. */
+  private assistantStreamClose: (() => void) | null = null;
 
   constructor(options: DshRuntimeAdapterOptions = {}) {
     this.dshHome = options.bindingDshHome;
@@ -503,9 +505,12 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
         try {
           await this.client!.start();
           this.attachSubagents();
+          this.attachAssistantStream();
         } catch (err) {
           this.ready = null;
           this.subagentWatchAttached = false;
+          this.assistantStreamAttached = false;
+          this.closeAssistantStream();
           console.error("[dsh] runtime start failed (check DSH_HOME/DSH_PROFILE and the LLM credentials)", err);
           throw new Error(`dsh runtime not ready: ${String(err)}`);
         }
@@ -527,6 +532,43 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     if (this.subagentWatchAttached || !client || typeof client.subscribeNotifications !== "function") return;
     this.subagentWatchAttached = true;
     client.subscribeNotifications((notification) => this.captureSubagent(notification));
+  }
+
+  /**
+   * Attach the child-wide live assistant-frame watch ONCE per child generation.
+   * Both surfaces are optional, so a client or bridge without them simply
+   * reports nothing; the watch is best-effort and silently degrades to
+   * step-granular rendering (docs/adr/0022).
+   */
+  private attachAssistantStream(): void {
+    const bridge = this.bridge;
+    const behavior = this.behavior;
+    if (
+      this.assistantStreamAttached ||
+      bridge === null ||
+      behavior === null ||
+      typeof bridge.subscribeAssistantStream !== "function"
+    ) {
+      return;
+    }
+    this.assistantStreamAttached = true;
+    // Close a previous generation's handle before (re)subscribing, so its
+    // reconnect loop cannot retry against a dead socket.
+    this.closeAssistantStream();
+    this.assistantStreamClose = bridge.subscribeAssistantStream((message) =>
+      behavior.ingestAssistantStream(message),
+    );
+  }
+
+  /** Close the live assistant-frame watch if one is attached. */
+  private closeAssistantStream(): void {
+    const close = this.assistantStreamClose;
+    this.assistantStreamClose = null;
+    try {
+      close?.();
+    } catch {
+      // already closed
+    }
   }
 
   /**

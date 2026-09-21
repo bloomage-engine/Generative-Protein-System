@@ -121,6 +121,39 @@ test("stream-text on a non-text tail (or no tail) starts a new text part", () =>
   assert.deepEqual(foldState(ghost, { type: "stream-text", messageId: "ghost", text: "x" }), []);
 });
 
+test("stream-reasoning appends to a reasoning tail", () => {
+  const s = state([{ id: "m1", role: "assistant", parts: [{ type: "reasoning", text: "th" }] }]);
+  const effects = foldState(s, { type: "stream-reasoning", messageId: "m1", text: "ink" });
+  assert.deepEqual(effects, [{ type: "text-appended", messageId: "m1", partIndex: 0, appended: "ink" }]);
+  assert.deepEqual(s.messages[0]!.parts, [{ type: "reasoning", text: "think" }]);
+});
+
+test("stream-reasoning with replace overwrites a reasoning tail", () => {
+  const s = state([{ id: "m1", role: "assistant", parts: [{ type: "reasoning", text: "old" }] }]);
+  const effects = foldState(s, { type: "stream-reasoning", messageId: "m1", text: "fresh", replace: true });
+  assert.deepEqual(effects, [{ type: "text-set", messageId: "m1", partIndex: 0, text: "fresh" }]);
+  assert.deepEqual(s.messages[0]!.parts, [{ type: "reasoning", text: "fresh" }]);
+});
+
+test("stream-reasoning on a non-reasoning tail (or no tail) starts a new reasoning part", () => {
+  const withText = state([{ id: "m1", role: "assistant", parts: [{ type: "text", text: "hi" }] }]);
+  const effects = foldState(withText, { type: "stream-reasoning", messageId: "m1", text: "why" });
+  assert.deepEqual(effects, [{ type: "parts-set", messageId: "m1" }]);
+  assert.deepEqual(withText.messages[0]!.parts, [
+    { type: "text", text: "hi" },
+    { type: "reasoning", text: "why" },
+  ]);
+
+  const empty = state([{ id: "m1", role: "assistant", parts: [] }]);
+  foldState(empty, { type: "stream-reasoning", messageId: "m1", text: "x", replace: true });
+  assert.deepEqual(empty.messages[0]!.parts, [{ type: "reasoning", text: "x" }]);
+});
+
+test("stream-reasoning on an unknown message is dropped", () => {
+  const s = state([{ id: "m1", role: "assistant", parts: [] }]);
+  assert.deepEqual(foldState(s, { type: "stream-reasoning", messageId: "ghost", text: "x" }), []);
+});
+
 test("set-part-text replaces text of a reasoning or text part in place", () => {
   const s = state([fresh([{ type: "reasoning", text: "old" }])]);
   const effects = foldState(s, { type: "set-part-text", messageId: "m1", partIndex: 0, text: "new" });

@@ -17,6 +17,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { HarnessBridgeOutcome } from "./commands.js";
+import type { DshAssistantStreamMessage } from "./assistant-stream.js";
 
 /** Connect + list bound. Listing is a read-only registry read. */
 const LIST_TIMEOUT_MS = 10_000;
@@ -40,6 +41,13 @@ export interface DshCommandBridge {
   list(): Promise<HarnessCommandEntry[]>;
   /** Execute one trimmed command line on the child's agent for `sessionId`. */
   execute(sessionId: string, line: string): Promise<HarnessBridgeOutcome>;
+  /**
+   * Open the child's live assistant-frame stream (`GET /assistant-stream`) and
+   * invoke `listener` for each forwarded frame. Returns a close handle. The
+   * connection is re-established if the child restarts mid-watch; a missing or
+   * failing bridge simply never calls the listener (best-effort — docs/adr/0022).
+   */
+  subscribeAssistantStream?(listener: (message: DshAssistantStreamMessage) => void): () => void;
 }
 
 function isEntry(value: unknown): value is HarnessCommandEntry {
@@ -92,6 +100,67 @@ async function callJson(
   }
 }
 
+/** Reconnect delay when the streaming watch loses the child. */
+const STREAM_RETRY_MS = 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    timer.unref?.();
+  });
+}
+
+/**
+ * One connection to `GET /assistant-stream`, resolving when the child closes
+ * or the response errors. Lines are NDJSON; a malformed line is skipped.
+ */
+async function pumpAssistantStream(
+  endpoint: string,
+  listener: (message: DshAssistantStreamMessage) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const req = request({ socketPath: endpoint, path: "/assistant-stream", method: "GET", signal });
+    req.on("error", reject);
+    req.on("response", (res) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new Error(`GET /assistant-stream answered ${res.statusCode}`));
+        return;
+      }
+      let buffer = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk: string) => {
+        buffer += chunk;
+        let index: number;
+        while ((index = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, index).trim();
+          buffer = buffer.slice(index + 1);
+          if (line === "") continue;
+          try {
+            const parsed = JSON.parse(line) as DshAssistantStreamMessage;
+            if (typeof parsed?.sessionId === "string" && parsed.frame !== undefined) {
+              try {
+                listener(parsed);
+              } catch (err) {
+                // Best-effort: a listener throw must not become an uncaught
+                // exception on the event loop (symmetric with the plugin's
+                // guarded `res.write`).
+                console.warn("[dsh] assistant-stream listener failed", err);
+              }
+            }
+          } catch {
+            // a malformed line is not fatal to the watch
+          }
+        }
+      });
+      res.on("end", () => resolve());
+      res.on("error", reject);
+    });
+    req.end();
+  });
+}
+
 /** The command bridge at one socket endpoint. */
 export function createCommandBridge(endpoint: string): DshCommandBridge {
   return {
@@ -128,6 +197,27 @@ export function createCommandBridge(endpoint: string): DshCommandBridge {
           return { status: "unavailable", message };
         }
       }
+    },
+
+    subscribeAssistantStream(listener: (message: DshAssistantStreamMessage) => void): () => void {
+      const controller = new AbortController();
+      let closed = false;
+      const watch = async (): Promise<void> => {
+        while (!closed) {
+          try {
+            await pumpAssistantStream(endpoint, listener, controller.signal);
+          } catch {
+            // the child is gone or restarting: retry while this watch is wanted
+          }
+          if (closed) return;
+          await sleep(STREAM_RETRY_MS);
+        }
+      };
+      void watch();
+      return () => {
+        closed = true;
+        controller.abort();
+      };
     },
   };
 }

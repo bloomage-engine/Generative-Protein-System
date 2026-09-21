@@ -69,6 +69,30 @@ export interface BridgePreStepDecision {
   kind: "reject" | "enter";
 }
 
+/** Structural view of the agent an `agent/assistant-stream` frame belongs to. */
+export interface BridgeStreamAgent {
+  session?: { id?: unknown };
+}
+
+/** One live assistant frame, read structurally (the child owns the real shape). */
+export interface BridgeAssistantStreamFrame {
+  type: "start" | "chunk" | "end";
+  attemptId?: string;
+  revision?: number;
+  turn?: number;
+  step?: number;
+  index?: number;
+  time?: number;
+  chunk?: unknown;
+  outcome?: unknown;
+}
+
+/** The `agent/assistant-stream` payload the forwarder reads. */
+export interface BridgeAssistantStreamPayload {
+  agent: BridgeStreamAgent;
+  frame: BridgeAssistantStreamFrame;
+}
+
 /** Structural view of the harness services this bridge reads. */
 export interface BridgeHost {
   commands: {
@@ -101,6 +125,15 @@ export interface BridgeHost {
       payload: BridgePreStepPayload,
       next: () => Promise<BridgePreStepDecision>,
     ) => Promise<BridgePreStepDecision>,
+  ): () => void;
+  /**
+   * The process-local `agent/assistant-stream` publication (optional, same
+   * fail-soft rule). A host-scope listener receives every agent's frames.
+   */
+  on?(
+    event: "agent/assistant-stream",
+    listener: (payload: BridgeAssistantStreamPayload) => void,
+    options?: { global?: boolean },
   ): () => void;
 }
 
@@ -295,6 +328,56 @@ function interceptCommandPrompts(ctx: BridgeHost): (() => void) | null {
   });
 }
 
+/**
+ * `GET /assistant-stream` — hold the connection open and write one NDJSON line
+ * per live assistant frame, `{ sessionId, frame }`. The listener is registered
+ * when the client connects and disposed on disconnect; a subsystem without the
+ * event surface answers 503 so the adapter falls back to step granularity.
+ */
+function streamAssistant(ctx: BridgeHost, res: ServerResponse): void {
+  if (typeof ctx.on !== "function") {
+    send(res, 503, { status: "unavailable", message: "no event surface" });
+    return;
+  }
+  res.writeHead(200, {
+    "content-type": "application/x-ndjson",
+    "cache-control": "no-store",
+    connection: "keep-alive",
+  });
+  let off: (() => void) | null = null;
+  const cleanup = (): void => {
+    const fn = off;
+    off = null;
+    try {
+      fn?.();
+    } catch {
+      // already disposed
+    }
+  };
+  res.on("close", cleanup);
+  res.on("error", cleanup);
+  try {
+    off = ctx.on(
+      "agent/assistant-stream",
+      ({ agent, frame }) => {
+        const sessionId = agent?.session?.id;
+        if (typeof sessionId !== "string" || sessionId === "") return;
+        try {
+          res.write(`${JSON.stringify({ sessionId, frame })}\n`);
+        } catch (err) {
+          warn("assistant-stream write failed", err);
+          cleanup();
+        }
+      },
+      { global: true },
+    );
+  } catch (err) {
+    warn("assistant-stream subscription unavailable", err);
+    cleanup();
+    if (!res.writableEnded) res.end();
+  }
+}
+
 async function dispatch(ctx: BridgeHost, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const path = (req.url ?? "").split("?")[0] ?? "";
   if (req.method === "GET" && path === "/commands") {
@@ -303,6 +386,10 @@ async function dispatch(ctx: BridgeHost, req: IncomingMessage, res: ServerRespon
   }
   if (req.method === "POST" && path === "/execute") {
     await executeCommand(ctx, req, res);
+    return;
+  }
+  if (req.method === "GET" && path === "/assistant-stream") {
+    streamAssistant(ctx, res);
     return;
   }
   send(res, 404, { status: "not-found" });

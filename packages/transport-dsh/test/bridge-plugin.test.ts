@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   apply,
+  type BridgeAssistantStreamPayload,
   type BridgeCommandDescriptor,
   type BridgeHost,
   type BridgePreStepDecision,
@@ -21,6 +22,12 @@ import { createCommandBridge } from "../src/bridge.js";
  * two harness services faked. Nothing here spawns a harness.
  */
 
+type PreStepListener = (
+  payload: BridgePreStepPayload,
+  next: () => Promise<BridgePreStepDecision>,
+) => Promise<BridgePreStepDecision>;
+type StreamListener = (payload: BridgeAssistantStreamPayload) => void;
+
 /** The plugin's two services, scripted: a live agent, a catalog, and outcomes. */
 function fakeHost(
   descriptors: readonly BridgeCommandDescriptor[] = [],
@@ -31,15 +38,15 @@ function fakeHost(
   /** Every line the registry was asked to run, in order. */
   executions: () => string[];
   /** The `agent/pre-step` listener the plugin registered, if any. */
-  preStep: () =>
-    | ((payload: BridgePreStepPayload, next: () => Promise<BridgePreStepDecision>) => Promise<BridgePreStepDecision>)
-    | undefined;
+  preStep: () => PreStepListener | undefined;
+  stream: () => StreamListener | undefined;
   dispose: () => void;
 } {
   const disposers: (() => void)[] = [];
   const executed: string[] = [];
   let effectCalls = 0;
-  let preStep: Parameters<NonNullable<BridgeHost["on"]>>[1] | undefined;
+  const preStepListeners: PreStepListener[] = [];
+  const streamListeners: StreamListener[] = [];
   const ctx: BridgeHost = {
     commands: {
       list: () => descriptors,
@@ -59,20 +66,21 @@ function fakeHost(
       effectCalls += 1;
       disposers.push(body());
     },
-    // The waterfall is an append-only registration: the last listener registered
-    // is the one under test (the plugin registers exactly one).
-    on: (_event, listener) => {
-      preStep = listener;
+    on: ((event: string, listener: (...args: unknown[]) => unknown) => {
+      const bucket = event === "agent/assistant-stream" ? streamListeners : preStepListeners;
+      bucket.push(listener as never);
       return () => {
-        preStep = undefined;
+        const index = bucket.indexOf(listener as never);
+        if (index >= 0) bucket.splice(index, 1);
       };
-    },
+    }) as unknown as NonNullable<BridgeHost["on"]>,
   };
   return {
     ctx,
     effects: () => effectCalls,
     executions: () => executed,
-    preStep: () => preStep,
+    preStep: () => preStepListeners[0],
+    stream: () => streamListeners[0],
     dispose: () => {
       for (const disposer of disposers.splice(0)) disposer();
     },
@@ -238,4 +246,59 @@ test("a client pointed at a dead socket names the endpoint it could not reach", 
   const outcome = await bridge.execute("sess-1", "/compact");
   assert.equal(outcome.status, "unavailable");
   assert.match(outcome.status === "unavailable" ? outcome.message : "", /nope\.sock/);
+});
+
+test("the child forwards live assistant frames as NDJSON over the bridge socket", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-bridge-"));
+  const socket = join(dir, "b.sock");
+  const host = fakeHost(DESCRIPTORS, new Map([["sess-1", { id: "sess-1" }]]));
+  try {
+    apply(host.ctx, { socket });
+    await waitForPath(socket);
+    const messages: { sessionId: string; frame: unknown }[] = [];
+    const close = createCommandBridge(socket).subscribeAssistantStream!((message) => messages.push(message));
+    // The plugin registers its listener when the adapter's GET arrives.
+    await delay(50);
+
+    const listener = host.stream();
+    assert.ok(listener, "the plugin registers an agent/assistant-stream listener");
+    listener({
+      agent: { session: { id: "sess-1" } },
+      frame: {
+        type: "chunk",
+        attemptId: "sess-1:1",
+        revision: 3,
+        turn: 1,
+        step: 1,
+        index: 0,
+        chunk: { type: "text-delta", index: 0, text: "hi" },
+      },
+    });
+    // A frame with no session id is dropped, not forwarded.
+    listener({ agent: {}, frame: { type: "start" } });
+
+    await delay(50);
+    assert.deepEqual(messages, [
+      {
+        sessionId: "sess-1",
+        frame: {
+          type: "chunk",
+          attemptId: "sess-1:1",
+          revision: 3,
+          turn: 1,
+          step: 1,
+          index: 0,
+          chunk: { type: "text-delta", index: 0, text: "hi" },
+        },
+      },
+    ]);
+
+    close();
+    await delay(50);
+    // After the client closes, the plugin disposes its listener.
+    assert.equal(host.stream(), undefined);
+  } finally {
+    host.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
 });

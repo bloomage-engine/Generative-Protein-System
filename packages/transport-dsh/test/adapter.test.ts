@@ -10,6 +10,8 @@ import { sessionState } from "@science-studio/contract-tests";
 import type { Run, Subagent } from "@science-studio/record";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
 import type { PersistedTranscript } from "@science-studio/record";
+import type { DshCommandBridge } from "../src/bridge.js";
+import type { DshAssistantStreamMessage } from "../src/assistant-stream.js";
 
 function ev(type: string, data: unknown, seq = 1): SessionEvent {
   return { type, seq, time: Date.now(), data } as unknown as SessionEvent;
@@ -683,6 +685,58 @@ test("subagentTranscript serves the child's record and null for a foreign child"
     assert.equal(await adapter.subagentTranscript("sess-1", "not-in-the-ledger"), null, "a child outside the session's ledger is not served");
   } finally {
     await adapter.abort();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("live assistant frames reach the transcript through the bridge watch", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-adapter-"));
+  const store = new FakeRecordStore();
+  let streamListener: ((message: DshAssistantStreamMessage) => void) | null = null;
+  let subscribed = false;
+  const bridge: DshCommandBridge = {
+    list: async () => [],
+    execute: async () => ({ status: "unknown" }),
+    subscribeAssistantStream: (listener) => {
+      subscribed = true;
+      streamListener = listener;
+      return () => {
+        streamListener = null;
+      };
+    },
+  };
+  const client = new FakeDshClient((_sid, _text) => completedReply("am1", "Hello from dsh."));
+  const adapter = new DshRuntimeAdapter({
+    createClient: () => client,
+    createBridge: () => bridge,
+    bridgeDir: dir,
+  });
+  try {
+    await adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
+    // The turn's live frames are produced through the captured bridge listener.
+    client.duringTurn = (sessionId) => {
+      // The real wire carries turn/step only on `start`; chunk/end carry just
+      // the attemptId (this is what routes them back to the live row).
+      streamListener?.({ sessionId, frame: { type: "start", turn: 1, step: 1, attemptId: "a1" } });
+      streamListener?.({
+        sessionId,
+        frame: { type: "chunk", attemptId: "a1", chunk: { type: "block-start", index: 0, blockType: "text" } },
+      });
+      streamListener?.({
+        sessionId,
+        frame: { type: "chunk", attemptId: "a1", chunk: { type: "text-delta", index: 0, text: "Hello" } },
+      });
+    };
+
+    const deltas = await collect(adapter.run(session(), [
+      { type: "add-message", message: { id: "u1", role: "user", content: "hi" } },
+    ]));
+    assert.ok(subscribed, "the adapter subscribed to the bridge stream");
+    assert.ok(
+      deltas.some((delta) => delta.type === "stream-text" && delta.text === "Hello"),
+      "the live text delta reached the client stream",
+    );
+  } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });

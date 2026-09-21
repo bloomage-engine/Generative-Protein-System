@@ -33,6 +33,7 @@
     "react-dom": "^19.0.0",
     "react-markdown": "10.1.0",
     "react-resizable-panels": "4.12.4",
+    "rehype-raw": "7.0.0",
     "remark-gfm": "4.0.1",
     "shadcn": "4.21.0",
     "shiki": "4.4.3",

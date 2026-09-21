@@ -19,7 +19,10 @@ so failed turns are still recorded — a deliberate deviation from openclaw,
 which only persists settled runs. The SDK wire has **no approval or ask-user
 surface** (nothing to wire in v1) and **no token stream**: `assistant/message`
 events carry a whole step's content blocks, so the adapter emits committed-event
-granularity deltas and never fabricates token-level `stream-text`.
+granularity deltas and never fabricates token-level `stream-text`. (Superseded by
+docs/adr/0022 for dsh: the adapter now streams the harness's process-local
+assistant frames over the bridge socket; the durable `assistant/message` remains
+authoritative.)
 
 The load-bearing wrinkle is **cold-start reconcile**: the SDK exposes no
 history-replay request — `session.event` notifications only flow while a client

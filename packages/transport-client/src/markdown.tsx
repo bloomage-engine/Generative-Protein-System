@@ -58,6 +58,11 @@ const MarkdownTextImpl: FC<MarkdownTextProps> = ({ components, className = "aui-
       className={className}
       components={markdownComponents}
       defer
+      smooth={{
+        drainMs: 300,          // Slightly longer drain time for smoother appearance
+        maxCharIntervalMs: 8,  // Slower reveal when backlog is short
+        minCommitMs: 16,       // Commit at most every ~1 frame (60fps)
+      }}
     />
   );
 };

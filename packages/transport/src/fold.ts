@@ -121,6 +121,23 @@ export function foldState(state: FoldState, delta: StateDelta): DeltaEffect[] {
       msg.parts.push({ type: "text", text: delta.text });
       return [{ type: "parts-set", messageId: msg.id }];
     }
+    case "stream-reasoning": {
+      const msg = findMessage(state.messages, delta.messageId);
+      if (!msg) return [];
+      const idx = msg.parts.length - 1;
+      const last = idx >= 0 ? msg.parts[idx] : undefined;
+      if (last && last.type === "reasoning") {
+        msg.parts[idx] = {
+          ...last,
+          text: delta.replace ? delta.text : (last.text ?? "") + delta.text,
+        };
+        return delta.replace
+          ? [{ type: "text-set", messageId: msg.id, partIndex: idx, text: delta.text }]
+          : [{ type: "text-appended", messageId: msg.id, partIndex: idx, appended: delta.text }];
+      }
+      msg.parts.push({ type: "reasoning", text: delta.text });
+      return [{ type: "parts-set", messageId: msg.id }];
+    }
     case "set-part-text": {
       const msg = findMessage(state.messages, delta.messageId);
       if (!msg) return [];
