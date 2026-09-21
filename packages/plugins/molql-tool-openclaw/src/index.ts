@@ -40,7 +40,89 @@ Call this when the user asks about the interactions of a residue, chemical bond 
 
 Returns a Markdown table: interaction type, the two atom/residue endpoints, and the distance in Å.`;
 
+/** The measurement tool; the service computes the numbers and the viewer draws them. */
+const MEASUREMENTS_TOOL_NAME = "measurements";
+
+const MEASUREMENTS_DESCRIPTION = `Measure a molecular structure in the Science Studio viewer: return the numeric result and draw the same measurement in the 3D view.
+
+Provide the ordered selection items as MolQL (mol-script) expressions, or as full \`@<project>/<path>/<molql>\` mentions produced by clicking in the viewer. Order matters (A, B, C, D). Kinds and how many selections each needs:
+- label: 1 selection
+- distance: 2 selections (A—B), the distance in Å
+- angle: 3 selections (A—B—C), the angle in degrees at B
+- dihedral: 4 selections (A—B—C—D), the dihedral in degrees
+- orientation: 1 or more selections — principal axes / oriented box
+- plane: 1 or more selections — best-fit plane
+
+For a verbal request (e.g. "residue 42"), translate it to MolQL first, e.g. \`(sel.atom.res (= atom.resno 42))\`, or a specific atom with \`(sel.atom.atoms (and (= atom.resno 42) (= atom.name CA)))\`. When the items are mentions, project/path are read from the first one; otherwise pass project and path explicitly.
+
+Returns the value plus a one-line summary.`;
+
 const SERVICE_URL = process.env.SCIENCE_STUDIO_SERVICE_URL ?? "http://127.0.0.1:3001";
+
+/**
+ * Normalize one measurement selection item: a full
+ * `@<project>/<path>/<molql>` mention yields project/path/molql; anything else
+ * is a bare MolQL expression (the model translated a verbal description).
+ */
+function parseSelectionItem(item: string): { project?: string; path?: string; molql: string } {
+  const trimmed = item.trim();
+  if (!trimmed.startsWith("@")) return { molql: trimmed };
+  const body = trimmed.slice(1);
+  const paren = body.indexOf("(");
+  if (paren === -1) return { molql: trimmed };
+  const molql = body.slice(paren).trim();
+  const prefix = body.slice(0, paren).replace(/\/+$/, "");
+  const slash = prefix.indexOf("/");
+  if (slash === -1) return { path: prefix, molql };
+  return { project: prefix.slice(0, slash), path: prefix.slice(slash + 1), molql };
+}
+
+async function fetchMeasurements(args: {
+  kind: string;
+  selections: string[];
+  project?: string;
+  path?: string;
+}): Promise<{
+  type: string;
+  kind: string;
+  project: string;
+  path: string;
+  selections: string[];
+  values: unknown;
+  text: string;
+}> {
+  const parsed = args.selections.map(parseSelectionItem);
+  const selections = parsed.map((p) => p.molql).filter((s) => s.length > 0);
+  const project = args.project ?? parsed.find((p) => p.project)?.project;
+  const path = args.path ?? parsed.find((p) => p.path)?.path;
+  if (!project || !path) {
+    throw new Error(
+      "could not determine project/path: pass them explicitly or use a full @project/path/molql mention",
+    );
+  }
+  const response = await fetch(`${SERVICE_URL}/api/workspace/measurements`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ project, path, kind: args.kind, selections }),
+  });
+  const body = (await response.json().catch(() => null)) as {
+    values?: unknown;
+    text?: string;
+    error?: string;
+  } | null;
+  if (!response.ok) {
+    throw new Error(body?.error ?? `measurement service answered ${response.status}`);
+  }
+  return {
+    type: "molql-measurements",
+    kind: args.kind,
+    project,
+    path,
+    selections,
+    values: body?.values ?? {},
+    text: body?.text ?? "",
+  };
+}
 
 async function fetchInteractions(args: {
   project: string;
@@ -62,7 +144,7 @@ export default defineToolPlugin({
   id: "molql-tool",
   name: "MolQL",
   description:
-    "Science Studio structure tools: translate a query into a Mol* mol-script selection for the viewer to apply, and compute the non-covalent interactions of a selection.",
+    "Science Studio structure tools: translate a query into a Mol* mol-script selection for the viewer to apply, compute the non-covalent interactions of a selection, and measure distances/angles/dihedrals/orientation/plane for a set of selections.",
 
   tools: (tool) => [
     tool({
@@ -113,6 +195,43 @@ export default defineToolPlugin({
         }),
       }),
       execute: fetchInteractions,
+    }),
+
+    tool({
+      name: MEASUREMENTS_TOOL_NAME,
+      description: MEASUREMENTS_DESCRIPTION,
+      parameters: Type.Object({
+        kind: Type.Union(
+          [
+            Type.Literal("label"),
+            Type.Literal("distance"),
+            Type.Literal("angle"),
+            Type.Literal("dihedral"),
+            Type.Literal("orientation"),
+            Type.Literal("plane"),
+          ],
+          { description: "Which measurement to compute and draw." },
+        ),
+        selections: Type.Array(Type.String(), {
+          description:
+            "Ordered selection items (A, B, C, D): a bare MolQL expression or a full @project/path/molql mention.",
+        }),
+        project: Type.Optional(
+          Type.String({ description: "The Project id; read from the first mention when omitted." }),
+        ),
+        path: Type.Optional(
+          Type.String({
+            description:
+              "The workspace-relative structure file path; read from the first mention when omitted.",
+          }),
+        ),
+        description: Type.Optional(
+          Type.String({
+            description: "Short human-readable explanation of what is being measured.",
+          }),
+        ),
+      }),
+      execute: fetchMeasurements,
     }),
   ],
 });

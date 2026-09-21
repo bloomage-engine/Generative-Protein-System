@@ -26,9 +26,9 @@ packages/contract-tests          the SHARED seam conformance suites (testPrincip
 packages/transport-client         assistant-ui client boundary (single `useTransport` session hook = history probe + standing watch + guarded import; state converter; command catalog + slash-menu / reasoning-trace helpers)
 packages/transport-openclaw       openclaw runtime adapter — owns its OWN launch surface (`GatewayBinding`), factory, capabilities and `runtimePlugins`; ports gateway WS
 packages/transport-dsh            dsh runtime adapter — owns `DshBinding` + factory + `runtimePlugins` (local harness child spawned by @deepseek-ai/dsh-sdk-client, pinned 0.1.5-alpha.1; stdio JSON-RPC)
-packages/molql-viewer             structure preview + Mol* integration. Compiles the agent's MolQL (Mol* `mol-script`) into a Selection and selects/highlights/focuses it. Entries `./formats` and `./directive` are molstar-runtime-free (Node-testable); `.` imports molstar and is browser-only (dynamic `ssr:false`). Exposes `MolqlViewer`/`MolqlViewerPanel`, `applyMolqlSelection`, `applyMolqlToolResult`, `parseMolqlToolResult`, and the active-viewer registry. Pinned to molstar 5.9.0
-packages/plugins/molql-tool-dsh   dsh harness plugin registering the `molql` tool (`ctx.tools.register(defineTool(...))`), the `computeInteraction` tool (fetches the service), and an embedded MolQL skill. Agent-side deployable — deliberately NOT a root workspace and NOT in the root build (own `scripts/sync-skill.mjs` + `tsc`)
-packages/plugins/molql-tool-openclaw  openclaw gateway plugin registering the same `molql` + `computeInteraction` tools (`defineToolPlugin`; `openclaw.plugin.json`). Agent-side deployable — NOT a root workspace/build. `esbuild` bundles `typebox` into `dist` and `openclaw` is a peerDependency, so the installed plugin has NO runtime deps and `openclaw plugins install` skips its slow/flaky npm step; `scripts/install.mjs` installs from an `npm pack` tarball (a directory install copies `node_modules` recursively) with `--accept-capabilities`. `typebox`/`openclaw` stay devDependencies for the local `tsc`/bundle build and the root-installed `esbuild` is borrowed for the bundle
+packages/molql-viewer             structure preview + Mol* integration. Compiles the agent's MolQL (Mol* `mol-script`) into a Selection and selects/highlights/focuses it, and draws Mol* measurements (label/distance/angle/dihedral/orientation/plane). Entries `./formats`, `./directive` and `./measurement` are molstar-runtime-free (Node-testable); `.` imports molstar and is browser-only (dynamic `ssr:false`). Exposes `MolqlViewer`/`MolqlViewerPanel`, `applyMolqlSelection`, `applyMolqlToolResult`, `parseMolqlToolResult`, `applyMeasurementToolResult`, `parseMeasurementToolResult`, and the active-viewer registry. Pinned to molstar 5.9.0
+packages/plugins/molql-tool-dsh   dsh harness plugin registering the `molql` tool (`ctx.tools.register(defineTool(...))`), the `computeInteraction` tool and the `measurements` tool (both fetch the service), and an embedded MolQL skill. Agent-side deployable — deliberately NOT a root workspace and NOT in the root build (own `scripts/sync-skill.mjs` + `tsc`). The `skills` service is OPTIONAL and typed structurally (its module augmentation targets the root cordis copy, which does not merge with this package's)
+packages/plugins/molql-tool-openclaw  openclaw gateway plugin registering the same `molql` + `computeInteraction` + `measurements` tools (`defineToolPlugin`; `openclaw.plugin.json`). Agent-side deployable — NOT a root workspace/build. `esbuild` bundles `typebox` into `dist` and `openclaw` is a peerDependency, so the installed plugin has NO runtime deps and `openclaw plugins install` skips its slow/flaky npm step; `scripts/install.mjs` installs from an `npm pack` tarball (a directory install copies `node_modules` recursively) with `--accept-capabilities`. `typebox`/`openclaw` stay devDependencies for the local `tsc`/bundle build and the root-installed `esbuild` is borrowed for the bundle
 packages/skills/molql             the canonical MolQL skill (`SKILL.md` + `references/molql-syntax.md`); the single source of truth, copied into each plugin's `skill/` by its `sync-skill.mjs`. Not an npm package (workspaces negations exclude `packages/skills` and `packages/plugins`)
 services/transport-service        backend assistant-transport service — Fastify, port 3001. Composition root: `src/composition.ts`. `TRANSPORT_RUNTIME` picks the runtime product; runtime modules are loaded DYNAMICALLY by specifier, so the service statically imports NO runtime package. The DEFAULT module list is DATA — `scienceStudio.runtimeModules` in this package's own `package.json` — and `SS_RUNTIME_MODULES` overrides it entirely, so adding a runtime edits no core code. `SS_ENTERPRISE_MODULE` swaps in the private multi-user backend; unset = the complete single-user product.
 examples/transport-openclaw-example  minimal assistant-ui example app over the openclaw adapter (Vite + core primitives; dev-only, not in the root build)
@@ -73,8 +73,9 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `NullWorkspace` and no file surface. Routes live on the SAME service behind the
   same principal/environment preamble and take `?project=`: `GET
   /api/workspace/{entries,stat,file}`, plus `GET
-  /api/workspace/interactions?path=&molql=` (molstar-computed non-covalent
-  interactions for a selection; see the MolQL section). `file` streams inline up
+  /api/workspace/interactions?path=&molql=` and `POST
+  /api/workspace/measurements` (molstar-computed non-covalent interactions and
+  measurements; see the MolQL section). `file` streams inline up
   to the cap (413 over it) and `?download=1` streams any size; a missing path is
   404, a traversal/absolute path 400, no workspace 503. Uploads are `POST
   /api/workspace/upload?path=&project=` with a **raw** body
@@ -296,6 +297,25 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   deliberately NO browser→agent tool-result channel: `TransportCommand` declares
   `add-tool-result` but no adapter implements it, and openclaw's chat protocol has
   no client tool result — so browser-computed data could not reach the model.
+- **`measurements` is the second service-computed tool, and the one result that
+  feeds BOTH the agent and the viewer.** The agent measures an ordered selection
+  set: `kind` ∈ `label`/`distance`/`angle`/`dihedral`/`orientation`/`plane`,
+  with `selections[]` of MolQL expressions or full `@project/path/molql`
+  mentions. The plugin parses each item deterministically (`parseSelectionItem`:
+  a mention yields project/path/molql; anything else is bare MolQL, the model's
+  verb→MolQL translation), so the model only has to ORDER the click mentions.
+  `services/transport-service/src/measurements.ts` computes the value with the
+  SAME molstar formulas the viewer draws (`Loci.getCenter` +
+  `Vec3.distance`/`angle`/`dihedralAngle`; `StructureElement.Loci.
+  getPrincipalAxesMany` for orientation/plane), behind `POST
+  /api/workspace/measurements` (JSON body
+  `{project,path,kind,selections}`, same workspace preamble; the headless
+  molstar loader is shared with `interactions.ts` in `structure.ts`). The single
+  tool result carries both the `text`/`values` (for the model) and the display
+  directive, which the frontend action (`lib/frontend-actions/measurements.ts`)
+  applies to the active viewer via `plugin.managers.structure.measurement`.
+  Arity and empty selections fail loudly (400 naming the bad selection); the
+  model does the natural-language translation, molstar validates it.
 
 ## Architecture rules
 

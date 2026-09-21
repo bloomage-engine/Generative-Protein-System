@@ -1,8 +1,9 @@
 # @science-studio/molql-tool-dsh
 
-A DeepSeek Harness plugin that registers two tools: **`molql`** (select/highlight
-atoms in the open structure) and **`computeInteraction`** (non-covalent
-interactions for a selection).
+A DeepSeek Harness plugin that registers three tools: **`molql`**
+(select/highlight atoms in the open structure), **`computeInteraction`**
+(non-covalent interactions for a selection) and **`measurements`**
+(label/distance/angle/dihedral/orientation/plane for an ordered selection set).
 
 The model turns a natural-language request ("highlight chain A", "show residues
 within 5 Å of the iron") into a Mol* `mol-script` selection and the `molql` tool
@@ -27,6 +28,11 @@ in the open structure. The tool never touches a structure — semantic validatio
 runs Mol* headlessly) from the `@<project>/<path>/<molql>` mention, and returns a
 Markdown interaction table.
 
+`measurements` takes a `kind` and an ordered `selections` list (MolQL or full
+mentions), fetches `POST /api/workspace/measurements`, and returns the computed
+value plus the display directive; the viewer redraws the same measurement via
+Mol*'s `StructureMeasurementManager`.
+
 It also registers the full MolQL syntax manual as an embedded skill (when the
 skill registry is mounted), so the model can load it on demand; the tool
 description carries a cheat-sheet for the common cases.
@@ -34,7 +40,7 @@ description carries a cheat-sheet for the common cases.
 ## Layout
 
 ```
-src/index.ts            cordis plugin: ctx.tools.register(defineTool({...})) for molql + computeInteraction
+src/index.ts            cordis plugin: ctx.tools.register(defineTool({...})) for molql + computeInteraction + measurements
 scripts/sync-skill.mjs  copies packages/skills/molql -> ./skill before build
 skill/                  generated; not edited by hand
 ```

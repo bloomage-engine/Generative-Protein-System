@@ -33,6 +33,18 @@ export {
   type AtomSelection,
   type MolqlTarget,
 } from "./selection.js";
+export {
+  isMeasurementKind,
+  parseMeasurementToolResult,
+  MOLQL_MEASUREMENTS_TOOL_NAME,
+  MOLQL_MEASUREMENTS_RESULT_TYPE,
+  type MeasurementKind,
+  type MolqlMeasurementDirective,
+} from "./measurement.js";
+export {
+  applyMeasurementToolResult,
+  type ApplyMeasurementOptions,
+} from "./apply-measurements.js";
 export { setActiveMolqlViewer, getActiveMolqlViewer } from "./registry.js";
 export type { MolqlSelectionTarget } from "./target.js";
 export { MolqlViewer, type MolqlLoadUrl } from "./viewer.js";

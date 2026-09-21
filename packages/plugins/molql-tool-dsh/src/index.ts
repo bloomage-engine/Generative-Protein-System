@@ -2,8 +2,12 @@ import { readFileSync } from "node:fs";
 import type { Context } from "@deepseek-ai/cordis";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { ContentBlock } from "@deepseek-ai/dsh-llm";
-// Type-only: brings in the `ctx.skills` module augmentation.
-import type {} from "@deepseek-ai/dsh-skill";
+import type { JsonValue } from "@deepseek-ai/dsh-util-values";
+
+/** The optional `skills` service shape (see the skill registration below). */
+interface SkillRegistry {
+  register(skill: { name: string; description: string; source: string; content: string }): void;
+}
 
 /**
  * The `molql` tool for the DeepSeek Harness.
@@ -51,7 +55,89 @@ Call this when the user asks about the interactions of a residue, chemical bond 
 
 Returns a Markdown table: interaction type, the two atom/residue endpoints, and the distance in Å.`;
 
+/** The measurement tool; the service computes the numbers and the viewer draws them. */
+const MEASUREMENTS_TOOL_NAME = "measurements";
+
+const MEASUREMENTS_DESCRIPTION = `Measure a molecular structure in the Science Studio viewer: return the numeric result and draw the same measurement in the 3D view.
+
+Provide the ordered selection items as MolQL (mol-script) expressions, or as full \`@<project>/<path>/<molql>\` mentions produced by clicking in the viewer. Order matters (A, B, C, D). Kinds and how many selections each needs:
+- label: 1 selection
+- distance: 2 selections (A—B), the distance in Å
+- angle: 3 selections (A—B—C), the angle in degrees at B
+- dihedral: 4 selections (A—B—C—D), the dihedral in degrees
+- orientation: 1 or more selections — principal axes / oriented box
+- plane: 1 or more selections — best-fit plane
+
+For a verbal request (e.g. "residue 42"), translate it to MolQL first, e.g. \`(sel.atom.res (= atom.resno 42))\`, or a specific atom with \`(sel.atom.atoms (and (= atom.resno 42) (= atom.name CA)))\`. When the items are mentions, project/path are read from the first one; otherwise pass project and path explicitly.
+
+Returns the value plus a one-line summary.`;
+
 const SERVICE_URL = process.env.SCIENCE_STUDIO_SERVICE_URL ?? "http://127.0.0.1:3001";
+
+/**
+ * Normalize one measurement selection item: a full
+ * `@<project>/<path>/<molql>` mention yields project/path/molql; anything else
+ * is a bare MolQL expression (the model translated a verbal description).
+ */
+function parseSelectionItem(item: string): { project?: string; path?: string; molql: string } {
+  const trimmed = item.trim();
+  if (!trimmed.startsWith("@")) return { molql: trimmed };
+  const body = trimmed.slice(1);
+  const paren = body.indexOf("(");
+  if (paren === -1) return { molql: trimmed };
+  const molql = body.slice(paren).trim();
+  const prefix = body.slice(0, paren).replace(/\/+$/, "");
+  const slash = prefix.indexOf("/");
+  if (slash === -1) return { path: prefix, molql };
+  return { project: prefix.slice(0, slash), path: prefix.slice(slash + 1), molql };
+}
+
+async function fetchMeasurements(args: {
+  kind: string;
+  selections: string[];
+  project?: string;
+  path?: string;
+}): Promise<{
+  type: string;
+  kind: string;
+  project: string;
+  path: string;
+  selections: string[];
+  values: JsonValue;
+  text: string;
+}> {
+  const parsed = args.selections.map(parseSelectionItem);
+  const selections = parsed.map((p) => p.molql).filter((s) => s.length > 0);
+  const project = args.project ?? parsed.find((p) => p.project)?.project;
+  const path = args.path ?? parsed.find((p) => p.path)?.path;
+  if (!project || !path) {
+    throw new Error(
+      "could not determine project/path: pass them explicitly or use a full @project/path/molql mention",
+    );
+  }
+  const response = await fetch(`${SERVICE_URL}/api/workspace/measurements`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ project, path, kind: args.kind, selections }),
+  });
+  const body = (await response.json().catch(() => null)) as {
+    values?: JsonValue;
+    text?: string;
+    error?: string;
+  } | null;
+  if (!response.ok) {
+    throw new Error(body?.error ?? `measurement service answered ${response.status}`);
+  }
+  return {
+    type: "molql-measurements",
+    kind: args.kind,
+    project,
+    path,
+    selections,
+    values: body?.values ?? {},
+    text: body?.text ?? "",
+  };
+}
 
 async function fetchInteractions(args: {
   project: string;
@@ -178,13 +264,73 @@ export function apply(ctx: Context): void {
     }),
   );
 
+  ctx.tools.register(
+    defineTool({
+      name: MEASUREMENTS_TOOL_NAME,
+      description: MEASUREMENTS_DESCRIPTION,
+      parameters: {
+        kind: {
+          type: "string",
+          required: true,
+          enum: ["label", "distance", "angle", "dihedral", "orientation", "plane"],
+          description: "Which measurement to compute and draw.",
+        },
+        selections: {
+          type: "array",
+          items: { type: "string" },
+          required: true,
+          description:
+            "Ordered selection items (A, B, C, D): a bare MolQL expression or a full @project/path/molql mention.",
+        },
+        project: {
+          type: "string",
+          description: "The Project id; read from the first mention when omitted.",
+        },
+        path: {
+          type: "string",
+          description: "The workspace-relative structure file path; read from the first mention when omitted.",
+        },
+        description: {
+          type: "string",
+          description: "Short human-readable explanation of what is being measured.",
+        },
+      },
+      output: {
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            type: { type: "string", required: true },
+            kind: { type: "string", required: true },
+            project: { type: "string", required: true },
+            path: { type: "string", required: true },
+            selections: { type: "array", items: { type: "string" }, required: true },
+            values: { type: "json", required: true },
+            text: { type: "string", required: true },
+          },
+        },
+        render: (_args, value): ContentBlock[] => [
+          { type: "text", text: JSON.stringify(value) },
+        ],
+      },
+      async execute(args) {
+        return fetchMeasurements(args);
+      },
+    }),
+  );
+
   // Optional: publish the full manual as an embedded skill when the skill
   // registry is mounted. The tool works without it (the description is the
-  // cheat-sheet), so `skills` is injected lazily rather than required.
+  // cheat-sheet), so `skills` is injected lazily rather than required. The
+  // service is described structurally: @deepseek-ai/dsh-skill is an OPTIONAL
+  // peer, and its module augmentation targets the root cordis copy, which does
+  // not merge with the copy this package is built against.
   ctx.inject(["skills"], (sk) => {
+    const skills = (sk as unknown as { skills?: SkillRegistry }).skills;
+    if (!skills) return;
     const content = loadSkillContent();
     if (!content) return;
-    sk.skills.register({
+    skills.register({
       name: SKILL_NAME,
       description: SKILL_DESCRIPTION,
       source: "runtime",

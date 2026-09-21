@@ -143,6 +143,15 @@ headlessly), passing the `@<project>/<path>/<molql>` mention split into
 `project`/`path`/`molql`, and returns a Markdown table.
 _Avoid_: Interaction tool, Contact tool, Molstar interaction
 
+**`measurements` Tool**:
+The agent tool (both runtime plugins) that measures a structure and draws the
+same measurement in the viewer. `kind` is `label`/`distance`/`angle`/`dihedral`/
+`orientation`/`plane`; `selections` is the ordered list of MolQL expressions (or
+`@<project>/<path>/<molql>` mentions, parsed deterministically) that defines
+A/B/C/D. The service computes the value with the same molstar formulas the viewer
+draws and returns it, so one result serves both the model and the 3D view.
+_Avoid_: Measure tool, Geometry tool, Molstar measurement
+
 **Selection Mention**:
 The composer text `@<project>/<workspace path>/<MolQL expression>` produced when
 the user clicks a residue or a bond in the structure preview while Mol*'s

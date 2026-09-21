@@ -19,6 +19,7 @@ import type { ReactElement } from "react";
 import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { MolqlError } from "./directive.js";
+import type { MeasurementKind } from "./measurement.js";
 import type { AtomSelection, MolqlTarget, ResidueSelection } from "./selection.js";
 import type { MolqlSelectionTarget } from "./target.js";
 
@@ -241,6 +242,39 @@ export class MolqlViewer implements MolqlSelectionTarget {
 
   focus(loci: StructureElement.Loci): void {
     this.plugin?.managers.camera.focusLoci(loci, { durationMs: 300 });
+  }
+
+  /**
+   * Draw a Mol* measurement. Delegates to `plugin.managers.structure.
+   * measurement`, which builds the selection + representation state transforms
+   * and renders the value as a 3D label. `label`/`distance`/`angle`/`dihedral`
+   * consume the first 1/2/3/4 loci; `orientation`/`plane` take the whole set.
+   */
+  async measure(kind: MeasurementKind, locis: StructureElement.Loci[]): Promise<void> {
+    const manager = this.plugin?.managers.structure.measurement;
+    if (!manager) return;
+    switch (kind) {
+      case "label":
+        if (locis[0]) await manager.addLabel(locis[0]);
+        return;
+      case "distance":
+        if (locis.length >= 2) await manager.addDistance(locis[0]!, locis[1]!);
+        return;
+      case "angle":
+        if (locis.length >= 3) await manager.addAngle(locis[0]!, locis[1]!, locis[2]!);
+        return;
+      case "dihedral":
+        if (locis.length >= 4) {
+          await manager.addDihedral(locis[0]!, locis[1]!, locis[2]!, locis[3]!);
+        }
+        return;
+      case "orientation":
+        if (locis.length >= 1) await manager.addOrientation(locis);
+        return;
+      case "plane":
+        if (locis.length >= 1) await manager.addPlane(locis);
+        return;
+    }
   }
 
   // -- Loading ----------------------------------------------------------------

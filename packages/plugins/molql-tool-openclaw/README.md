@@ -1,8 +1,9 @@
 # @science-studio/molql-tool-openclaw
 
-An OpenClaw gateway plugin that registers two tools: **`molql`** (select/highlight
-atoms in the open structure) and **`computeInteraction`** (non-covalent
-interactions for a selection).
+An OpenClaw gateway plugin that registers three tools: **`molql`**
+(select/highlight atoms in the open structure), **`computeInteraction`**
+(non-covalent interactions for a selection) and **`measurements`**
+(label/distance/angle/dihedral/orientation/plane for an ordered selection set).
 
 The model turns a natural-language request ("highlight chain A", "show residues
 within 5 Å of the iron") into a Mol* `mol-script` selection and the `molql` tool
@@ -27,14 +28,19 @@ validation happens in the browser.
 runs Mol* headlessly) from the `@<project>/<path>/<molql>` mention, and returns a
 Markdown interaction table.
 
+`measurements` takes a `kind` and an ordered `selections` list (MolQL or full
+mentions), fetches `POST /api/workspace/measurements`, and returns the computed
+value plus the display directive; the viewer redraws the same measurement via
+Mol*'s `StructureMeasurementManager`.
+
 The full MolQL syntax manual ships under `skill/` and is mirrored from
 `packages/skills/molql`; the tool description carries a cheat-sheet.
 
 ## Layout
 
 ```
-src/index.ts            defineToolPlugin({ id, name, tools: (tool) => [ tool({ name: 'molql' }), tool({ name: 'computeInteraction' }) ] })
-openclaw.plugin.json    plugin manifest (contracts.tools: ['molql', 'computeInteraction'])
+src/index.ts            defineToolPlugin({ id, name, tools: (tool) => [ tool({ name: 'molql' }), tool({ name: 'computeInteraction' }), tool({ name: 'measurements' }) ] })
+openclaw.plugin.json    plugin manifest (contracts.tools: ['molql', 'computeInteraction', 'measurements'])
 scripts/sync-skill.mjs  copies packages/skills/molql -> ./skill before build
 scripts/build.mjs       esbuild-bundles src -> dist (inlines typebox)
 scripts/install.mjs     npm pack -> openclaw plugins install <tgz>

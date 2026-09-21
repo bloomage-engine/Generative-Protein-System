@@ -57,9 +57,10 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 /**
  * Find and parse the first balanced JSON object inside arbitrary text. Used as
- * a fallback when a tool result embeds JSON in prose or a fenced block.
+ * a fallback when a tool result embeds JSON in prose or a fenced block. Shared
+ * with the measurement contract parser.
  */
-function extractJsonObject(text: string): unknown {
+export function extractJsonObject(text: string): unknown {
   const start = text.indexOf("{");
   if (start === -1) return undefined;
   let depth = 0;

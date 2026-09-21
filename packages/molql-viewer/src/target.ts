@@ -1,4 +1,5 @@
 import type { Structure, StructureElement } from "molstar/lib/mol-model/structure";
+import type { MeasurementKind } from "./measurement.js";
 
 /**
  * The minimal viewer surface `applyMolqlSelection` needs.
@@ -24,4 +25,10 @@ export interface MolqlSelectionTarget {
   highlight(loci: StructureElement.Loci): void;
   /** Move the camera to frame the loci. */
   focus(loci: StructureElement.Loci): void;
+  /**
+   * Draw a Mol* measurement over the ordered loci (optional: only viewers that
+   * expose `plugin.managers.structure.measurement` can). `label`/`distance`/
+   * `angle`/`dihedral` use the first 1/2/3/4 loci; `orientation`/`plane` use all.
+   */
+  measure?(kind: MeasurementKind, locis: StructureElement.Loci[]): void | Promise<void>;
 }
