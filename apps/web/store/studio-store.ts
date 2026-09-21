@@ -83,6 +83,9 @@ type State = {
    */
   runsRevision: number;
 
+  /** How many messages the Thread conversation view shows. Loads in pages of 20. */
+  visibleMessageCount: number;
+
   setProjects: (list: Project[]) => void;
   setDefaultProjectId: (id: string | null) => void;
   /** Replace a Project in place (rename), or append it (an unarchived/resurrected row). */
@@ -132,6 +135,11 @@ type State = {
   closeSettings: () => void;
   /** Signal that a run finished; the status bar's metrics hook depends on it. */
   bumpRunsRevision: () => void;
+
+  /** Load the next page of history (20 more messages). */
+  loadMoreHistory: () => void;
+  /** Reset the visible message window back to the default (20). */
+  resetVisibleMessageCount: () => void;
 };
 
 export const useStudioStore = create<State>()((set) => ({
@@ -152,6 +160,7 @@ export const useStudioStore = create<State>()((set) => ({
   subagentsShowHistory: false,
   settingsOpen: false,
   runsRevision: 0,
+  visibleMessageCount: 20,
 
   setProjects: (projects) => set({ projects }),
   setDefaultProjectId: (defaultProjectId) => set({ defaultProjectId }),
@@ -281,4 +290,7 @@ export const useStudioStore = create<State>()((set) => ({
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
   bumpRunsRevision: () => set((s) => ({ runsRevision: s.runsRevision + 1 })),
+  loadMoreHistory: () =>
+    set((s) => ({ visibleMessageCount: s.visibleMessageCount + 20 })),
+  resetVisibleMessageCount: () => set({ visibleMessageCount: 20 }),
 }));
