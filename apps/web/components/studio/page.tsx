@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchProjectsOverview, fetchProjectSessions } from "@science-studio/transport-client";
+import { fetchProjectsOverview, fetchProjectSessions, fetchSettings } from "@science-studio/transport-client";
 import { readScopeMemory, resolveProject, resolveSession } from "@/lib/scope-memory";
+import { SETTINGS_API } from "./settings-dialog";
 import { StudioHost } from "./host";
 import { useStudioStore } from "@/store/studio-store";
 
@@ -99,6 +100,24 @@ export function StudioPage({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load thread settings (visibleMessageCount) on startup so the store matches
+  // the persisted value. The settings dialog only reads/writes on open/save.
+  useEffect(() => {
+    let active = true;
+    void fetchSettings(SETTINGS_API)
+      .then((view) => {
+        if (!active) return;
+        const count = view.thread?.visibleMessageCount;
+        if (count !== undefined && count > 0) {
+          useStudioStore.setState({ visibleMessageCount: count });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, []);
 
   if (!ready) {

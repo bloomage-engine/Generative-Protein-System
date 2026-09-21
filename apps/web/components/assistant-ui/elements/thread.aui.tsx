@@ -32,6 +32,7 @@ import {
   MessagePrimitive,
   SuggestionPrimitive,
   ThreadPrimitive,
+  unstable_useThreadMessageIds,
   useMessageTiming,
   type FileMessagePartComponent,
   type ImageMessagePartComponent,
@@ -49,6 +50,7 @@ import {
   PencilIcon,
   RefreshCwIcon,
 } from "lucide-react";
+import { useStudioStore } from "@/store/studio-store";
 import {
   createContext,
   useContext,
@@ -184,9 +186,7 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
             data-slot="aui_message-group"
             className="mb-10 flex flex-col gap-y-6 empty:hidden"
           >
-            <ThreadPrimitive.Messages>
-              {() => <ThreadMessage />}
-            </ThreadPrimitive.Messages>
+            <ThreadMessageWindow />
           </div>
 
           <ThreadPrimitive.ViewportFooter
@@ -206,6 +206,39 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
         </div>
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>
+  );
+};
+
+const ThreadMessageWindow: FC = () => {
+  const allIds = unstable_useThreadMessageIds();
+  const visibleCount = useStudioStore((s) => s.visibleMessageCount);
+  const loadMoreHistory = useStudioStore((s) => s.loadMoreHistory);
+
+  const visibleIds = allIds.slice(-visibleCount);
+  const hiddenCount = allIds.length - visibleIds.length;
+
+  return (
+    <>
+      {hiddenCount > 0 && (
+        <div className="flex justify-center py-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadMoreHistory}
+            aria-label={`Load more history: ${hiddenCount} messages`}
+          >
+            Load more history ({hiddenCount} messages)
+          </Button>
+        </div>
+      )}
+      {visibleIds.map((id) => (
+        <ThreadPrimitive.Unstable_MessageById
+          key={id}
+          messageId={id}
+          components={{ Message: ThreadMessage }}
+        />
+      ))}
+    </>
   );
 };
 
