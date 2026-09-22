@@ -46,6 +46,7 @@ import {
   LiveAssistantMessage,
   type DshAssistantStreamMessage,
 } from "./assistant-stream.js";
+import { foldTurnUsage, turnUsageOf, type TurnUsageState } from "./usage.js";
 
 /** A reply row's id: the transcript is keyed by message id, so it must be unique. */
 function newId(): string {
@@ -149,6 +150,15 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
     string,
     { provider?: string; model?: string; contextWindow?: number }
   >();
+
+  /**
+   * The per-turn token account (summed usage + last-step context occupancy),
+   * folded from the log's usage-bearing events. The kit's `note` channel is
+   * one-slot-overwrite, which would keep only the turn's LAST step and drop
+   * the rest of the agent loop; the account is cleared when a new prompt
+   * dispatches and consumed when the Run projects at settle.
+   */
+  const turnUsages = new Map<string, TurnUsageState>();
 
   /** The Run currently driving each Science Studio session (for live frames). */
   const activeRuns = new Map<string, RunControl<SessionEvent>>();
@@ -372,6 +382,11 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
   }
 
   function applyEvent(event: SessionEvent, ctx: ApplyContext<SessionEvent>): ApplyResult | void {
+    // The per-turn token account folds from the durable log regardless of what
+    // the seam renders below (usage-bearing events may carry no new row).
+    const folded = foldTurnUsage(turnUsages.get(ctx.sessionKey), event);
+    if (folded === undefined) turnUsages.delete(ctx.sessionKey);
+    else turnUsages.set(ctx.sessionKey, folded);
     // The harness's registry settled one command. `command/*` is a
     // `@deepseek-ai/dsh-commands` merge-extension this package does not import
     // (the child has it, we do not), so the event is matched by name instead of
@@ -471,7 +486,8 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
             },
           });
         }
-        if (data.usage) ctx.run?.note({ usage: data.usage });
+        // Usage is accounted at the top of applyEvent (the fold), not through
+        // the kit's one-slot `note`, so a multi-step turn keeps its whole tally.
         return;
       }
 
@@ -587,6 +603,9 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
     dispatch(request, run) {
       const message = request.messages[0];
       if (!message) return;
+      // A fresh prompt starts a fresh token account (a late event from a
+      // settled or aborted turn can no longer inflate the next Run's tally).
+      turnUsages.delete(request.sessionKey);
       // A runtime command never reaches the MODEL (docs/adr/0003, docs/adr/0010,
       // docs/adr/0011): the local layer is answered here, a warm session's goes
       // to the child's registry over the bridge, and a cold session's becomes
@@ -644,7 +663,13 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
       // A command is not a research turn (docs/adr/0003): the driving `/cmd`
       // row is the Run's input, so it is exactly the marker to project nothing.
       if (isCommandText(ctx.input)) return null;
-      const usage = ctx.directive.usage;
+      // The turn's token account: the SUMMED per-step usage (the billed totals
+      // of the whole agent loop) plus the LAST step's prompt size — what
+      // occupies the model's context window. The account belongs to this Run.
+      const account = turnUsages.get(ctx.sessionKey);
+      turnUsages.delete(ctx.sessionKey);
+      const usage = turnUsageOf(account);
+      const contextTokens = account?.contextTokens;
       const captured = modelContexts.get(ctx.sessionKey);
       return {
         // A turn that never reported a terminal reason is an error Run.
@@ -654,6 +679,7 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
           model: captured?.model ?? model,
           ...(captured?.contextWindow !== undefined ? { contextWindow: captured.contextWindow } : {}),
           ...(usage !== undefined ? { usage } : {}),
+          ...(contextTokens !== undefined ? { contextTokens } : {}),
         },
       };
     },

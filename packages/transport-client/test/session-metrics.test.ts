@@ -39,6 +39,65 @@ test("sums input/output and derives total when totalTokens is absent", () => {
   assert.deepEqual(metrics.cumulative, { input: 150, output: 30, total: 190, runs: 2 });
 });
 
+test("the disjoint cache buckets fold into the billed input and the derived total", () => {
+  const metrics = summarizeSessionRuns(
+    [
+      // A turn on a cached route: uncached input, cache reads, cache writes —
+      // all disjoint parts of the billed prompt.
+      run({
+        id: "a",
+        parameters: {
+          usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 300, cacheWriteTokens: 50 },
+        },
+      }),
+      run({ id: "b", parameters: { usage: { inputTokens: 50, outputTokens: 10 } } }),
+    ],
+    "s1",
+  );
+  // input = 450 + 50; total = in + out per run (470 + 60) so the rows reconcile.
+  assert.deepEqual(metrics.cumulative, { input: 500, output: 30, total: 530, runs: 2 });
+});
+
+test("contextTokens comes from the newest Run that disclosed one, else the newest prompt", () => {
+  const metrics = summarizeSessionRuns(
+    [
+      run({
+        id: "a",
+        finishedAt: "2026-01-01T00:00:00.000Z",
+        parameters: { usage: { inputTokens: 600, outputTokens: 20, cacheReadTokens: 400 }, contextTokens: 1000 },
+      }),
+      run({
+        id: "b",
+        finishedAt: "2026-01-02T00:00:00.000Z",
+        parameters: { usage: { inputTokens: 650, outputTokens: 30, cacheReadTokens: 500 }, contextTokens: 1150 },
+      }),
+    ],
+    "s1",
+  );
+  assert.equal(metrics.contextTokens, 1150);
+});
+
+test("a pre-fix Run (summed-usage-less) falls back to its own usage's prompt", () => {
+  // Legacy records stored the LAST STEP's usage, so its prompt side is the
+  // honest occupancy number even without the dedicated field.
+  const metrics = summarizeSessionRuns(
+    [
+      run({
+        id: "a",
+        finishedAt: "2026-01-01T00:00:00.000Z",
+        parameters: { usage: { inputTokens: 200, outputTokens: 20 } },
+      }),
+      run({
+        id: "b",
+        finishedAt: "2026-01-02T00:00:00.000Z",
+        parameters: { usage: { inputTokens: 20, outputTokens: 40, cacheReadTokens: 980 } },
+      }),
+    ],
+    "s1",
+  );
+  assert.equal(metrics.contextTokens, 1000);
+});
+
 test("latest picks the newest Run by finishedAt and its usage", () => {
   const metrics = summarizeSessionRuns(
     [

@@ -27,6 +27,14 @@ export interface SessionMetrics {
   model?: { provider?: string; model?: string; contextWindow?: number };
   /** The newest Run's usage and status. */
   latest?: { usage?: TokenUsage; status?: RunStatus; at?: string };
+  /**
+   * The newest Run's context-window occupancy: the LAST step's prompt size
+   * (uncached input + cache traffic). This is the "how full is the window"
+   * number — distinct from `latest.usage.inputTokens`, the summed billed input
+   * over a turn's whole agent loop. Falls back to the newest usage's prompt
+   * when a Run predates the recorded field.
+   */
+  contextTokens?: number;
   cumulative: { input: number; output: number; total: number; runs: number };
 }
 
@@ -57,9 +65,18 @@ function parseUsage(value: unknown): TokenUsage | undefined {
   };
 }
 
-/** A run's total tokens: the provider aggregate when given, else the sum. */
-function runTotal(usage: TokenUsage): number {
-  return usage.totalTokens ?? usage.inputTokens + usage.outputTokens;
+/** A run's total tokens: the provider aggregate when given, else the full billed prompt plus output. */
+export function runTotal(usage: TokenUsage): number {
+  return usage.totalTokens ?? promptTokens(usage) + usage.outputTokens;
+}
+
+/**
+ * The prompt side of one usage record: uncached input PLUS cache traffic.
+ * The counts are disjoint (`TokenUsage` in the dsh contract), so a bare
+ * `inputTokens` is not what the model request actually held or billed.
+ */
+export function promptTokens(usage: TokenUsage): number {
+  return usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
 }
 
 /**
@@ -81,11 +98,15 @@ export function summarizeSessionRuns(runs: Run[], sessionId: string): SessionMet
 
   const cumulative = { input: 0, output: 0, total: 0, runs: scoped.length };
   let model: SessionMetrics["model"] | undefined;
+  let contextTokens: number | undefined;
 
   for (const run of scoped) {
     const usage = parseUsage(run.parameters?.usage);
     if (usage) {
-      cumulative.input += usage.inputTokens;
+      // "Input" is the billed prompt side (uncached + cache traffic), so
+      // in + out reconciles with the total whenever no provider aggregate
+      // diverges.
+      cumulative.input += promptTokens(usage);
       cumulative.output += usage.outputTokens;
       cumulative.total += runTotal(usage);
     }
@@ -100,12 +121,21 @@ export function summarizeSessionRuns(runs: Run[], sessionId: string): SessionMet
         ...(contextWindow !== undefined ? { contextWindow } : {}),
       };
     }
+    // Context occupancy: the Run's own last-step figure when the adapter
+    // recorded it (a Run's `usage` is the WHOLE turn's summed tally — its
+    // prompt side is not the window's current fill). A Run without it is a
+    // pre-fix record whose `usage` WAS the last step, so its prompt side is
+    // the honest occupancy number.
+    const disclosed = optionalNumber(run.parameters ?? {}, "contextTokens");
+    if (disclosed !== undefined) contextTokens = disclosed;
+    else if (usage) contextTokens = promptTokens(usage);
   }
 
   const latest = scoped.at(-1);
   const latestUsage = latest ? parseUsage(latest.parameters?.usage) : undefined;
   return {
     ...(model ? { model } : {}),
+    ...(contextTokens !== undefined ? { contextTokens } : {}),
     ...(latest
       ? {
           latest: {

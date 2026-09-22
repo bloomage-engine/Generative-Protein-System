@@ -80,6 +80,8 @@ export {
 } from "./projects.js";
 export {
   formatTokens,
+  promptTokens,
+  runTotal,
   summarizeSessionRuns,
   type SessionMetrics,
   type TokenUsage,

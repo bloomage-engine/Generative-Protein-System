@@ -8,6 +8,8 @@ import {
   DEFAULT_PROJECTS_API,
   fetchSettings,
   formatTokens,
+  promptTokens,
+  runTotal,
   useSessionMetrics,
   useWorkspaceAvailability,
 } from "@science-studio/transport-client";
@@ -149,7 +151,10 @@ function SessionStatusChip() {
   });
 
   const usage = metrics?.latest?.usage;
-  const used = usage?.inputTokens;
+  // Context occupancy is the last request's prompt (uncached input + cache
+  // traffic) — not `inputTokens` alone, which the dsh contract defines as the
+  // UNCACHED part only, and not the turn's summed prompt either.
+  const used = metrics?.contextTokens;
   const contextWindow = metrics?.model?.contextWindow;
   const contextLabel =
     used === undefined
@@ -211,16 +216,14 @@ function SessionStatusChip() {
               <dt className="text-muted-foreground">Last turn</dt>
               <dd>
                 {usage
-                  ? `${formatTokens(usage.inputTokens)} in / ${formatTokens(usage.outputTokens)} out`
+                  ? `${formatTokens(promptTokens(usage))} in / ${formatTokens(usage.outputTokens)} out`
                   : "—"}
               </dd>
             </div>
             <div>
               <dt className="text-muted-foreground">Total (last)</dt>
               <dd>
-                {usage
-                  ? formatTokens(usage.totalTokens ?? usage.inputTokens + usage.outputTokens)
-                  : "—"}
+                {usage ? formatTokens(runTotal(usage)) : "—"}
               </dd>
             </div>
             <div className="col-span-2">

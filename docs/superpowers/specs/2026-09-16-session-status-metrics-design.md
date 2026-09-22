@@ -196,3 +196,33 @@ onFinish bumps runsRevision ─────────────┘
   are not misread as a per-run aggregate.
 - **Runs list growth** — filtering server-side bounds the status-bar payload;
   the record itself still accumulates every Run (unchanged, and expected).
+
+## Amendment (2026-09-23): per-turn usage is the billed tally, occupancy is the prompt
+
+The two bullets above ("Context occupancy is the latest Run's
+`usage.inputTokens`" and the per-step `note` overwrite in Risks) rest on wrong
+premises, verified against the pinned harness contract (`TokenUsage` in
+`@deepseek-ai/dsh-llm`) and the harness's own token-meter projection:
+
+- The usage counts are DISJOINT: `inputTokens` covers only UNCACHED input;
+  cached prompt traffic rides `cacheReadTokens`/`cacheWriteTokens` (billed
+  input is the sum of the three). So the Context gauge reading bare
+  `inputTokens` under-states occupancy exactly when caching matters, and the
+  popover's `in / out / total` rows do not reconcile (the provider `totalTokens`
+  counts the cache buckets).
+- The turn's LAST step (the kit's one-slot-overwrite `note`) dropped every
+  earlier step of an agent loop, so no "total" row was a running tally.
+
+What ships instead:
+
+- The dsh adapter folds each turn's usage with the token-meter's own rules
+  (`packages/transport-dsh/src/usage.ts`): sum the disjoint buckets across every
+  `assistant/message` and settled `assistant/attempt`; a repeated
+  `(turn, step)` replaces its contribution; `llm/retry-started` closes the slot
+  so a retried attempt adds. The aggregate is persisted as
+  `Run.parameters.usage`, and the newest sample's prompt size (uncached input +
+  cache traffic) as `Run.parameters.contextTokens`.
+- The client summarizes billed input (uncached + cache), derives a per-run
+  total that reconciles with the rows beside it, and reads `contextTokens`
+  (falling back to the latest usage's prompt for pre-amendment records) for the
+  Context gauge.

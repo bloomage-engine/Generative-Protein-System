@@ -106,7 +106,7 @@ test("assistant/message maps content blocks to parts in order", () => {
   );
 });
 
-test("assistant/message does not duplicate an existing row and notes usage", () => {
+test("assistant/message does not duplicate an existing row and folds its usage", () => {
   const state = freshState();
   const run = fakeRun();
   const b = behavior();
@@ -114,11 +114,60 @@ test("assistant/message does not duplicate an existing row and notes usage", () 
     turn: 1,
     step: 1,
     message: { id: "am1", role: "assistant", content: [{ type: "text", text: "hi" }], source: { kind: "model" } },
-    usage: { inputTokens: 1 },
+    usage: { inputTokens: 1, outputTokens: 0 },
   });
   b.apply?.(event, makeCtx(state, run.control));
   assert.equal(state.messages.length, 1);
-  assert.deepEqual(run.notes, [{ usage: { inputTokens: 1 } }]);
+  // Usage no longer rides the one-slot `note` channel (a multi-step turn would
+  // keep only its last step): the projected Run reads the per-turn fold.
+  assert.deepEqual(run.notes, []);
+  const spec = b.projectRun!(settleCtx(state));
+  assert.deepEqual(spec?.parameters?.usage, { inputTokens: 1, outputTokens: 0 });
+  assert.equal(spec?.parameters?.contextTokens, 1);
+});
+
+test("a multi-step turn projects the SUMMED usage and the last step's occupancy", () => {
+  const state = freshState();
+  const b = behavior();
+  const ctx = makeCtx(state);
+  const step = (id: string, turn: number, stepNo: number, usage: unknown) =>
+    ev("assistant/message", {
+      turn,
+      step: stepNo,
+      message: { id, role: "assistant", content: [{ type: "text", text: `s${stepNo}` }], source: { kind: "model" } },
+      usage,
+    });
+  b.apply?.(step("am1", 1, 1, { inputTokens: 100, outputTokens: 10, cacheReadTokens: 500 }), ctx);
+  b.apply?.(step("am2", 1, 2, { inputTokens: 620, outputTokens: 5, cacheReadTokens: 500 }), ctx);
+  // A duplicate delivery of the second step must not double-count it.
+  b.apply?.(step("am2", 1, 2, { inputTokens: 620, outputTokens: 5, cacheReadTokens: 500 }), ctx);
+  const spec = b.projectRun!(settleCtx(state));
+  assert.deepEqual(spec?.parameters?.usage, {
+    inputTokens: 720,
+    outputTokens: 15,
+    cacheReadTokens: 1000,
+  });
+  assert.equal(spec?.parameters?.contextTokens, 1120);
+});
+
+test("a new dispatch restarts the turn's usage accounting", () => {
+  const state = freshState();
+  const b = behavior();
+  b.apply?.(
+    ev("assistant/message", {
+      turn: 1,
+      step: 1,
+      message: { id: "am1", role: "assistant", content: [{ type: "text", text: "hi" }], source: { kind: "model" } },
+      usage: { inputTokens: 5, outputTokens: 1 },
+    }),
+    makeCtx(state),
+  );
+  // The turn settled; the next prompt starts a fresh account even if a late
+  // event from the previous turn is still folded.
+  b.dispatch?.({ sessionKey: "sess-1", messages: [{ id: "u2", content: "next" }] }, fakeRun().control);
+  const spec = b.projectRun!(settleCtx(state));
+  assert.equal(spec?.parameters?.usage, undefined);
+  assert.equal(spec?.parameters?.contextTokens, undefined);
 });
 
 test("tool/result attaches text into the matching tool-call part by callId", () => {
@@ -246,15 +295,27 @@ function settleCtx(
 test("request/context records provider/model/contextWindow on the projected Run", () => {
   const state = freshState();
   const b = behavior();
+  const ctx = makeCtx(state);
   b.apply?.(
     ev("request/context", { provider: "prov", model: "mod", contextWindow: 128000 }),
-    makeCtx(state),
+    ctx,
   );
-  const spec = b.projectRun!(settleCtx(state, { usage: { inputTokens: 10, outputTokens: 5 } }));
+  // Usage reaches the Run through the per-turn fold, not the settle directive.
+  b.apply?.(
+    ev("assistant/message", {
+      turn: 1,
+      step: 1,
+      message: { id: "am1", role: "assistant", content: [{ type: "text", text: "hi" }], source: { kind: "model" } },
+      usage: { inputTokens: 10, outputTokens: 5 },
+    }),
+    ctx,
+  );
+  const spec = b.projectRun!(settleCtx(state));
   assert.equal(spec?.parameters?.provider, "prov");
   assert.equal(spec?.parameters?.model, "mod");
   assert.equal(spec?.parameters?.contextWindow, 128000);
   assert.deepEqual(spec?.parameters?.usage, { inputTokens: 10, outputTokens: 5 });
+  assert.equal(spec?.parameters?.contextTokens, 10);
 });
 
 test("without request/context the Run keeps the configured route and no contextWindow", () => {
