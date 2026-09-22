@@ -324,7 +324,11 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   queued behind it. The workbench stop button drives this through the `apps/web`
   abort proxy; `useTransport`'s `onCancel` posts it and drops the wire state to
   `idle` (an aborted run sends no terminal frame, and the watch import is gated
-  on that status).
+  on that status). The kit ALSO forces the canonical status out of `running`
+  and notifies watchers in `abort()`, so a runtime whose cancel is unavailable
+  or slow can never leave the UI wedged at "running"; `useTransport` ignores a
+  still-`running` watch snapshot until the service converges, so the two cannot
+  flip-flop.
 
 ## Molecular-structure preview and the `molql` tool
 

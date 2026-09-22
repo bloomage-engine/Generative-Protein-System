@@ -160,9 +160,21 @@ function warn(message: string, error?: unknown): void {
  * The agent a request targets. A named session resolves exactly; without one
  * this is the newest live top-level agent — what the dispatching UI would be
  * talking to — falling back to the newest live agent of any depth.
+ *
+ * `AgentRegistry.get` is documented as a shared agent/session id lookup, but a
+ * harness build whose agent id and session id diverge would miss; the scan over
+ * `agent.session.id` is that fallback.
  */
 function resolveAgent(ctx: BridgeHost, sessionId?: unknown): BridgeAgent | undefined {
-  if (typeof sessionId === "string" && sessionId !== "") return ctx.agents.get(sessionId);
+  if (typeof sessionId === "string" && sessionId !== "") {
+    const direct = ctx.agents.get(sessionId);
+    if (direct) return direct;
+    for (const agent of ctx.agents.list()) {
+      const session = (agent as { session?: { id?: unknown } }).session;
+      if (session !== undefined && session.id === sessionId) return agent;
+    }
+    return undefined;
+  }
   const top = ctx.agents.roots?.() ?? ctx.agents.listTopLevel?.() ?? [];
   return top.at(-1) ?? ctx.agents.list().at(-1);
 }
@@ -406,9 +418,15 @@ async function interruptTurn(ctx: BridgeHost, req: IncomingMessage, res: ServerR
     return;
   }
   const agent = resolveAgent(ctx, sessionId);
-  const cancel = (agent as { cancel?: (cause: unknown, options?: unknown) => void } | undefined)?.cancel;
-  if (!agent || typeof cancel !== "function") {
+  if (!agent) {
     send(res, 200, { status: "no-agent" });
+    return;
+  }
+  const cancel = (agent as { cancel?: (cause: unknown, options?: unknown) => void }).cancel;
+  if (typeof cancel !== "function") {
+    // The agent exists but this harness build has no cancel method on it — a
+    // different failure from "no agent", and worth telling the adapter apart.
+    send(res, 200, { status: "no-cancel" });
     return;
   }
   try {

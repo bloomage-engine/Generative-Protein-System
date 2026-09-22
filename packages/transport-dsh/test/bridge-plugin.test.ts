@@ -331,3 +331,33 @@ test("interrupt cancels the exact session's agent over the bridge", async () => 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("interrupt reports an agent without a cancel method, and resolves by session id", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-bridge-"));
+  const socket = join(dir, "b.sock");
+  const cancelled: string[] = [];
+  // Registered under a DIFFERENT key than the session id; only `session.id`
+  // matches, so the fallback scan is what must resolve it.
+  const agent = {
+    id: "agent-1",
+    session: { id: "sess-2" },
+    cancel: () => {
+      cancelled.push("sess-2");
+    },
+  };
+  const noCancel = { id: "sess-3" };
+  const host = fakeHost(DESCRIPTORS, new Map([["agent-1", agent], ["sess-3", noCancel]]));
+  try {
+    apply(host.ctx, { socket });
+    await waitForPath(socket);
+    const bridge = createCommandBridge(socket);
+
+    assert.equal(await bridge.interrupt("sess-2"), "ok", "resolved through agent.session.id");
+    assert.deepEqual(cancelled, ["sess-2"]);
+
+    assert.equal(await bridge.interrupt("sess-3"), "no-cancel");
+  } finally {
+    host.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

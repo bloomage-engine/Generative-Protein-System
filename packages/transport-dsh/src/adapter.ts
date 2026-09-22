@@ -451,18 +451,21 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   /**
    * Cancel the child's active turn for one harness session. Best-effort: no
    * bridge (a child that could not set one up) or no live agent is a no-op, and
-   * a failed call is logged rather than thrown into the run teardown.
+   * a failed call is logged rather than thrown into the run teardown. Every
+   * outcome is logged with the harness id so a cancel that silently does
+   * nothing is visible instead of looking like a wedged UI.
    */
   private async interruptHarnessSession(harnessSessionId: string): Promise<void> {
     const bridge = this.bridge;
-    if (!bridge) return;
+    if (!bridge) {
+      console.warn(`[dsh] mid-turn cancel for "${harnessSessionId}": no command bridge`);
+      return;
+    }
     try {
       const outcome = await bridge.interrupt(harnessSessionId);
-      if (outcome === "unavailable") {
-        console.warn("[dsh] mid-turn cancel unavailable over the command bridge");
-      }
+      console.warn(`[dsh] mid-turn cancel for "${harnessSessionId}": ${outcome}`);
     } catch (err) {
-      console.warn("[dsh] mid-turn cancel failed", err);
+      console.warn(`[dsh] mid-turn cancel failed for "${harnessSessionId}"`, err);
     }
   }
 

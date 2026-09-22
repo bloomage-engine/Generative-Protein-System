@@ -341,3 +341,29 @@ test("textOutput joins assistant text parts at or after a baseline", () => {
   assert.equal(textOutput(messages), "one\ntwo");
   assert.equal(textOutput(messages, 2), "two");
 });
+
+test("abort forces the session status out of running and notifies watchers", async () => {
+  const statuses: string[] = [];
+  const behavior: SessionBehavior<never> = {
+    apply: () => {},
+    // Stays in flight: never settles, so nothing else would leave `running`.
+    dispatch: () => {},
+  };
+  const rt = new SessionRuntime<never>("s1", behavior, {});
+  const iterator = rt.run(session(), [addMessage("u1", "hi")])[Symbol.asyncIterator]();
+  await iterator.next(); // reconcile
+  await iterator.next(); // add-message u1
+  await iterator.next(); // session-status running
+  // Subscribe once the Session is known: the baseline is the running state.
+  const off = rt.subscribe((snapshot) => statuses.push(snapshot.status));
+  assert.equal(rt.state.status, "running");
+
+  rt.abort();
+
+  assert.equal(rt.state.status, "idle", "abort leaves the canonical status out of running");
+  assert.deepEqual(statuses, ["running", "idle"], "watchers are pushed the idle status");
+  off();
+
+  const end = await iterator.next();
+  assert.equal(end.done, true);
+});

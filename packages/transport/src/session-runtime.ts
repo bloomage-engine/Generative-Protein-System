@@ -439,6 +439,15 @@ export class SessionRuntime<E> {
       this.onError(error);
     }
     this.active?.flow.end();
+    // Guarantee watchers converge OUT of `running`. The client's stop click must
+    // never wedge the thread, and a runtime whose cancel is unavailable or slow
+    // would otherwise leave the canonical status `running` — every later watch
+    // push would then re-inflate the client it just set to idle. A real cancel
+    // still settles the turn later and converges the same way.
+    if (this.state.status === "running") {
+      this.ops.emit(null, { type: "session-status", status: "idle" });
+      this.notify();
+    }
   }
 
   /** Push the canonical transcript to watchers (honouring the coalescing window). */

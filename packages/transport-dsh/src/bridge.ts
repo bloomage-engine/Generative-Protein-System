@@ -39,7 +39,7 @@ export interface HarnessCommandEntry {
 }
 
 /** How the bridge answered one `/interrupt` call. */
-export type HarnessInterruptOutcome = "ok" | "no-agent" | "unavailable";
+export type HarnessInterruptOutcome = "ok" | "no-agent" | "no-cancel" | "unavailable";
 
 /** The command bridge this adapter's child exposes. */
 export interface DshCommandBridge {
@@ -223,6 +223,8 @@ export function createCommandBridge(endpoint: string): DshCommandBridge {
           return "ok";
         case "no-agent":
           return "no-agent";
+        case "no-cancel":
+          return "no-cancel";
         default:
           return "unavailable";
       }
