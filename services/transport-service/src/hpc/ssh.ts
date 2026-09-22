@@ -11,7 +11,7 @@
  * pool to manage and a killed service leaks at most a socket file.
  */
 import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { shq } from "@science-studio/hpc";
@@ -154,7 +154,9 @@ export async function createSshRunner(opts: SshRunnerOptions = {}): Promise<SshR
   // stays far below its bound: `mkdtemp(cm-XXXXXX)/<endpointId>.sock`.
   let dirPromise: Promise<string> | null = null;
   const socket = async (endpoint: HpcEndpointSettings): Promise<string> => {
-    dirPromise ??= mkdtemp(join(base, "cm-"));
+    // mkdtemp only creates the LAST component — the `science-studio/hpc` base
+    // must exist, or the first SSH call throws ENOENT (and a route 500s).
+    dirPromise ??= mkdir(base, { recursive: true }).then(() => mkdtemp(join(base, "cm-")));
     const dir = await dirPromise;
     return join(dir, `${endpoint.id}.sock`);
   };

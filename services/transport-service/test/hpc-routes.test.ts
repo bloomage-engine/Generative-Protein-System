@@ -217,6 +217,20 @@ test("probe answers per-check, never a thrown 500", async () => {
   });
 });
 
+test("probe catches an unreachable slurm controller even when sbatch --version works", async () => {
+  const ssh = fakeSsh([
+    { match: /^uname -srm/, result: { stdout: "Linux\n" } },
+    { match: /^sbatch --version/, result: { stdout: "slurm-wlm 21.08.5\n" } },
+    { match: /squeue -h/, result: { stdout: "SLURM-CTL-FAIL\n" } },
+  ]);
+  await withHpc(ssh, async (base) => {
+    const res = await fetch(`${base}/api/hpc/endpoints/${ENDPOINT.id}/probe`, { method: "POST" });
+    const body = (await res.json()) as { ok: boolean; errors: string[] };
+    assert.equal(body.ok, false);
+    assert.match(body.errors.join(" "), /unreachable/);
+  });
+});
+
 test("staging: upload crosses the workspace file raw-grammar path to scp", async () => {
   const ssh = fakeSsh();
   await withHpc(ssh, async (base) => {

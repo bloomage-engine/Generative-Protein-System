@@ -1,7 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildScpArgs, buildSshArgs, remotePath, sshOptions, sshTarget } from "../src/hpc/ssh.js";
-import { ENDPOINT, LINUX_ENDPOINT } from "./hpc-support.js";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { buildScpArgs, buildSshArgs, createSshRunner, remotePath, sshOptions, sshTarget } from "../src/hpc/ssh.js";
+import { ENDPOINT } from "./hpc-support.js";
 
 test("sshTarget keeps the [user@]host shape and defers to config without a user", () => {
   assert.equal(sshTarget(ENDPOINT), "alice@hpc.example");
@@ -43,4 +46,31 @@ test("remotePath expands the leading tilde to $HOME and quotes the rest", () => 
   assert.equal(remotePath("~"), '"$HOME"');
   assert.equal(remotePath("/scratch/a"), "'/scratch/a'");
   assert.equal(remotePath("~/it's/fun"), `"$HOME"/'it'\\''s/fun'`);
+});
+
+test("the real spawner works against a not-yet-existing controlDir (the 500 regression)", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ss-hpc-runner-"));
+  try {
+    const shim = join(root, "ssh-shim.sh");
+    await writeFile(shim, "#!/bin/sh\necho \"$@\"\n");
+    await chmod(shim, 0o755);
+    const ssh = await createSshRunner({
+      sshBin: shim,
+      scpBin: shim,
+      controlDir: join(root, "science-studio", "hpc"), // deliberately absent
+    });
+    const res = await ssh.run(ENDPOINT, "uname -srm");
+    assert.equal(res.code, 0);
+    assert.match(res.stdout, /BatchMode=yes/);
+    assert.match(res.stdout, /alice@hpc\.example/);
+    assert.match(res.stdout, /uname -srm/);
+    // The base dir now exists and holds the per-process master dir.
+    assert.match(res.stdout, new RegExp(`ControlPath=${join(root, "science-studio", "hpc")}`));
+    const copy = await ssh.copyTo(ENDPOINT, shim, "~/w/x.txt");
+    assert.equal(copy.code, 0);
+    assert.match(copy.stdout, /BatchMode=yes/); // scp carries the same -o set
+    assert.match(copy.stdout, /alice@hpc\.example:~\/w\/x\.txt/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

@@ -118,6 +118,14 @@ export function registerHpcRoutes(app: FastifyInstance, deps: HpcRouteDeps): voi
       const sbatch = await ssh.run(endpoint, "sbatch --version");
       if (sbatch.code === 0) out.scheduler = sbatch.stdout.trim();
       else errors.push(`sbatch: ${sbatch.stderr.trim() || `exit ${sbatch.code}`}`);
+      // `sbatch --version` answers even on a node that cannot reach slurmctld
+      // — the connectivity truth is a bounded live squeue query. Without this
+      // the probe reports a false green and the first real submit is where the
+      // user discovers the controller is unreachable.
+      const ctl = await ssh.run(endpoint, `timeout 12 squeue -h -o "%i" -a >/dev/null 2>&1 || echo SLURM-CTL-FAIL`);
+      if (ctl.stdout.includes("SLURM-CTL-FAIL")) {
+        errors.push("slurm controller unreachable from this host (squeue failed) — sbatch will not work here");
+      }
     }
     // Prove the remote home is writable without touching a Project's dir.
     const touch = await ssh.run(endpoint, `mkdir -p ${remotePath("~/science-studio")}`);
