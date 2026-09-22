@@ -498,10 +498,14 @@ export function useWorkspaceFile(
 }
 
 function looksTextual(mime: string): boolean {
+  // Must admit every mime `mimeFor` (packages/workspace) yields for a text
+  // file the preview pane renders — keep the two lists in sync.
   return (
     mime.startsWith("text/") ||
     mime === "application/json" ||
     mime === "application/yaml" ||
+    mime === "application/xml" ||
+    mime === "application/toml" ||
     mime.endsWith("+json")
   );
 }

@@ -17,6 +17,14 @@ export const HIGHLIGHT_LANGUAGES: BundledLanguage[] = [
   "json",
   "bash",
   "markdown",
+  "yaml",
+  "xml",
+  "toml",
+  "ini",
+  "properties",
+  "csv",
+  "sql",
+  "html",
 ];
 
 /** What `createHighlighter` resolves to (shiki's aliases drift between versions; infer). */

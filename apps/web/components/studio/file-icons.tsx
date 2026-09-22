@@ -11,9 +11,10 @@ import {
   FileText,
   Folder,
   FolderOpen,
+  Image,
   Palette,
 } from "lucide-react";
-import { isStructureFile, type FileKind } from "./file-utils";
+import { isImageFile, isStructureFile, type FileKind } from "./file-utils";
 
 export function fileIcon(kind: FileKind): ReactNode {
   switch (kind) {
@@ -27,6 +28,8 @@ export function fileIcon(kind: FileKind): ReactNode {
       return <FileText className="size-3.5 text-red-500" />;
     case "structure":
       return <Atom className="size-3.5 text-violet-500" />;
+    case "image":
+      return <Image className="size-3.5 text-rose-500" />;
     default:
       return <File className="size-3.5 text-muted-foreground" />;
   }
@@ -70,6 +73,9 @@ export function fileIconForName(
   }
   if (isStructureFile(name)) {
     return <Atom className="size-4 shrink-0 text-violet-500" />;
+  }
+  if (isImageFile(name)) {
+    return <Image className="size-4 shrink-0 text-rose-500" />;
   }
   return <File className="text-muted-foreground size-4 shrink-0" />;
 }

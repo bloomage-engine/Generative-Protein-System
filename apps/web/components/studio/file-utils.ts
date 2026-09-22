@@ -5,12 +5,13 @@ import { isStructureFile } from "@science-studio/molql-viewer/formats";
  * Infer a renderer + code language from a file name / mime (the workspace API
  * gives us a `mime` and a basename; there is no explicit kind field).
  *
- * `pdf` and `structure` are decided from the NAME only: the service serves PDFs
- * as `application/pdf` and every structure format as `application/octet-stream`
- * (see `mimeFor`), so a MIME sniff cannot tell a `.pdb` from any other binary.
- * The structure formats themselves are owned by `@science-studio/molql-viewer/formats`.
+ * `pdf`, `structure` and `image` are decided from the NAME: the service serves
+ * PDFs as `application/pdf`, images as `image/*`, and every structure format as
+ * `application/octet-stream` (see `mimeFor`), so a MIME sniff cannot tell a
+ * `.pdb` from any other binary. The structure formats themselves are owned by
+ * `@science-studio/molql-viewer/formats`.
  */
-export type FileKind = "markdown" | "json" | "code" | "text" | "pdf" | "structure";
+export type FileKind = "markdown" | "json" | "code" | "text" | "pdf" | "structure" | "image";
 
 export { isStructureFile } from "@science-studio/molql-viewer/formats";
 
@@ -18,9 +19,17 @@ export function isPdfFile(name: string): boolean {
   return name.toLowerCase().endsWith(".pdf");
 }
 
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]);
+
+export function isImageFile(name: string): boolean {
+  const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
+  return IMAGE_EXTENSIONS.has(ext);
+}
+
 export function kindFor(name: string, mime?: string | null): FileKind {
   if (isPdfFile(name)) return "pdf";
   if (isStructureFile(name)) return "structure";
+  if (isImageFile(name)) return "image";
   const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
   if (mime?.startsWith("text/markdown") || ext === "md" || ext === "markdown" || ext === "mdx")
     return "markdown";
@@ -28,15 +37,41 @@ export function kindFor(name: string, mime?: string | null): FileKind {
   return "code";
 }
 
-export function languageFor(name: string, kind: FileKind): BundledLanguage {
+/**
+ * The shiki grammar for a file, by extension; `undefined` when unknown (the
+ * pane then renders plain text — NOT a wrong grammar: a `.txt` must not be
+ * JS-highlighted). Only languages in `highlight.ts`'s `HIGHLIGHT_LANGUAGES`
+ * are legal (shiki hard-fails on the rest); callers fall back to plain.
+ */
+const LANGUAGE_BY_EXTENSION: Record<string, BundledLanguage> = {
+  py: "python",
+  ts: "typescript",
+  mts: "typescript",
+  tsx: "typescript",
+  js: "javascript",
+  jsx: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  sh: "bash",
+  bash: "bash",
+  yaml: "yaml",
+  yml: "yaml",
+  xml: "xml",
+  toml: "toml",
+  ini: "ini",
+  properties: "properties",
+  sql: "sql",
+  csv: "csv",
+  html: "html",
+  htm: "html",
+  xhtml: "html",
+};
+
+export function languageFor(name: string, kind: FileKind): BundledLanguage | undefined {
   if (kind === "markdown") return "markdown";
   if (kind === "json") return "json";
   const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
-  if (ext === "py") return "python";
-  if (ext === "ts" || ext === "mts" || ext === "tsx") return "typescript";
-  if (ext === "js" || ext === "jsx" || ext === "mjs") return "javascript";
-  if (ext === "sh" || ext === "bash") return "bash";
-  return "javascript";
+  return LANGUAGE_BY_EXTENSION[ext];
 }
 
 export function formatSize(bytes: number): string {
@@ -66,5 +101,5 @@ export function subagentTabChildId(path: string): string {
  */
 export function isTextEditable(name: string): boolean {
   const kind = kindFor(name);
-  return kind !== "pdf" && kind !== "structure";
+  return kind !== "pdf" && kind !== "structure" && kind !== "image";
 }

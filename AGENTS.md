@@ -508,20 +508,37 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   once instead of on every switch. Scope: same Session only — a Session switch
   remounts the shell (`StudioHost` keys `SessionView` by
   `projectId/sessionId`), and a Project switch clears `tabs`. The regression
-  guard is `apps/web/test/tab-state.test.mjs`.
-- **PDF and structure previews are by file NAME, and the viewer fetches its own
-  bytes.** `apps/web/components/studio/file-utils.ts` adds `pdf`/`molecule` to
-  `FileKind` and decides them from the name, because the workspace service
-  serves `.pdf` as `application/pdf` and every structure format
+  guard is `apps/web/test/tab-state.test.mjs`. **A renderer inside a tab must
+  never assert its own `visibility`** (e.g. an `<img>` flipping
+  `hidden → visible` on load) — in CSS a child's `visibility:visible`
+  OVERRIDES the ancestor's `hidden`, so the element resurrects inside the
+  hidden pane and covers the active tab; a loading-state toggle belongs on an
+  overlay over the content, never on the content element itself (pinned by the
+  image test in `tab-state.test.mjs`).
+- **PDF, image and structure previews are by file NAME, and the viewer fetches
+  its own bytes.** `apps/web/components/studio/file-utils.ts` adds
+  `pdf`/`image`/`structure` to `FileKind` and decides them from the name
+  (images: png/jpg/jpeg/gif/webp/bmp/svg), because the workspace service serves
+  `.pdf` as `application/pdf`, images as `image/*`, and every structure format
   (`.pdb/.cif/.mmcif/.mol/.mol2/.bcif` + `.gz`) as
   `application/octet-stream` — a MIME sniff cannot tell them apart. `Preview`
   routes those kinds to `renderers/PdfRenderer.tsx` (EmbedPDF; external webfonts
-  disabled) and `renderers/MoleculeRenderer.tsx` (Mol*, browser-only via
-  `next/dynamic(... ssr:false)`), handing them the inline
+  disabled), `renderers/ImageRenderer.tsx` (a plain `<img>`; decode failure is a
+  friendly "use download" line, and images have NO source view —
+  `isTextEditable` excludes them) and `renderers/StructureRenderer.tsx` (Mol*,
+  browser-only via `next/dynamic(... ssr:false)`), handing them the inline
   `workspaceFileUrl(api, path, { project })`; ONLY text kinds call
   `useWorkspaceFile`, so a viewer never downloads the file twice. The Mol* port
   lives in `renderers/molecule-viewer.ts`. The routing is pinned by
-  `apps/web/test/file-kinds.test.mjs`. **The Mol* init/dispose is async and
+  `apps/web/test/file-kinds.test.mjs`. Common text formats preview inline as
+  text — the "which mime counts as text?" gate lives in TWO places that must
+  stay in sync: `isTextMime`/`mimeFor` in `packages/workspace/src/mime.ts`
+  (server answer mime; `.env`/`.env.*` are text by name) and `looksTextual` in
+  `packages/transport-client/src/workspace.tsx` (client read decision);
+  `file-utils.ts`'s `languageFor` picks the shiki grammar (yaml/xml/toml/ini/
+  properties/sql/csv/html, preloaded in `renderers/highlight.ts`) and returns
+  `undefined` for anything unknown so the pane renders PLAIN text instead of a
+  wrong grammar (a `.txt` must not be JS-highlighted). **The Mol* init/dispose is async and
   race-guarded** (`MolstarViewer.disposed`): dev StrictMode double-invokes the
   effect, and a dispose that runs before `createPluginUI` resolves would
   otherwise leave the orphaned plugin's blank canvas stacked above the loaded

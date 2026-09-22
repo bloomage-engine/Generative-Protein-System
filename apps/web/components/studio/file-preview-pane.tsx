@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isSubagentTab, isTextEditable, kindFor, languageFor, subagentTabChildId } from "./file-utils";
 import { CronTaskRenderer } from "./renderers/CronTaskRenderer";
+import { ImageRenderer } from "./renderers/ImageRenderer";
 import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
 import { CodeRenderer } from "./renderers/CodeRenderer";
 import { JsonRenderer } from "./renderers/JsonRenderer";
@@ -241,6 +242,8 @@ function Preview({ path, name }: { path: string; name: string }) {
           <CronTaskRenderer path={path} />
         ) : kind === "pdf" ? (
           <PdfRenderer url={fileUrl} />
+        ) : kind === "image" ? (
+          <ImageRenderer url={fileUrl} alt={name} />
         ) : kind === "structure" ? (
           <StructureRenderer path={path} name={name} />
         ) : (
