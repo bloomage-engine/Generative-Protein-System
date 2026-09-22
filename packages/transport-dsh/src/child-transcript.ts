@@ -5,11 +5,114 @@ import type { ContentBlock } from "@deepseek-ai/dsh-llm";
 import type { Message, SubagentTranscript } from "@science-studio/transport";
 import { contentToParts, extractResultText, findToolCallMessage } from "./mapping.js";
 
-// `zstdDecompressSync` is present at runtime (Node >= 23.8) but not yet declared in
+// The `zstd*` API is present at runtime (Node >= 23.8) but not yet declared in
 // this repo's pinned @types/node, so it is reached without bumping the types.
-const zstdDecompressSync = (zlib as unknown as {
+const zstd = zlib as unknown as {
   zstdDecompressSync: (buf: Buffer) => Buffer;
-}).zstdDecompressSync;
+  zstdDecompress: (
+    buf: Buffer,
+    options: { finishFlush: number },
+    callback: (err: Error | null, out: Buffer) => void,
+  ) => void;
+};
+const ZSTD_E_FLUSH = (zlib.constants as unknown as { ZSTD_e_flush?: number }).ZSTD_e_flush ?? 1;
+const ZSTD_MAGIC = 0xfd2fb528; // little-endian `28 B5 2F FD`
+
+interface ZstdFrameRange {
+  start: number;
+  end: number;
+}
+
+/**
+ * Walk the harness's concatenated-Zstandard container STRUCTURALLY — the
+ * format the persistence layer uses (one independently decodable frame per
+ * durable write, so the artifact is magic..frame..magic..frame). Returns every
+ * complete frame, plus the start of an incomplete FINAL frame (a still-running
+ * child's flushed tail). Mirrors `dsh-session-persistence-jsonl`'s scanner;
+ * re-implemented so the adapter depends on no harness internals. Throws on
+ * structurally invalid bytes (the caller treats that as "no record").
+ */
+function scanZstdFrames(buffer: Buffer): { frames: ZstdFrameRange[]; tornStart?: number } {
+  const frames: ZstdFrameRange[] = [];
+  let offset = 0;
+  while (offset < buffer.length) {
+    const start = offset;
+    if (buffer.length - offset < 4) return { frames, tornStart: start };
+    if (buffer.readUInt32LE(offset) !== ZSTD_MAGIC) {
+      throw new Error(`corrupt Zstandard session log: invalid frame magic at byte ${offset}`);
+    }
+    offset += 4;
+    if (offset === buffer.length) return { frames, tornStart: start };
+    const descriptor = buffer.readUInt8(offset);
+    offset += 1;
+    if ((descriptor & 24) !== 0) {
+      throw new Error(`corrupt Zstandard session log: reserved frame-header bit at byte ${offset - 1}`);
+    }
+    const contentSizeFlag = descriptor >>> 6;
+    const singleSegment = (descriptor & 32) !== 0;
+    const checksum = (descriptor & 4) !== 0;
+    const dictionaryFlag = descriptor & 3;
+    const dictionaryBytes = dictionaryFlag === 3 ? 4 : dictionaryFlag;
+    const contentSizeBytes = contentSizeFlag === 0 ? (singleSegment ? 1 : 0) : 1 << contentSizeFlag;
+    const remainingHeaderBytes = (singleSegment ? 0 : 1) + dictionaryBytes + contentSizeBytes;
+    if (buffer.length - offset < remainingHeaderBytes) return { frames, tornStart: start };
+    offset += remainingHeaderBytes;
+    for (;;) {
+      if (buffer.length - offset < 3) return { frames, tornStart: start };
+      const blockHeader = buffer.readUIntLE(offset, 3);
+      offset += 3;
+      const lastBlock = (blockHeader & 1) !== 0;
+      const blockType = (blockHeader >>> 1) & 3;
+      const blockSize = blockHeader >>> 3;
+      if (blockType === 3) {
+        throw new Error(`corrupt Zstandard session log: reserved block type at byte ${offset - 3}`);
+      }
+      const payloadBytes = blockType === 1 ? 1 : blockSize;
+      if (buffer.length - offset < payloadBytes) return { frames, tornStart: start };
+      offset += payloadBytes;
+      if (lastBlock) break;
+    }
+    if (checksum) {
+      if (buffer.length - offset < 4) return { frames, tornStart: start };
+      offset += 4;
+    }
+    frames.push({ start, end: offset });
+  }
+  return { frames };
+}
+
+/** Recover the plaintext a torn (flushed, not finalized) final frame already holds. */
+function decompressZstdPrefix(input: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    zstd.zstdDecompress(input, { finishFlush: ZSTD_E_FLUSH }, (err, out) =>
+      err === null ? resolve(out) : reject(err),
+    );
+  });
+}
+
+/**
+ * Decode the harness's concatenated-Zstandard session artifact. Every frame is
+ * decoded independently — a one-shot decode stops at the FIRST frame (for a
+ * real log that is only the `session` header, so the whole conversation was
+ * silently lost) — and a torn final frame is flush-decoded so a running
+ * child's committed prefix is kept. Frames hold only complete records, so they
+ * join on a newline.
+ */
+async function decodeZstdFrames(bytes: Buffer): Promise<string> {
+  const { frames, tornStart } = scanZstdFrames(bytes);
+  const texts: string[] = [];
+  for (const { start, end } of frames) {
+    texts.push(zstd.zstdDecompressSync(bytes.subarray(start, end)).toString("utf8"));
+  }
+  if (tornStart !== undefined && tornStart < bytes.length) {
+    try {
+      texts.push((await decompressZstdPrefix(bytes.subarray(tornStart))).toString("utf8"));
+    } catch {
+      // An unrecoverable tail contributes nothing; the complete prefix stands.
+    }
+  }
+  return texts.join("\n");
+}
 
 /**
  * The harness's session-root directory key for a project path —
@@ -89,7 +192,7 @@ export async function readChildTranscript(source: ChildTranscriptSource): Promis
   let text: string;
   try {
     const bytes = await fs.readFile(join(dir, gens[0]!.name));
-    text = gens[0]!.zstd ? zstdDecompressSync(bytes).toString("utf8") : bytes.toString("utf8");
+    text = gens[0]!.zstd ? await decodeZstdFrames(bytes) : bytes.toString("utf8");
   } catch {
     return null;
   }

@@ -170,6 +170,25 @@ test("a finished run without a started notification is recorded from its own par
   assert.equal(run!.startedAt, "t0", "startedAt is stamped at observation (the wire carries none)");
 });
 
+test("a restore attempted before the store is bound is retried once the store binds", async () => {
+  const store = new FakeRecordStoreLike();
+  await store.upsertSubagent({ id: "subagent-late", parentSessionId: "sess-1", origin: "subagent", status: "completed", startedAt: "t0", finishedAt: "t1" });
+  // The adapter's `init` runs in the BACKGROUND (docs/adr/0008), so a
+  // `/subagents` poll can reach the registry BEFORE `bindStore`. That first
+  // read must not latch the session as "restored" — otherwise the durable rows
+  // are never seeded and the panel stays empty for the whole process.
+  const reg = new SubagentRegistry(() => undefined, () => "now", null);
+  await reg.restore("sess-1");
+  assert.deepEqual(reg.list("sess-1"), [], "nothing to show while the store is unbound");
+
+  reg.bindStore(store);
+  await reg.restore("sess-1");
+  const runs = reg.list("sess-1");
+  assert.equal(runs.length, 1, "the durable row is restored once the store binds");
+  assert.equal(runs[0]!.id, "subagent-late");
+  assert.equal(runs[0]!.status, "completed");
+});
+
 test("a live entry is not clobbered by a restore of the same session", async () => {
   const store = new FakeRecordStoreLike();
   await store.upsertSubagent({ id: "subagent-seed", parentSessionId: "sess-1", origin: "subagent", status: "completed", startedAt: "t0" });

@@ -79,6 +79,31 @@ test("readChildTranscript folds a full child log into the seam shape", async () 
   }
 });
 
+test("readChildTranscript decodes a concatenated multi-frame zstd log", async () => {
+  const home = await homeWith([]);
+  const dir = join(home, "sessions", projectKey(CWD), CHILD);
+  // The harness writes ONE FRAME PER FLUSH: the real artifact is a
+  // concatenated Zstandard container, not a single frame. A one-shot decode
+  // stops after the first frame — for a real log that is only the `session`
+  // header — silently dropping every message (the empty drill-in).
+  const frames = logLines().map((line) =>
+    zstdCompressSync(line + "\n"),
+  );
+  await writeFile(join(dir, "session.v3.jsonl.zstd"), Buffer.concat(frames));
+  try {
+    const t = await readChildTranscript({ home, cwd: CWD, sessionKey: "sess-1", childId: CHILD });
+    assert.ok(t, "the record must be found");
+    assert.equal(t!.status, "completed", "the turn/end frame is decoded");
+    assert.deepEqual(t!.messages.map((m) => m.role), ["user", "assistant"], "messages span frames");
+    const assistant = t!.messages[1]!;
+    const tool = assistant.parts.find((p) => p.type === "tool-call") as { name: string; result?: string };
+    assert.equal(tool.name, "bash");
+    assert.equal(tool.result, "Thu Sep 17 2026", "a tool result in a later frame still merges");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("a newer format generation wins over an older one", async () => {
   const home = await homeWith([]);
   const dir = join(home, "sessions", projectKey(CWD), CHILD);

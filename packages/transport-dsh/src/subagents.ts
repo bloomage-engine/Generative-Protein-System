@@ -211,19 +211,28 @@ export class SubagentRegistry {
    * per key. A restored row that was still `running` is settled to `aborted` (its
    * harness child died with the previous process — ADR 0016 addendum). A live
    * in-memory entry always wins over a restored row with the same stable id.
+   *
+   * The "already restored" latch is set ONLY after a successful read against a
+   * BOUND store. The adapter's `init` runs in the background (docs/adr/0008) and
+   * `subagents()` deliberately does not await it, so the first poll can land
+   * before `bindStore`. Latching then would permanently empty the panel for the
+   * session; instead the unbound (or failed) read is a no-op that a later poll
+   * retries.
    */
   async restore(sessionKey: string): Promise<void> {
     if (this.restored.has(sessionKey)) return;
-    this.restored.add(sessionKey);
     const store = this.store;
-    if (store === null) return;
+    if (store === null) return; // not bound yet — retry on a later read
     let rows: Subagent[];
     try {
       rows = (await store.listSubagents?.(sessionKey)) ?? [];
     } catch (err) {
+      // A transient read failure must not latch either, or a blip becomes a
+      // permanently empty panel; the next poll retries.
       console.warn("[dsh] subagent ledger restore failed", err);
       return;
     }
+    this.restored.add(sessionKey);
     for (const row of rows) {
       if (row.id === undefined || this.entries.has(row.id)) continue;
       const entry: Entry = {
