@@ -37,7 +37,9 @@ export { createServer } from "./server.js";
 // Re-exported so the `FastifyInstance.cronScheduler` decorator's module
 // augmentation is loaded by out-of-process embedders (the desktop host), which
 // import only this package root and must `start()` the controller themselves.
+// Same for the HPC poller (docs/adr/0024).
 export type { CronScheduler } from "./cron/scheduler.js";
+export type { HpcJobPoller } from "./hpc/poller.js";
 
 export interface TransportServiceOptions {
   /** A ready backend (production path). */
@@ -122,6 +124,7 @@ if (isMain) {
   const backend = await createBackend();
   const app = await createServer(backend);
   app.cronScheduler.start();
+  app.hpcPoller.start();
   await app.listen({ port, host });
   console.log(`[transport-service] listening on http://localhost:${port}/api/transport`);
 }

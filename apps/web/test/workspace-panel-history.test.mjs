@@ -174,6 +174,9 @@ test(
       await page.getByPlaceholder("Project name").fill("Gamma");
       await pane.getByRole("button", { name: "Create", exact: true }).click();
       await pane.getByRole("button", { name: "Gamma", exact: true }).waitFor({ timeout: 15_000 });
+      // The pane re-resolves its Sessions list asynchronously after a Project
+      // switch; wait for the empty state rather than racing it with `count()`.
+      await pane.getByText("No sessions yet.").waitFor({ timeout: 15_000 });
       assert.equal(
         await pane.getByText("No sessions yet.").count(),
         1,

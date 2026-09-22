@@ -382,3 +382,39 @@ export async function writeSubagentPatch(opts: { dir: string; pluginPath: string
   await writeFile(file, document, "utf8");
   return file;
 }
+
+/**
+ * The config the child-side HPC plugin (`hpc-plugin.ts`) reads: the Project
+ * identity (the tools' scope) and the service base URL its tools fetch. The
+ * plugin never touches SSH itself — the service owns remote execution
+ * (docs/adr/0024) — and is inert without the Project.
+ */
+export interface HpcPluginLaunchConfig {
+  project: { id: string; name: string; createdAt: string };
+  /** Absent → the plugin falls back to `SCIENCE_STUDIO_SERVICE_URL`/the default. */
+  service?: string;
+}
+
+/**
+ * Write the launch patch that inserts the HPC plugin into the child's profile,
+ * and return its path (for `--patch`). Same shape as the bridge/project/cron
+ * patches: a `file:` URL name and one JSON config node.
+ */
+export async function writeHpcPatch(opts: {
+  dir: string;
+  pluginPath: string;
+  config: HpcPluginLaunchConfig;
+}): Promise<string> {
+  const { dir, pluginPath, config } = opts;
+  await mkdir(dir, { recursive: true });
+  const file = join(dir, `hpc-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
+  const document = [
+    "- insert:",
+    "    - id: science-studio-hpc",
+    `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
+    `      config: ${JSON.stringify(config)}`,
+    "",
+  ].join("\n");
+  await writeFile(file, document, "utf8");
+  return file;
+}

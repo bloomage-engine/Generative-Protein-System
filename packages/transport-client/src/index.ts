@@ -154,3 +154,23 @@ export {
   type SchedulePreset,
   type UseCronTasksOptions,
 } from "./cron.js";
+export {
+  DEFAULT_HPC_API,
+  HpcRequestError,
+  cancelHpcJob,
+  fetchHpcBinding,
+  fetchHpcEndpoints,
+  fetchHpcJob,
+  fetchHpcJobLogs,
+  listHpcJobs,
+  probeHpcEndpoint,
+  refreshHpcJobs,
+  saveHpcBinding,
+  useHpcJobs,
+  type HpcBindingView,
+  type HpcProbeResult,
+  type UseHpcJobsOptions,
+} from "./hpc.js";
+export type { ComputeJob, ComputeJobState } from "@science-studio/record";
+export { isOpenComputeJobState } from "./hpc.js";
+export type { HpcEndpointSettings, HpcSettings, HpcSettingsPatch } from "@science-studio/transport";

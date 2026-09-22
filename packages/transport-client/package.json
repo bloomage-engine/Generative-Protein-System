@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@science-studio/cron": "*",
+    "@science-studio/hpc": "*",
     "@science-studio/record": "*",
     "@science-studio/transport": "*"
   },

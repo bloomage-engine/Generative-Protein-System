@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { CronView } from "./cron-view";
+import { JobsView } from "./jobs-view";
 import { SubagentsView } from "./subagents-view";
 import { WorkspaceTree } from "./workspace-tree";
 import { useStudioStore } from "@/store/studio-store";
@@ -18,12 +19,13 @@ function clamp(value: number, min: number, max: number) {
 /**
  * A drag handle on a module's TOP edge — between it and the module above. It
  * resizes the module it sits on the edge of, taking space from the module
- * DIRECTLY above that edge: Subagents when Subagents is the neighbour (so the
- * edge only ever trades between the two modules it separates), otherwise the
- * flexible Files filler. Dragging the Subagents/Cron edge therefore never makes
- * the top module (Files) reflow.
+ * DIRECTLY above that edge: another FIXED module when one sits there (so the
+ * edge only ever trades between the two modules it separates — their sum stays
+ * constant and Files is untouched), otherwise the flexible Files filler.
+ * Dragging the Subagents/Cron/Jobs edges therefore never makes the top module
+ * (Files) reflow when a fixed neighbour absorbs the trade.
  */
-function ResizeHandle({ section, label }: { section: "subagents" | "cron"; label: string }) {
+function ResizeHandle({ section, label }: { section: "subagents" | "cron" | "jobs"; label: string }) {
   const setHeight = useStudioStore((s) => s.setRightSectionHeight);
   const setRightHeights = useStudioStore((s) => s.setRightHeights);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -44,12 +46,17 @@ function ResizeHandle({ section, label }: { section: "subagents" | "cron"; label
         const heights = state.rightHeights;
         const startHeight = heights[section];
 
-        // The donor is the module ABOVE this edge. For the Cron edge that is
-        // Subagents while it is open — a fixed module — so space is moved
-        // BETWEEN the two fixed modules (their sum stays constant and Files is
-        // untouched). Otherwise the donor is the flexible Files filler.
-        const donor: "files" | "subagents" =
-          section === "cron" && state.rightSections.subagents ? "subagents" : "files";
+        // The donor is the module ABOVE this edge. The stack order is
+        // Files (flex) → Subagents → Cron → Jobs, so the neighbour above a
+        // fixed module is Jobs←Cron, Cron←Subagents, Subagents←(nothing:
+        // Files). A fixed donor trades its constant SUM with this section;
+        // otherwise the flexible Files filler absorbs.
+        const above: Record<"subagents" | "cron" | "jobs", "subagents" | "cron" | "files"> = {
+          subagents: "files",
+          cron: state.rightSections.subagents ? "subagents" : "files",
+          jobs: state.rightSections.cron ? "cron" : state.rightSections.subagents ? "subagents" : "files",
+        };
+        const donor = above[section];
 
         try {
           handle.setPointerCapture(event.pointerId);
@@ -59,23 +66,27 @@ function ResizeHandle({ section, label }: { section: "subagents" | "cron"; label
 
         const onMove = (moveEvent: PointerEvent) => {
           const delta = startY - moveEvent.clientY;
-          if (donor === "subagents") {
-            // Fixed donor: redistribute the pair's constant sum so Subagents
-            // gives up exactly what Cron gains (and vice versa).
-            const total = heights.subagents + heights.cron;
+          if (donor !== "files") {
+            // Fixed donor: redistribute the pair's constant sum so one gives
+            // up exactly what the other gains (and Files is untouched).
+            const total = heights[section] + heights[donor];
             const next = clamp(
               startHeight + delta,
               MIN_SECTION_PX,
               Math.max(MIN_SECTION_PX, total - MIN_SECTION_PX),
             );
-            setRightHeights({ subagents: total - next, cron: next });
+            setRightHeights({ ...heights, [section]: next, [donor]: total - next });
             return;
           }
           // Flexible donor: grow/shrink this module, Files absorbs the rest.
-          const other = section === "subagents" ? "cron" : "subagents";
-          const otherOpen = state.rightSections[other];
+          const others = (["subagents", "cron", "jobs"] as const).filter((id) => id !== section);
           const reserved =
-            FILES_MIN_PX + HANDLE_PX + (otherOpen ? heights[other] + HANDLE_PX : COLLAPSED_HEADER_PX);
+            FILES_MIN_PX +
+            HANDLE_PX +
+            others.reduce(
+              (sum, id) => sum + (state.rightSections[id] ? heights[id] + HANDLE_PX : COLLAPSED_HEADER_PX),
+              0,
+            );
           const max = Math.max(MIN_SECTION_PX, containerHeight - reserved);
           setHeight(section, clamp(startHeight + delta, MIN_SECTION_PX, max));
         };
@@ -110,6 +121,7 @@ function ResizeHandle({ section, label }: { section: "subagents" | "cron"; label
 export function RightPanel({ project }: { project: string | null }) {
   const subagentsOpen = useStudioStore((s) => s.rightSections.subagents);
   const cronOpen = useStudioStore((s) => s.rightSections.cron);
+  const jobsOpen = useStudioStore((s) => s.rightSections.jobs);
 
   return (
     <aside className="flex h-full min-h-0 flex-col overflow-y-auto border-l border-border/70 bg-background">
@@ -118,6 +130,8 @@ export function RightPanel({ project }: { project: string | null }) {
       <SubagentsView />
       {cronOpen && <ResizeHandle section="cron" label="Resize Cron" />}
       <CronView />
+      {jobsOpen && <ResizeHandle section="jobs" label="Resize Jobs" />}
+      <JobsView />
     </aside>
   );
 }

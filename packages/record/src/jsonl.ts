@@ -15,7 +15,7 @@
 import { appendFile, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { RecordStore } from "./index.js";
-import type { Id, Project, Run, Session, PersistedTranscript, Subagent } from "./types.js";
+import type { ComputeJob, Id, Project, Run, Session, PersistedTranscript, Subagent } from "./types.js";
 
 type Row =
   | { t: "project"; v: Project }
@@ -168,6 +168,19 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
   const rootDir = dirname(path);
   const transcriptsDir = join(rootDir, "transcripts");
   const subagentsDir = join(rootDir, "subagents");
+  const computeJobsDir = join(rootDir, "compute-jobs");
+
+  // Compute Job rows are per-entity files (like subagents — the service is the
+  // ONLY writer, docs/adr/0024), so a Project delete cascades by scanning the
+  // directory: unlink every file whose row is the Project's.
+  const removeProjectComputeJobs = async (projectId: Id): Promise<void> => {
+    for (const name of await listDir(computeJobsDir)) {
+      if (!name.endsWith(".json")) continue;
+      const file = join(computeJobsDir, name);
+      const job = await readJSONOrNull<ComputeJob>(file);
+      if (job && job.projectId === projectId) await unlinkIfExists(file);
+    }
+  };
 
   // A session's durable siblings live as sibling files (ADR 0019), not in the
   // JSONL log, so a cascade must unlink them directly: its transcript, plus
@@ -235,6 +248,7 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
       }
       await drop("project", id);
       tables.projects.delete(id);
+      await removeProjectComputeJobs(id);
     },
     async addSession(session: Session): Promise<Session> {
       await append({ t: "session", v: session });
@@ -316,6 +330,25 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
         if (!name.endsWith(".json")) continue;
         const s = (await readJSONOrNull<Subagent>(join(subagentsDir, name))) ?? null;
         if (s && s.parentSessionId === parentSessionId) out.push(s);
+      }
+      return out;
+    },
+    // Compute Job rows (docs/adr/0024): the service's ledger, sibling files
+    // keyed by the server-minted row id. `listComputeJobs` scans — same order
+    // caveat as subagents; the routes sort.
+    async upsertComputeJob(job: ComputeJob): Promise<void> {
+      await writeFileAtomic(join(computeJobsDir, `${encodeURIComponent(job.id)}.json`), job);
+    },
+    async loadComputeJob(id: Id): Promise<ComputeJob | null> {
+      return readJSONOrNull<ComputeJob>(join(computeJobsDir, `${encodeURIComponent(id)}.json`));
+    },
+    async listComputeJobs(projectId: Id): Promise<ComputeJob[]> {
+      const names = await listDir(computeJobsDir);
+      const out: ComputeJob[] = [];
+      for (const name of names) {
+        if (!name.endsWith(".json")) continue;
+        const job = await readJSONOrNull<ComputeJob>(join(computeJobsDir, name));
+        if (job && job.projectId === projectId) out.push(job);
       }
       return out;
     },

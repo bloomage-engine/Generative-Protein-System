@@ -63,6 +63,9 @@ export {
 } from "./seams.js";
 export { RuntimeBindingError } from "./seams.js";
 export type {
+  HpcEndpointSettings,
+  HpcSettings,
+  HpcSettingsPatch,
   ModelSettings,
   ModelSettingsPatch,
   RuntimeSettings,

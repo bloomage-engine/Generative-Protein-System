@@ -80,6 +80,67 @@ export interface PersistedTranscript {
 }
 
 /**
+ * Where a Compute Job stands in its lifecycle (docs/adr/0024):
+ * `submitted`/`pending`/`running` are non-terminal, `completed`/`failed`/
+ * `cancelled` are terminal, `unknown` means Science Studio could not confirm
+ * the remote truth and keeps the last known state. The remote scheduler stays
+ * the authority; this row is a reconciliation.
+ */
+export type ComputeJobState =
+  | "submitted"
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "unknown";
+
+/** The resource request a Compute Job was submitted with (a snapshot). */
+export interface ComputeJobResources {
+  partition?: string;
+  nodes?: number;
+  ntasks?: number;
+  cpusPerTask?: number;
+  mem?: string;
+  time?: string;
+}
+
+/**
+ * A durable, stably-identified unit of remote work submitted to an HPC
+ * Endpoint (docs/adr/0024): the ledger row the Jobs panel reads and the
+ * service's poller reconciles. It belongs to a Project; the Session that
+ * submitted it is metadata (`sessionKey`).
+ */
+export interface ComputeJob {
+  id: string;
+  projectId: string;
+  endpointId: string;
+  /** Scheduler Kind snapshot — the row stays self-describing after the endpoint is deleted. */
+  kind: "slurm" | "linux";
+  /** The remote truth: an slurm job id or a linux pid. Set once, at submit. */
+  remoteJobId?: string;
+  name: string;
+  /** slurm: the full sbatch script snapshot. */
+  script?: string;
+  /** linux: the command-line snapshot. */
+  command?: string;
+  resources?: ComputeJobResources;
+  /** The remote job dir the pid/rc/log files live under (linux) or the -o/-e parent (slurm). */
+  remoteDir?: string;
+  state: ComputeJobState;
+  exitCode?: number;
+  nodeList?: string;
+  /** The submitting Session when it is a known record id (best-effort). */
+  sessionKey?: string;
+  /** Last submit/reconcile failure detail (e.g. the SSH error behind an `unknown`). */
+  error?: string;
+  submittedAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  updatedAt: string;
+}
+
+/**
  * A durable, stably-identified subagent (a lineage-bearing, self-contained
  * session): its stable id, durable parent-session link, run metadata, and its
  * own captured transcript.

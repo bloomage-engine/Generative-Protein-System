@@ -17,10 +17,13 @@ import {
   archiveSession,
   createProject,
   createSession,
+  DEFAULT_HPC_API,
   deleteProject,
   deleteSession,
   fetchProjectsOverview,
   fetchProjectSessions,
+  isOpenComputeJobState,
+  listHpcJobs,
   renameProject,
   renameSession,
   unarchiveProject,
@@ -90,6 +93,30 @@ export function ProjectPanel() {
   const [name, setName] = React.useState("");
   const [renaming, setRenaming] = React.useState<Renaming>(null);
   const [deleting, setDeleting] = React.useState<Deleting>(null);
+  // The delete dialog counts the Project's non-terminal Compute Jobs so it can
+  // warn that deleting does NOT stop them (docs/adr/0024). A failed count is
+  // silence, not an error — the delete must not wedge on the HPC hop.
+  const [openJobCount, setOpenJobCount] = React.useState(0);
+
+  React.useEffect(() => {
+    if (deleting?.kind !== "project") {
+      setOpenJobCount(0);
+      return;
+    }
+    let active = true;
+    const controller = new AbortController();
+    listHpcJobs(DEFAULT_HPC_API, deleting.id, controller.signal)
+      .then((jobs) => {
+        if (active) setOpenJobCount(jobs.filter((job) => isOpenComputeJobState(job.state)).length);
+      })
+      .catch(() => {
+        if (active) setOpenJobCount(0);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [deleting]);
 
   const [archiveView, setArchiveView] = React.useState(false);
   const [archiveProjects, setArchiveProjects] = React.useState<Project[] | null>(null);
@@ -635,6 +662,11 @@ export function ProjectPanel() {
                 ? `「${deleting.name}」及其所有运行记录都会被删除，且无法恢复。`
                 : `「${deleting?.name ?? ""}」连同它的会话、运行记录与全部历史文件都会被删除，且无法恢复。`}
             </DialogDescription>
+            {deleting?.kind === "project" && openJobCount > 0 ? (
+              <p className="text-destructive text-xs">
+                {`注意：该项目还有 ${openJobCount} 个运行中的 HPC 计算任务，删除不会停止它们，需要到集群上自行处理。`}
+              </p>
+            ) : null}
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleting(null)} disabled={busy}>

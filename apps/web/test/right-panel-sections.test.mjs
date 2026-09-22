@@ -1,8 +1,9 @@
 /**
- * Regression: the right pane stacks three collapsible modules (Files,
- * Subagents, Cron). Files is open by default and holds the tree; the other two
- * start collapsed, expand to an empty state, and are resizable by dragging
- * their handle. Collapsing Files unmounts the tree; re-expanding restores it.
+ * Regression: the right pane stacks four collapsible modules (Files,
+ * Subagents, Cron, Jobs). Files is open by default and holds the tree; the
+ * other three start collapsed, expand to an empty state, and are resizable by
+ * dragging their handle. Collapsing Files unmounts the tree; re-expanding
+ * restores it.
  *
  * Prereq: `npm run build -w @science-studio/transport-client`.
  * Needs a Chromium; SKIPPED when none is found.
@@ -23,7 +24,7 @@ import {
 } from "./harness.mjs";
 
 test(
-  "the right pane stacks collapsible Files, Subagents and Cron sections",
+  "the right pane stacks collapsible Files, Subagents, Cron and Jobs sections",
   { timeout: 240_000 },
   async (t) => {
     const executablePath = findChromium();
@@ -60,10 +61,12 @@ test(
 
       const subagents = page.locator('[data-section="subagents"]');
       const cron = page.locator('[data-section="cron"]');
+      const jobs = page.locator('[data-section="jobs"]');
       await subagents.waitFor({ timeout: 15_000 });
       await cron.waitFor({ timeout: 15_000 });
+      await jobs.waitFor({ timeout: 15_000 });
 
-      // The two new modules start collapsed: headers present, copy absent.
+      // The three non-Files modules start collapsed: headers present, copy absent.
       assert.equal(
         await subagents.getByRole("button", { name: "Subagents" }).getAttribute("aria-expanded"),
         "false",
@@ -72,8 +75,13 @@ test(
         await cron.getByRole("button", { name: "Cron" }).getAttribute("aria-expanded"),
         "false",
       );
+      assert.equal(
+        await jobs.getByRole("button", { name: "Jobs", exact: true }).getAttribute("aria-expanded"),
+        "false",
+      );
       assert.equal(await subagents.getByText("No subagents yet.").count(), 0);
       assert.equal(await cron.getByText("No scheduled tasks.").count(), 0);
+      assert.equal(await jobs.getByText("No Compute Jobs.").count(), 0);
 
       // Expanding reveals the empty state.
       await subagents.getByRole("button", { name: "Subagents" }).click();
@@ -133,6 +141,12 @@ test(
         sub1 <= sub0 - 20,
         `expected Subagents to give up the space, got ${sub0} -> ${sub1}`,
       );
+
+      // The Jobs section (docs/adr/0024) expands like its siblings — and only
+      // NOW (the drags above kept their exact clamp arithmetic). (`exact`
+      // because the Refresh button's accessible name also contains "jobs".)
+      await jobs.getByRole("button", { name: "Jobs", exact: true }).click();
+      await jobs.getByText("No Compute Jobs.").waitFor({ timeout: 10_000 });
 
       // Collapsing Files unmounts the tree; re-expanding restores it.
       await page.getByRole("button", { name: "Files" }).click();

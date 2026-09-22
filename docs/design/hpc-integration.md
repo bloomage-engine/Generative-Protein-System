@@ -56,7 +56,9 @@ interface HpcEndpoint {
   `hpc?: { endpoints?: HpcEndpoint[] | null }` — the list replaces wholesale;
   `""` on a field deletes it (docs/adr/0015 semantics).
 - `parseSettingsPatch` gains an `hpc` branch: id grammar, `kind` enum, port
-  1–65535, non-empty `host`; a violation is a 400.
+  1–65535, and an argv-safe `host`/`user`/`keyPath` grammar (first char alnum,
+  never `-`-leading — a settings value must never become an ssh OPTION); a
+  violation is a 400.
 - `viewOf` passes endpoints through (no secret material lives here — the key
   is referenced by path).
 - **Hot-apply, deliberately:** unlike the model route, the HPC section is NOT
@@ -102,9 +104,11 @@ Pure, zero-dependency, in the root build chain after `cron`; tests under
   `F/TO→failed`, `CA→cancelled`, anything unmapped→`unknown`.
 - `job-layout.ts` — Remote Work Dir conventions:
   `defaultWorkDir(projectId) = ~/science-studio/<projectId>`, and per-job dir
-  `<workDir>/.ss-jobs/<cjobId>/` with fixed names `script.sh`, `stdout`,
-  `stderr`, `pid`, `rc`. All names derive from server-generated ids, never
-  user text — so remote paths need no escaping beyond the workDir itself.
+  `<workDir>/.ss-jobs/<cjobId>/` with fixed names `script.sh`, `run.sh`,
+  `stdout`, `stderr`, `pid`, `rc`, plus the safe-path grammar
+  (`isSafeRemotePath`) and the POSIX `shq` escaper. All names derive from
+  server-generated ids, never user text — so remote paths need no escaping
+  beyond the workDir itself.
 
 ## 5 Record — the `ComputeJob` entity
 
@@ -121,15 +125,17 @@ interface ComputeJob {
   kind: "slurm" | "linux";    // snapshot — the row stays self-describing after the endpoint is deleted
   remoteJobId?: string;       // slurm job id / linux pid (set once, at submit)
   name: string;
-  script?: string;            // slurm: full sbatch body snapshot
+  script?: string;            // slurm: the full composed sbatch snapshot
   command?: string;           // linux: command-line snapshot
   resources?: { partition?; nodes?; ntasks?; cpusPerTask?; mem?; time? };
+  remoteDir?: string;         // the per-job dir: the logs route tails from HERE, never re-derived
   state: ComputeJobState;
   exitCode?: number;
   nodeList?: string;
-  sessionKey?: string;        // submitting Session; best-effort (§7)
+  sessionKey?: string;        // submitting Session; best-effort (§7.2)
   error?: string;             // last submit/reconcile error
-  submittedAt: number; startedAt?: number; finishedAt?: number; updatedAt: number;
+  // ISO strings — the record's existing timestamp shape (Run/Subagent).
+  submittedAt: string; startedAt?: string; finishedAt?: string; updatedAt: string;
 }
 ```
 
@@ -165,15 +171,15 @@ one `app/api/hpc/[[...path]]/route.ts` catch-all relaying via `proxyToService`
 
 | Route | Contract |
 |---|---|
-| `GET /api/hpc/binding?projectId` | `{ raw, binding?, error? }` |
-| `PUT /api/hpc/binding?projectId` | body = serialized binding; writes through the Workspace seam |
+| `GET /api/hpc/binding?projectId` | `{ bound, raw?, binding?, error? }` |
+| `PUT /api/hpc/binding?projectId` | body = the binding as a JSON object (the route serializes via the codec); writes through the Workspace seam; manager-gated |
 | `GET /api/hpc/endpoints` | the `hpc` view (endpoints as-is) |
-| `POST /api/hpc/endpoints/:id/probe` | connect + `uname -a` + (`sbatch --version` when slurm) + `mkdir -p` workDir; answers `{ ok, hostname, os, scheduler?, workDirCreated?, errors: [...] }` — per-check, never a thrown 500 |
-| `GET /api/hpc/jobs?projectId` | ledger rows, non-terminal first then newest-first |
+| `POST /api/hpc/endpoints/:id/probe` | connect + `uname -srm` + (`sbatch --version` when slurm) + `mkdir -p ~/science-studio`; answers `{ ok, os?, scheduler?, errors: [...] }` — per-check, never a thrown 500 |
+| `GET /api/hpc/jobs?projectId[&state=]` | ledger rows, non-terminal first then newest-first |
 | `POST /api/hpc/jobs` | submit — §7.1 below |
-| `POST /api/hpc/jobs/:id/cancel` | `scancel <id>` / `kill -TERM -<pid>` (setsid ⇒ pgid=pid); row→`cancelled`; a terminal row answers 409 |
-| `GET /api/hpc/jobs/:id/logs?stream=stdout\|stderr&tailBytes=65536` | `tail -c` over ssh from the stored log paths |
-| `POST /api/hpc/jobs/refresh?projectId` | `poller.tick({ projectId })`, then the fresh list |
+| `POST /api/hpc/jobs/:id/cancel` | `scancel <id>` / `kill -TERM -<pid>` (setsid ⇒ pgid=pid, so the command's children go too); row→`cancelled`; a terminal row answers 409 |
+| `GET /api/hpc/jobs/:id/logs?stream=stdout\|stderr&tailBytes=65536` | `tail -c` over ssh from the stored `remoteDir` |
+| `POST /api/hpc/jobs/refresh?projectId` | `poller.tick({ projectId, resetStrikes: true })`, then the fresh list |
 | `POST /api/hpc/files` | `{ projectId, action: "upload"\|"download", workspacePath, remoteRelPath }`; upload: Workspace `open` → `scpTo`; download: `scpFrom` → Workspace `write` (quota + containment inherited); size caps as other workspace routes |
 
 ### 7.1 Submit flow
@@ -182,28 +188,31 @@ one `app/api/hpc/[[...path]]/route.ts` catch-all relaying via `proxyToService`
 2. **Runaway guard:** count the Project's non-terminal rows on this endpoint;
    `maxConcurrentJobs > 0 && count >= max` → 429 with the limit named.
    (systemPrompt rule §9 is the first line of defence; this is the hard one.)
-3. `mkdir -p` the job dir; write `script.sh` via stdin (slurm) or build the
-   wrapper (linux).
-4. **slurm:** prepend `#SBATCH` directives (resource params + `-J ss-<id8>` +
-   `-o/-e` into the job dir) ABOVE the model's script — Slurm last-directive
-   wins, so a self-authored `#SBATCH` in the body overrides, which is the
-   documented convention. Run `sbatch --parsable` with the script on stdin;
-   parse `jobid` / `jobid;cluster`.
-5. **linux:** `setsid sh -c '<cmd> >stdout 2>stderr; echo $? >rc' & echo $! >
-   pid` under `nohup`; parse the pid.
-6. Upsert the `submitted` (slurm: `pending`) row with remote id, resource
-   snapshot, and the §7.2 session claim.
-7. An `sbatch` that exits 0 but prints an unparsable id: **write no row**,
+3. **slurm:** `mkdir -p` the job dir, upload the composed script
+   (`#SBATCH` header — job-name = the row id, resource params, `-o/-e` into
+   the job dir — ABOVE the model's script, Slurm last-directive-wins so a
+   self-authored `#SBATCH` overrides) via `cat > script.sh` on stdin — the
+   ledger snapshot and the remote bytes are then the same file — and run
+   `sbatch --parsable <script.sh>`. Parse `jobid` / `jobid;cluster`.
+4. **linux:** upload the command as `script.sh` AND a tiny `run.sh` wrapper
+   (`sh script.sh >stdout 2>stderr; echo $? >rc`), then
+   `nohup setsid sh run.sh & echo $! >pid`. The wrapper is what makes the
+   exit marker and the separated streams exist; a finished job whose marker is
+   missing would otherwise reconcile to `unknown` forever.
+5. Upsert the `pending` (slurm) / `submitted` (linux) row with remote id,
+   resource snapshot, `remoteDir`, and the §7.2 session claim.
+6. An `sbatch` that exits 0 but prints an unparsable id: **write no row**,
    answer 502 `{ error: "sbatch reported success but no job id was readable —
    the job may be queued; check the cluster before retrying" }`.
 
 ### 7.2 Session attribution (best effort, no new seam method)
 
-The plugin sends the harness session id it knows from its own agent context;
-the service maps it to a record Session only if the active dsh adapter can
-resolve that runtime key to one (it already owns the mapping); the raw key is
-kept regardless, and the UI only renders the jump link when `sessionKey`
-resolves to a listed Session.
+The pinned harness SDK hands a tool `execute` no session context, so the plugin
+sends no session id; the service keeps a `sessionKey` claim ONLY when it
+resolves to a record Session under the requesting Project (a future manual
+submit from the UI can carry it), and the panel renders the jump chip only for
+resolvable rows. Agent-submitted rows therefore carry no Session in v1 — an
+accepted gap, not a silently broken path.
 
 ## 8 Poller — `src/hpc/poller.ts`
 
@@ -211,14 +220,17 @@ resolves to a listed Session.
 started only by `index.ts`'s `isMain` (cron shape; tests call `tick()`):
 
 - 15 s tick. Re-reads the endpoint list from the settings file each tick
-  (hot-apply). Selects non-terminal + `unknown` rows grouped by endpoint.
-  **Zero rows → zero SSH.** No target, no lock needed — this touches no Run.
-- **slurm:** one batched `squeue -h -o "%i|%t|%D|%n|%r" --job=<ids>` per
+  (hot-apply). Selects non-terminal + `unknown` rows grouped by endpoint,
+  skipping rows already struck out. **Zero rows → zero SSH.** No target, no
+  lock needed — this touches no Run.
+- **slurm:** one batched `squeue -h -o "%i|%T|%P|%N|%r" --job=<ids>` per
   endpoint; when a row leaves `squeue`, one `sacct -n -P -X -j <id>
-  --format=JobID,State,ExitCode,Start,End,Elapsed,NodeList` to settle
-  completed/failed + timings; `unknown` in both answers keeps last-known,
-  bumps an error counter, and stops polling after 3 consecutive failures with
-  the reason recorded.
+  --format=JobID,State,ExitCode,Start,End,NodeList` settles the TERMINAL
+  state + timings (a non-terminal sacct answer is a squeue/sacct race — leave
+  the row alone, no strike; an unrecognized answer is a strike). `unknown` in
+  both answers keeps last-known, bumps an error counter, and stops polling
+  after 3 consecutive failures with the reason recorded (a manual Refresh
+  re-arms).
 - **linux:** one script per endpoint probes each job dir: `rc` present →
   `completed`/`failed` by exit code; else `kill -0 <pid>` → `running`; else
   `unknown`. A row cancelled by the route settles on its `rc`.
@@ -233,8 +245,9 @@ started only by `index.ts`'s `isMain` (cron shape; tests call `tick()`):
   views, no `@deepseek-ai/*`.
 - Patch config: `{ project: { id }, service?: string }` — service URL from
   `SCIENCE_STUDIO_SERVICE_URL` env (default `http://127.0.0.1:3001`, the
-  molql-plugin convention); the fetch uses `node:http` (no global-fetch
-  assumption on the child's runtime).
+  molql-plugin convention); the fetch uses the child's GLOBAL `fetch` — the
+  same choice the shipped molql plugin already relies on (the child runs on the
+  dsh CLI's own Node, where it is stable).
 - Tools: `hpc_submit` (`{ name, script | command, partition?, nodes?,
   ntasks?, cpusPerTask?, mem?, time? }`), `hpc_jobs` (`{ state? }`),
   `hpc_cancel` (`{ jobId }`), `hpc_logs` (`{ jobId, stream? }`),
@@ -286,15 +299,18 @@ successful 400-shaped answer consumed politely by the tools/panel, not a
 - `packages/record/test`: ComputeJob upsert/list, deleteProject cascade (both
   store impls).
 - `packages/transport/test/seams.test.ts`: new exports on the list.
-- `services/transport-service/test/`: `parseSettingsPatch` hpc branch (400s);
-  submit flow against a **fake `ssh` PATH shim** (a script answering canned
-  sbatch/squeue/sacct/tail outputs) — happy slurm + linux, ambiguous sbatch,
-  guard 429, cancel, logs; poller reconcile incl. 3-strike unknown; routes
-  400/404/409/429/502 semantics.
+- `services/transport-service/test/`: `parseSettingsPatch` hpc branch (400s)
+  and the argv-safe `host`/`user`/`keyPath` grammar; the pure SSH argv builder
+  (`buildSshArgs`, `sshOptions`, `remotePath` tilde/quoting); submit flow
+  against a **scripted `SshRunner` double injected via `backend.hpcSsh`** —
+  happy slurm (mkdir→upload→sbatch) + linux (runner + exit marker), ambiguous
+  sbatch, guard 429, cancel, logs; poller reconcile incl. 3-strike unknown +
+  the squeue/sacct race guard; routes 400/404/409/429/502 semantics. The real
+  spawner stays reachable for a PATH shim via `SS_SSH_BIN`/`SS_SCP_BIN`.
 - `packages/transport-dsh/test/`: plugin fail-soft + inert-without-project;
   tool fetch error mapping; `writeHpcPatch` YAML snapshot.
-- `apps/web/test/`: jobs-panel regression (mocked `/api/hpc`, re-render
-  invariants); HPC tab smoke (browserless where possible).
+- `apps/web/test/`: jobs-panel regression (mocked `/api/hpc` rows render,
+  double-click → detail tab, Settings → HPC smoke) over the shared harness.
 
 ## 13 Explicitly deferred (v1 boundaries)
 

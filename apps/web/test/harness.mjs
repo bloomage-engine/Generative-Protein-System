@@ -303,6 +303,17 @@ export async function mockWorkbenchSurfaces(page, opts = {}) {
   await page.route("**/api/workspace/file*", (route) =>
     route.fulfill({ status: 200, headers: { "content-type": "text/plain" }, body: "hi" }),
   );
+  // The HPC surface (docs/adr/0024): the Jobs section polls the ledger, and
+  // the Settings tab reads endpoints/binding. An empty ledger is the honest
+  // "no cluster configured / no jobs" shape.
+  await page.route("**/api/hpc/**", (route) => {
+    const path = new URL(route.request().url()).pathname.replace(/^.*\/api\/hpc/, "");
+    const json = (body) =>
+      route.fulfill({ status: 200, headers: { "content-type": "application/json" }, body });
+    if (path.startsWith("/jobs")) return json('{"jobs":[]}');
+    if (path.startsWith("/binding")) return json('{"bound":false}');
+    return json('{"endpoints":[]}');
+  });
   return { transportPosts };
 }
 

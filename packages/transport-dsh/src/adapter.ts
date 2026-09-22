@@ -37,6 +37,7 @@ import {
   createCommandBridge,
   writeBridgePatch,
   writeCronPatch,
+  writeHpcPatch,
   writeProjectPatch,
   writeSubagentPatch,
   type DshCommandBridge,
@@ -111,6 +112,12 @@ export interface DshRuntimeAdapterOptions {
    * package's own build output.
    */
   subagentPluginPath?: string;
+  /**
+   * The child-side HPC plugin this adapter's launch patch mounts — the five
+   * `hpc_*` tools whose every call fetches the service's `/api/hpc/*`
+   * (docs/adr/0024). Defaults to this package's own build output.
+   */
+  hpcPluginPath?: string;
   /** Where the socket and its launch patch live (default under the temp dir). */
   bridgeDir?: string;
   /** Test seam: inject the bridge client (defaults to the real socket client). */
@@ -172,6 +179,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private readonly projectPluginPath: string;
   private readonly cronPluginPath: string;
   private readonly subagentPluginPath: string;
+  private readonly hpcPluginPath: string;
   private readonly bridgeDir: string;
   private readonly createBridge: (endpoint: string) => DshCommandBridge;
   /** This child generation's command bridge, or `null` when it could not be set up. */
@@ -207,6 +215,8 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       options.cronPluginPath ?? fileURLToPath(new URL("./cron-plugin.js", import.meta.url));
     this.subagentPluginPath =
       options.subagentPluginPath ?? fileURLToPath(new URL("./subagent-plugin.js", import.meta.url));
+    this.hpcPluginPath =
+      options.hpcPluginPath ?? fileURLToPath(new URL("./hpc-plugin.js", import.meta.url));
     this.bridgeDir = options.bridgeDir ?? join(tmpdir(), "science-studio", "dsh-bridge");
     this.createBridge = options.createBridge ?? createCommandBridge;
     this.subagentRegistry = new SubagentRegistry(
@@ -340,6 +350,28 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
         );
       } catch (err) {
         console.warn("[dsh] cron plugin unavailable", err);
+      }
+    }
+    // The HPC plugin rides a FOURTH launch patch (docs/adr/0024): the five
+    // `hpc_*` tools for this Project. It is a pure channel to the service's
+    // `/api/hpc/*` — the service owns SSH — so its config carries only the
+    // Project identity (the tools' scope) and, when the launch env declared
+    // one, the service base URL the tools fetch.
+    if (opts.project) {
+      try {
+        const service = process.env.SCIENCE_STUDIO_SERVICE_URL;
+        patches.push(
+          await writeHpcPatch({
+            dir: this.bridgeDir,
+            pluginPath: this.hpcPluginPath,
+            config: {
+              project: opts.project,
+              ...(service ? { service } : {}),
+            },
+          }),
+        );
+      } catch (err) {
+        console.warn("[dsh] hpc plugin unavailable", err);
       }
     }
 

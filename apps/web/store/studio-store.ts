@@ -33,8 +33,8 @@ export interface Tab {
  */
 export type LeftView = "thread" | "project";
 
-/** The right pane's three collapsible modules. */
-export type RightSectionId = "files" | "subagents" | "cron";
+/** The right pane's four collapsible modules. */
+export type RightSectionId = "files" | "subagents" | "cron" | "jobs";
 
 type State = {
   projectId: string | null;
@@ -67,11 +67,11 @@ type State = {
   /** Which right-pane modules are expanded (in memory; reload returns to defaults). */
   rightSections: Record<RightSectionId, boolean>;
   /**
-   * Pixel heights the user has dragged for the two non-Files modules, kept
+   * Pixel heights the user has dragged for the three non-Files modules, kept
    * across a collapse. Files itself is the flexible filler (it grows to fill),
    * so it has no stored height.
    */
-  rightHeights: { subagents: number; cron: number };
+  rightHeights: { subagents: number; cron: number; jobs: number };
   /** The Subagents panel's History toggle — finished runs, not only running. */
   subagentsShowHistory: boolean;
   /** The deployment settings dialog. Chrome state: never keyed into SessionView. */
@@ -121,16 +121,22 @@ type State = {
   revealLeftView: (view: LeftView) => void;
   toggleRight: () => void;
   toggleRightSection: (id: RightSectionId) => void;
-  setRightSectionHeight: (id: "subagents" | "cron", height: number) => void;
+  setRightSectionHeight: (id: "subagents" | "cron" | "jobs", height: number) => void;
   /**
-   * Atomically set both stored heights in one update — the edge between the two
+   * Atomically set all stored heights in one update — the edge between two
    * fixed modules redistributes space between them, and a single set keeps the
    * pair consistent (no half-applied frame).
    */
-  setRightHeights: (heights: { subagents: number; cron: number }) => void;
+  setRightHeights: (heights: { subagents: number; cron: number; jobs: number }) => void;
   setSubagentsShowHistory: (show: boolean) => void;
   /** Open (or refocus) one subagent child session in the tab system. */
   openSubagent: (childId: string, name: string, sessionId: string | null) => void;
+  /**
+   * Open (or refocus) one Compute Job's detail/log tab. The tab lives in the
+   * `hpc:<jobId>` namespace and is PROJECT-scoped (the ledger is per Project —
+   * docs/adr/0024), so it needs no session memory like a subagent tab does.
+   */
+  openJob: (jobId: string, name: string) => void;
   openSettings: () => void;
   closeSettings: () => void;
   /** Signal that a run finished; the status bar's metrics hook depends on it. */
@@ -155,8 +161,8 @@ export const useStudioStore = create<State>()((set) => ({
   leftView: "thread",
   leftPanel: true,
   rightPanel: true,
-  rightSections: { files: true, subagents: false, cron: false },
-  rightHeights: { subagents: 200, cron: 200 },
+  rightSections: { files: true, subagents: false, cron: false, jobs: false },
+  rightHeights: { subagents: 200, cron: 200, jobs: 200 },
   subagentsShowHistory: false,
   settingsOpen: false,
   runsRevision: 0,
@@ -287,6 +293,13 @@ export const useStudioStore = create<State>()((set) => ({
       const tabs = exists
         ? s.tabs
         : [...s.tabs, { id, path: id, name, session: sessionId ?? undefined }];
+      return { tabs, activeTabPath: id };
+    }),
+  openJob: (jobId, name) =>
+    set((s) => {
+      const id = `hpc:${jobId}`;
+      const exists = s.tabs.some((t) => t.id === id);
+      const tabs = exists ? s.tabs : [...s.tabs, { id, path: id, name }];
       return { tabs, activeTabPath: id };
     }),
   openSettings: () => set({ settingsOpen: true }),

@@ -4,8 +4,8 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isCronTaskPath } from "@science-studio/transport-client";
-import { cronIcon, fileIcon, subagentIcon } from "./file-icons";
-import { isSubagentTab, kindFor } from "./file-utils";
+import { cronIcon, fileIcon, hpcJobIcon, subagentIcon } from "./file-icons";
+import { isHpcJobTab, isSubagentTab, kindFor } from "./file-utils";
 import { useStudioStore } from "@/store/studio-store";
 
 /** The open-files tab strip (center of the top bar). */
@@ -40,7 +40,7 @@ export function TabStrip() {
                 : "text-muted-foreground hover:bg-accent/60 hover:text-foreground")
             }
           >
-            {isCronTaskPath(tab.path) ? cronIcon() : isSubagentTab(tab.path) ? subagentIcon() : fileIcon(kindFor(tab.name))}
+            {isCronTaskPath(tab.path) ? cronIcon() : isSubagentTab(tab.path) ? subagentIcon() : isHpcJobTab(tab.path) ? hpcJobIcon() : fileIcon(kindFor(tab.name))}
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="max-w-[10rem] truncate">{tab.name}</span>

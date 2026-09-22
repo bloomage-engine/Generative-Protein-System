@@ -1,7 +1,27 @@
-import type { Id, Project, Run, Session, PersistedTranscript, Subagent } from "./types.js";
+import type {
+  ComputeJob,
+  Id,
+  Project,
+  Run,
+  Session,
+  PersistedTranscript,
+  Subagent,
+} from "./types.js";
 
 // The domain vocabulary, listed explicitly so this file is the package surface.
-export type { Id, Project, Run, RunStatus, Session, PersistedTranscript, Subagent } from "./types.js";
+export type {
+  ComputeJob,
+  ComputeJobResources,
+  ComputeJobState,
+  Id,
+  Project,
+  Run,
+  RunStatus,
+  Session,
+  PersistedTranscript,
+  Subagent,
+} from "./types.js";
+
 export { createInMemoryRecordStore } from "./memory.js";
 export { createJsonlRecordStore } from "./jsonl.js";
 
@@ -35,7 +55,7 @@ export interface RecordStore {
   archiveProject(id: Id, archivedAt: string): Promise<Project>;
   /** Clear a Project's archived flag; returns the updated row. */
   unarchiveProject(id: Id): Promise<Project>;
-  /** Remove a Project and every Session/Run under it. */
+  /** Remove a Project and every Session/Run (and Compute Job — docs/adr/0024) under it. */
   deleteProject(id: Id): Promise<void>;
 
   /**
@@ -70,4 +90,11 @@ export interface RecordStore {
   /** A parent-session's subagents. NO ORDER is guaranteed (insertion/readdir);
    *  consumers that need a deterministic order sort on their own (the panel sorts by startedAt). */
   listSubagents(parentSessionId: Id): Promise<Subagent[]>;
+  // Durable Compute Jobs (docs/adr/0024): the ledger the Jobs panel reads and
+  // the service's poller reconciles. The SERVICE writes it — no adapter view
+  // of these methods exists on purpose.
+  upsertComputeJob(job: ComputeJob): Promise<void>;
+  loadComputeJob(id: Id): Promise<ComputeJob | null>;
+  /** A Project's Compute Jobs. NO ORDER is guaranteed (readdir); consumers sort. */
+  listComputeJobs(projectId: Id): Promise<ComputeJob[]>;
 }

@@ -52,8 +52,10 @@ async function defaultStartApi(env: NodeJS.ProcessEnv): Promise<{ port: number; 
   await app.listen({ port: 0, host: "127.0.0.1" });
   // The packaged host owns the process, so it must start the cron controller
   // itself: `index.ts`'s `isMain` branch never runs here (its `onClose` hook
-  // stops the scheduler).
+  // stops the scheduler). Same for the HPC job poller (docs/adr/0024) — without
+  // it the Compute Job ledger would freeze at submit state in the Desktop App.
   app.cronScheduler.start();
+  app.hpcPoller.start();
   const address = app.server.address();
   const port = typeof address === "object" && address !== null ? address.port : 0;
   return { port, close: () => app.close() };

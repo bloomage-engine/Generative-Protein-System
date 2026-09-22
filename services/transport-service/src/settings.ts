@@ -10,6 +10,9 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
+  HpcEndpointSettings,
+  HpcSettings,
+  HpcSettingsPatch,
   ModelSettings,
   RuntimeSettings,
   RuntimeSettingsPatch,
@@ -19,6 +22,7 @@ import type {
   ThreadSettings,
   ThreadSettingsPatch,
 } from "@science-studio/transport";
+import { isSafeRemotePath, isValidEndpointId } from "@science-studio/hpc";
 
 export function resolveSettingsPath(env: NodeJS.ProcessEnv = process.env): string {
   if (env.SS_SETTINGS_PATH) return env.SS_SETTINGS_PATH;
@@ -27,23 +31,117 @@ export function resolveSettingsPath(env: NodeJS.ProcessEnv = process.env): strin
 }
 
 export function emptySettings(): RuntimeSettings {
-  return { model: {}, plugins: {}, agent: {}, subagents: {}, thread: {} };
+  return { model: {}, plugins: {}, agent: {}, subagents: {}, thread: {}, hpc: { endpoints: [] } };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** A plain hostname / IPv4 / IPv6-literal / ssh-config alias — first char alnum. */
+const HOST_GRAMMAR = /^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,252}$/;
+const USER_GRAMMAR = /^[A-Za-z0-9._-]{1,63}$/;
+
+/**
+ * Validate one endpoint definition into a clean `HpcEndpointSettings` (the
+ * single source for both the `PUT` path and a hand-edited settings file). An
+ * endpoint the service could not SSH with is refused at the door: a typo in
+ * `host`/`id`/`kind` is a config bug, and a broken row must not poison the
+ * whole list.
+ */
+export function validateHpcEndpoint(raw: unknown, index: number): { endpoint: HpcEndpointSettings } | { error: string } {
+  const label = `hpc.endpoints[${index}]`;
+  if (!isPlainObject(raw)) return { error: `${label} must be an object` };
+  const text = (key: string): string | undefined => {
+    const value = raw[key];
+    return typeof value === "string" && value !== "" ? value : undefined;
+  };
+  const id = text("id") ?? "";
+  if (!isValidEndpointId(id)) return { error: `${label}.id must match [a-z0-9][a-z0-9-]{0,63}` };
+  const name = text("name");
+  if (!name) return { error: `${label}.name is required` };
+  const kind = text("kind");
+  if (kind !== "slurm" && kind !== "linux") return { error: `${label}.kind must be "slurm" or "linux"` };
+  // host/user/keyPath reach the ssh argv positionally, so the one thing they
+  // must NEVER be is an option: a leading `-` would let a settings value drive
+  // ssh's own parser (`-oProxyCommand=…` executes on the SERVICE host). The
+  // grammars below forbid that by construction (first char alnum, no shell).
+  const host = text("host");
+  if (!host || !HOST_GRAMMAR.test(host)) {
+    return { error: `${label}.host must be a plain hostname/IP/ssh-config alias (no spaces, not starting with '-')` };
+  }
+  const user = text("user");
+  if (user !== undefined && !USER_GRAMMAR.test(user)) {
+    return { error: `${label}.user must be a plain username` };
+  }
+  const keyPath = text("keyPath");
+  if (keyPath !== undefined && !isSafeRemotePath(keyPath)) {
+    return { error: `${label}.keyPath must be a safe path (no spaces, no '..', not starting with '-')` };
+  }
+  const port = raw.port;
+  if (port !== undefined && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)) {
+    return { error: `${label}.port must be an integer between 1 and 65535` };
+  }
+  const maxConcurrentJobs = raw.maxConcurrentJobs;
+  if (
+    maxConcurrentJobs !== undefined &&
+    (typeof maxConcurrentJobs !== "number" || !Number.isInteger(maxConcurrentJobs) || maxConcurrentJobs < 0)
+  ) {
+    return { error: `${label}.maxConcurrentJobs must be a non-negative integer` };
+  }
+  const endpoint: HpcEndpointSettings = {
+    id,
+    name,
+    kind,
+    host,
+    ...(text("user") ? { user: text("user") } : {}),
+    ...(typeof port === "number" ? { port } : {}),
+    ...(text("keyPath") ? { keyPath: text("keyPath") } : {}),
+    ...(text("defaultPartition") ? { defaultPartition: text("defaultPartition") } : {}),
+    ...(text("defaultTime") ? { defaultTime: text("defaultTime") } : {}),
+    ...(typeof maxConcurrentJobs === "number" ? { maxConcurrentJobs } : {}),
+  };
+  return { endpoint };
+}
+
+/** Validate and sanitize a whole endpoint list (duplicate ids refused). */
+export function validateHpcEndpoints(value: unknown): { endpoints: HpcEndpointSettings[] } | { error: string } {
+  if (!Array.isArray(value)) return { error: "hpc.endpoints must be an array" };
+  const endpoints: HpcEndpointSettings[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < value.length; index += 1) {
+    const parsed = validateHpcEndpoint(value[index], index);
+    if ("error" in parsed) return parsed;
+    if (seen.has(parsed.endpoint.id)) return { error: `duplicate endpoint id: ${parsed.endpoint.id}` };
+    seen.add(parsed.endpoint.id);
+    endpoints.push(parsed.endpoint);
+  }
+  return { endpoints };
+}
+
 export async function loadSettings(path: string): Promise<RuntimeSettings> {
   try {
     const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
     if (!isPlainObject(parsed)) throw new Error("settings must be a JSON object");
+    // A hand-edited endpoint that cannot work is dropped WITH A WARNING rather
+    // than poisoning the file — the same honesty as the rest of the loader.
+    let hpc: HpcSettings = { endpoints: [] };
+    const hpcRaw = isPlainObject(parsed.hpc) ? parsed.hpc.endpoints : undefined;
+    if (Array.isArray(hpcRaw)) {
+      const validated = validateHpcEndpoints(hpcRaw);
+      if ("error" in validated) {
+        console.warn(`[transport-service] ignoring invalid hpc.endpoints in ${path}: ${validated.error}`);
+      } else {
+        hpc = { endpoints: validated.endpoints };
+      }
+    }
     return {
       model: isPlainObject(parsed.model) ? (parsed.model as ModelSettings) : {},
       plugins: isPlainObject(parsed.plugins) ? parsed.plugins : {},
       agent: isPlainObject(parsed.agent) ? parsed.agent : {},
       subagents: isPlainObject(parsed.subagents) ? (parsed.subagents as SubagentSettings) : {},
       thread: isPlainObject(parsed.thread) ? (parsed.thread as ThreadSettings) : {},
+      hpc,
     };
   } catch (err) {
     if ((err as { code?: string }).code !== "ENOENT") {
@@ -94,12 +192,21 @@ export function mergeSettings(current: RuntimeSettings, patch: RuntimeSettingsPa
     if (value === null) delete thread.visibleMessageCount;
     else if (value !== undefined) thread.visibleMessageCount = value;
   }
+  // The hpc section is a list replace (the whole endpoint inventory), with
+  // `null` clearing every endpoint.
+  const hpc: HpcSettings = { endpoints: [...(current.hpc?.endpoints ?? [])] };
+  if (patch.hpc !== undefined && "endpoints" in patch.hpc) {
+    const value = patch.hpc.endpoints;
+    if (value === null) hpc.endpoints = [];
+    else if (value !== undefined) hpc.endpoints = [...value];
+  }
   return {
     model,
     plugins: patch.plugins ? { ...current.plugins, ...patch.plugins } : current.plugins,
     agent: patch.agent ? { ...current.agent, ...patch.agent } : current.agent,
     subagents,
     thread,
+    hpc,
   };
 }
 
@@ -115,6 +222,8 @@ export function viewOf(
     agent: settings.agent,
     subagents: { ...(settings.subagents ?? {}) },
     thread: { ...(settings.thread ?? {}) },
+    // An endpoint's key is referenced by PATH — show the endpoints as-is.
+    hpc: { endpoints: [...(settings.hpc?.endpoints ?? [])] },
     runtime: env.TRANSPORT_RUNTIME ?? "openclaw",
     settingsPath,
   };
@@ -192,6 +301,21 @@ export function parseSettingsPatch(
       else return { error: "thread.visibleMessageCount must be an integer between 10 and 100" };
     }
     patch.thread = thr;
+  }
+  if ("hpc" in body) {
+    if (!isPlainObject(body.hpc)) return { error: "hpc must be an object" };
+    const hpc: HpcSettingsPatch = {};
+    if ("endpoints" in body.hpc) {
+      const value = body.hpc.endpoints;
+      if (value === null) {
+        hpc.endpoints = null;
+      } else {
+        const validated = validateHpcEndpoints(value);
+        if ("error" in validated) return { error: validated.error };
+        hpc.endpoints = validated.endpoints;
+      }
+    }
+    patch.hpc = hpc;
   }
   return { patch };
 }

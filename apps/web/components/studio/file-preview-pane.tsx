@@ -15,8 +15,9 @@ import {
 } from "@science-studio/transport-client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { isSubagentTab, isTextEditable, kindFor, languageFor, subagentTabChildId } from "./file-utils";
+import { isHpcJobTab, isSubagentTab, isTextEditable, kindFor, languageFor, subagentTabChildId } from "./file-utils";
 import { CronTaskRenderer } from "./renderers/CronTaskRenderer";
+import { HpcJobRenderer } from "./renderers/HpcJobRenderer";
 import { ImageRenderer } from "./renderers/ImageRenderer";
 import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
 import { CodeRenderer } from "./renderers/CodeRenderer";
@@ -69,6 +70,8 @@ export function FilePreviewPane() {
         <TabPanel key={tab.id} active={tab.path === activeTabPath}>
           {isSubagentTab(tab.path) ? (
             <SubagentPreview path={tab.path} name={tab.name} session={tab.session} />
+          ) : isHpcJobTab(tab.path) ? (
+            <HpcJobRenderer path={tab.path} name={tab.name} />
           ) : (
             <Preview path={tab.path} name={tab.name} />
           )}

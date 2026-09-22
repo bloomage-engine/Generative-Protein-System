@@ -57,6 +57,9 @@ export {
 } from "./workspace.js";
 export { RuntimeBindingError } from "./runtime.js";
 export type {
+  HpcEndpointSettings,
+  HpcSettings,
+  HpcSettingsPatch,
   ModelSettings,
   ModelSettingsPatch,
   RuntimeSettings,

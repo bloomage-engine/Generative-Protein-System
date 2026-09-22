@@ -13,6 +13,7 @@ import {
   FolderOpen,
   Image,
   Palette,
+  Server,
 } from "lucide-react";
 import { isImageFile, isStructureFile, type FileKind } from "./file-utils";
 
@@ -41,6 +42,10 @@ export function cronIcon(): ReactNode {
 
 export function subagentIcon(): ReactNode {
   return <Bot className="size-3.5 text-violet-500" />;
+}
+
+export function hpcJobIcon(): ReactNode {
+  return <Server className="size-3.5 text-cyan-600 dark:text-cyan-400" />;
 }
 
 export function fileIconForName(

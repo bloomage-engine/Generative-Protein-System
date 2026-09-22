@@ -94,6 +94,19 @@ export function subagentTabChildId(path: string): string {
 }
 
 /**
+ * A Compute Job detail/log tab (docs/adr/0024) in the same synthetic-tab
+ * tradition as `subagent:` — a ledger row, not a file; the preview pane
+ * dispatches it before any file logic.
+ */
+export function isHpcJobTab(path: string): boolean {
+  return path.startsWith("hpc:");
+}
+
+export function hpcTabJobId(path: string): string {
+  return isHpcJobTab(path) ? path.slice("hpc:".length) : "";
+}
+
+/**
  * True when the file is text-based and can be viewed/edited in source mode.
  * Cron tasks are excluded — they have their own dedicated editor UI.
  * Note: this only checks the file name, not the path; the caller must also

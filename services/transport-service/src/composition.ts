@@ -60,6 +60,11 @@ export interface Backend {
   capabilities?: RuntimeCapabilities;
   /** The deployment settings file the `/api/settings` routes read and write. */
   settingsPath?: string;
+  /**
+   * Test seam: replace the SSH runner the HPC surface uses (docs/adr/0024).
+   * Absent = the real system-OpenSSH spawner.
+   */
+  hpcSsh?: import("./hpc/ssh.js").SshRunner;
 }
 
 /** The out-of-tree contract a private enterprise module implements. */

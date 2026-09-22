@@ -86,6 +86,7 @@ test("the settings contract types are importable and usable", () => {
     agent: {},
     subagents: {},
     thread: {},
+    hpc: { endpoints: [] },
     runtime: "dsh",
     settingsPath: "/tmp/settings.json",
   };

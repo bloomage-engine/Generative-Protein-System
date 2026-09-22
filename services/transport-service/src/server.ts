@@ -36,6 +36,9 @@ import { registerCronRoutes } from "./cron/routes.js";
 import { createCronScheduler } from "./cron/scheduler.js";
 import { createCronStore } from "./cron/store.js";
 import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS } from "./directory.js";
+import { registerHpcRoutes } from "./hpc/routes.js";
+import { createHpcPoller } from "./hpc/poller.js";
+import { createSshRunner } from "./hpc/ssh.js";
 import { canonicalSessionKey, createProjectScopes } from "./project-scope.js";
 import {
   computeInteractionsForSelection,
@@ -518,6 +521,33 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     cronScheduler.stop();
   });
   registerCronRoutes(app, { scope, store: cronStore, scheduler: cronScheduler });
+
+  // -- HPC compute (service-owned remote execution, docs/adr/0024) -----------
+  // Like the cron scheduler, the poller is a controller: decorated on the app,
+  // started ONLY by `index.ts`'s `isMain`; tests and embedders call `tick()`.
+  // `backend.hpcSsh` is the test seam (a scripted runner); production builds
+  // the real system-OpenSSH spawner. Routes never ask the cluster for state —
+  // the ledger is the read model; submit/cancel/probe/staging are the writes.
+  const ssh = backend.hpcSsh ?? (await createSshRunner());
+  const loadHpcEndpoints = async () => (await loadSettings(settingsPath)).hpc?.endpoints ?? [];
+  const hpcPoller = createHpcPoller({
+    records,
+    projects: async () => (await directory.listProjects()).map((project) => project.id),
+    endpoints: loadHpcEndpoints,
+    ssh,
+  });
+  app.decorate("hpcPoller", hpcPoller);
+  app.addHook("onClose", async () => {
+    hpcPoller.stop();
+  });
+  registerHpcRoutes(app, {
+    scope,
+    records,
+    settingsPath,
+    ssh,
+    poller: hpcPoller,
+    ...(backend.workspaceLimits ? { workspaceLimits: backend.workspaceLimits } : {}),
+  });
 
   // -- Standing watch (NDJSON, long-lived, NOT [DONE]-terminated) ------------
   app.get("/api/transport/watch", async (request, reply) => {

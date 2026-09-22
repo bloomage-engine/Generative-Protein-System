@@ -1,4 +1,12 @@
-import type { Id, Project, Run, Session, PersistedTranscript, Subagent } from "./types.js";
+import type {
+  ComputeJob,
+  Id,
+  Project,
+  Run,
+  Session,
+  PersistedTranscript,
+  Subagent,
+} from "./types.js";
 import type { RecordStore } from "./index.js";
 
 /**
@@ -12,6 +20,7 @@ export function createInMemoryRecordStore(): RecordStore {
   const runs = new Map<Id, Run>();
   const transcripts = new Map<Id, PersistedTranscript>();
   const subagents = new Map<Id, Subagent>();
+  const computeJobs = new Map<Id, ComputeJob>();
 
   const clone = <T>(v: T): T => structuredClone(v);
   const ordered = <T>(map: Map<Id, T>, matches: (v: T) => boolean): T[] =>
@@ -66,6 +75,11 @@ export function createInMemoryRecordStore(): RecordStore {
       }
       for (const sub of [...subagents.values()]) {
         if (projectSessions.has(sub.parentSessionId)) subagents.delete(sub.id);
+      }
+      // Compute Jobs belong to the Project (docs/adr/0024); deleting the
+      // Project cascades the ROWS only — a delete never touches the cluster.
+      for (const job of [...computeJobs.values()]) {
+        if (job.projectId === id) computeJobs.delete(job.id);
       }
     },
     async addSession(session: Session): Promise<Session> {
@@ -141,6 +155,19 @@ export function createInMemoryRecordStore(): RecordStore {
     },
     async listSubagents(parentSessionId: Id): Promise<Subagent[]> {
       return ordered(subagents, (s) => s.parentSessionId === parentSessionId);
+    },
+    // Durable Compute Jobs (docs/adr/0024): the service writes these directly
+    // — there is no adapter view of them, so the deletion cascade is the only
+    // lifecycle coupling to the rest of the store.
+    async upsertComputeJob(job: ComputeJob): Promise<void> {
+      computeJobs.set(job.id, clone(job));
+    },
+    async loadComputeJob(id: Id): Promise<ComputeJob | null> {
+      const job = computeJobs.get(id);
+      return job ? clone(job) : null;
+    },
+    async listComputeJobs(projectId: Id): Promise<ComputeJob[]> {
+      return ordered(computeJobs, (job) => job.projectId === projectId);
     },
   };
 }
