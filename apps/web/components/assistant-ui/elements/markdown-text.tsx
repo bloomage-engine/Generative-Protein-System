@@ -7,7 +7,7 @@ import {
   useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown";
 import type { TextMessagePartProps } from "@assistant-ui/react";
-import { type ComponentProps, type FC } from "react";
+import { type ComponentProps, type FC, useMemo } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 import {
   MarkdownText as BaseMarkdownText,
   resolveFileReference,
+  resolveInlineFileReference,
+  useWorkspaceFileLink,
   useWorkspaceOpen,
   type MarkdownComponents,
 } from "@science-studio/transport-client";
@@ -87,6 +89,47 @@ const WorkspaceAwareLink: FC<ComponentProps<"a">> = ({
     <a className={classes} href={href} {...props}>
       {children}
     </a>
+  );
+};
+
+/**
+ * Inline code that names a workspace file becomes a clickable link ONCE the
+ * workspace confirms the file exists; anything else (a tool name, a shell
+ * command, a directory) stays ordinary inline code. Renders monospace but in
+ * the link skin (blue, underlined).
+ */
+const InlineWorkspaceCode: FC<{ code: string; className?: string }> = ({
+  code,
+  className,
+}) => {
+  const onOpen = useWorkspaceOpen();
+  const ref = useMemo(() => resolveInlineFileReference(code), [code]);
+  const state = useWorkspaceFileLink(ref?.workspacePath ?? null);
+
+  if (ref && state === "exists" && onOpen) {
+    return (
+      <button
+        type="button"
+        title={ref.workspacePath}
+        className={cn(
+          "aui-md-a text-primary hover:text-primary/80 cursor-pointer font-mono text-[0.85em] underline underline-offset-2",
+          className,
+        )}
+        onClick={() => onOpen(ref)}
+      >
+        {code}
+      </button>
+    );
+  }
+  return (
+    <code
+      className={cn(
+        "aui-md-inline-code bg-muted rounded-md px-1.5 py-0.5 font-mono text-[0.85em]",
+        className,
+      )}
+    >
+      {code}
+    </code>
   );
 };
 
@@ -250,18 +293,16 @@ const defaultComponents: MarkdownComponents = {
       {...props}
     />
   ),
-  code: function Code({ className, ...props }) {
+  code: function Code({ className, children, ...props }) {
     const isCodeBlock = useIsMarkdownCodeBlock();
-    return (
-      <code
-        className={cn(
-          !isCodeBlock &&
-            "aui-md-inline-code bg-muted rounded-md px-1.5 py-0.5 font-mono text-[0.85em]",
-          className,
-        )}
-        {...props}
-      />
-    );
+    if (isCodeBlock) {
+      return (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    }
+    return <InlineWorkspaceCode code={String(children ?? "")} className={className} />;
   },
   CodeHeader,
 };
