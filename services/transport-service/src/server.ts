@@ -62,7 +62,7 @@ declare module "fastify" {
 }
 
 export async function createServer(backend: Backend): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: false, bodyLimit: maxJsonBodyBytes(process.env) });
 
   await app.register(cors, {
     origin: backend.cors.origin,
@@ -698,6 +698,25 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
   });
 
   return app;
+}
+
+/**
+ * The cap on a buffered JSON body (Fastify's default is 1 MiB).
+ *
+ * The transport route's body carries the client's WHOLE claimed transcript in
+ * `state` (assistant-ui round-trips it on every send and probe), so it grows
+ * with the conversation — the default rejected a grown session with
+ * `FST_ERR_CTP_BODY_TOO_LARGE` (413) BEFORE the handler ran, wedging the
+ * thread: every send and the mount probe failed identically. Streaming bodies
+ * (the octet-stream upload parser) never pass through this limit; they keep
+ * their own per-route caps. Override with `TRANSPORT_MAX_BODY_BYTES`.
+ */
+const DEFAULT_MAX_BODY_BYTES = 16 * 1024 * 1024;
+
+function maxJsonBodyBytes(env: Record<string, string | undefined>): number {
+  const raw = env.TRANSPORT_MAX_BODY_BYTES;
+  if (raw && /^\d+$/.test(raw) && Number(raw) > 0) return Number(raw);
+  return DEFAULT_MAX_BODY_BYTES;
 }
 
 /** The `AttachmentRef` an upload yields (a workspace reference). */

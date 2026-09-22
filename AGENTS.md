@@ -187,6 +187,15 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   claim (the client carries it from `TransportApiProvider`, and the web's
   `/api/transport/commands` hop relays the query), so it is the Project's own
   adapter's catalog.
+- **JSON bodies are capped at 16 MiB** (`TRANSPORT_MAX_BODY_BYTES` overrides,
+  service env). The transport POST carries the client's WHOLE claimed
+  transcript in `state` (assistant-ui round-trips `agentStateRef.current` on
+  every send and probe), so it grows with the conversation — Fastify's default
+  1 MiB `bodyLimit` answered `413 FST_ERR_CTP_BODY_TOO_LARGE` BEFORE the
+  handler ran, wedging the thread (every send and the mount probe failed the
+  same way). Streaming bodies (the octet-stream upload parser) never pass
+  through this limit; they keep their own caps. Guard:
+  `services/transport-service/test/body-limit.test.ts`.
 - Frontend is assistant-ui's `useAssistantTransportRuntime`. It sends user
   messages as **`message.parts`** (array of `{type:"text",text}`), NOT
   `message.content`; `normalizeCommands` reads `msg.content ?? msg.parts`.
