@@ -9,6 +9,7 @@ import {
 import { MolqlError, MOLQL_TOOL_NAME } from "@science-studio/molql-viewer/directive";
 import { MOLQL_MEASUREMENTS_TOOL_NAME } from "@science-studio/molql-viewer/measurement";
 import { executeAction, getRegisteredActions } from "@/lib/frontend-actions/registry";
+import { planDispatch, type CompletedToolCall } from "@/lib/frontend-actions/dispatch-plan";
 // Side-effect imports: register the `molql` and `measurements` action handlers.
 import "@/lib/frontend-actions/molql";
 import "@/lib/frontend-actions/measurements";
@@ -46,7 +47,7 @@ function subscribe(listener: () => void): () => void {
  */
 function actionSignature(messages: readonly unknown[]): string {
   const names = new Set(getRegisteredActions());
-  const completed: Array<[string, string, unknown]> = [];
+  const completed: CompletedToolCall[] = [];
   for (const message of messages) {
     if (!message || typeof message !== "object") continue;
     const m = message as { role?: string; content?: unknown };
@@ -69,11 +70,11 @@ function actionSignature(messages: readonly unknown[]): string {
   return completed.length ? JSON.stringify(completed) : "";
 }
 
-function parseSignature(signature: string): Array<[string, string, unknown]> {
+function parseSignature(signature: string): CompletedToolCall[] {
   if (!signature) return [];
   try {
     const parsed = JSON.parse(signature) as unknown;
-    return Array.isArray(parsed) ? (parsed as Array<[string, string, unknown]>) : [];
+    return Array.isArray(parsed) ? (parsed as CompletedToolCall[]) : [];
   } catch {
     return [];
   }
@@ -157,8 +158,9 @@ function MeasurementsToolUI({ toolCallId, args }: ToolCallMessagePartProps) {
  * Renders nothing. It observes the thread ALWAYS (regardless of whether the tool
  * group is expanded) and dispatches each completed tool call that has a
  * registered frontend action exactly once, so an instruction reaches the viewer
- * without expanding the tool call — and a page/session load does NOT replay old
- * instructions from history (which would fail with no viewer open).
+ * without expanding the tool call. Completed calls seen OUTSIDE a run are
+ * marked handled without executing, so a page/session load never replays old
+ * instructions from history onto the active viewer (`planDispatch`).
  *
  * `computeInteraction` has no frontend action, so it is never dispatched.
  */
@@ -176,10 +178,15 @@ export function FrontendBridge() {
     // ended (the tool result can land on the same tick as the settle).
     const live = isRunning || wasRunning.current;
     wasRunning.current = isRunning;
-    if (!live) return;
 
-    for (const [toolCallId, toolName, result] of parseSignature(signature)) {
-      if (dispatched.has(toolCallId)) continue;
+    const plan = planDispatch(parseSignature(signature), dispatched, live);
+    // History observed off a run is consumed WITHOUT applying. It was in the
+    // thread before this page's first run, so applying it would replay the whole
+    // conversation onto whatever viewer is open — e.g. a structure the user just
+    // reopened, which would then stack every old highlight/measurement.
+    for (const [toolCallId] of plan.consume) dispatched.add(toolCallId);
+
+    for (const [toolCallId, toolName, result] of plan.apply) {
       dispatched.add(toolCallId);
       void executeAction(toolName, result)
         .then(() => setResult(toolCallId, "applied"))

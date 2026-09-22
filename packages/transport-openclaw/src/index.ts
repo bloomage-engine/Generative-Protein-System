@@ -143,11 +143,13 @@ export class OpenClawRuntimeAdapter implements RuntimeAdapter {
   }
 
   /**
-   * Runtime-level abort. The gateway exposes no client-side cancel wired here
-   * yet (a `chat.abort` follow-up); the run stream is not force-ended.
+   * Runtime-level abort: end each Session's client stream AND cancel the
+   * gateway turn behind it (`chat.abort`, issued by the behavior). The gateway
+   * supports mid-turn cancellation, so a follow-up message is not queued behind
+   * a long-running turn.
    */
-  abort(_reason?: string): void {
-    // TODO: keep the active runId per session and issue `chat.abort`.
+  abort(reason?: string): void {
+    for (const runtime of this.runtimes.values()) runtime.abort(reason);
   }
 
   approve(approvalId: string, decision: "approve" | "reject"): void {

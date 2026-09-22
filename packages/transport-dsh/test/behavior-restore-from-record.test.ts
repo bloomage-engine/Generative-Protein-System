@@ -57,7 +57,11 @@ function behavior(recordStore: RecordStoreLike | null) {
     cwd: "/workspace",
     workspace: null,
     // No harness here: these tests drive the record touchpoints.
-    harnessCommands: { list: async () => [], execute: async () => ({ status: "unknown" }) },
+    harnessCommands: {
+      list: async () => [],
+      execute: async () => ({ status: "unknown" }),
+      interrupt: async () => {},
+    },
     commandCatalog: async () => [],
   });
 }

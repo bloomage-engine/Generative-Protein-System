@@ -28,6 +28,9 @@ const LIST_TIMEOUT_MS = 10_000;
  */
 const EXECUTE_TIMEOUT_MS = 300_000;
 
+/** Abort bound: cancelling a turn should answer immediately. */
+const INTERRUPT_TIMEOUT_MS = 10_000;
+
 /** One harness command as the bridge reports it (the registry's own descriptor). */
 export interface HarnessCommandEntry {
   name: string;
@@ -35,12 +38,21 @@ export interface HarnessCommandEntry {
   input?: { hint: string };
 }
 
+/** How the bridge answered one `/interrupt` call. */
+export type HarnessInterruptOutcome = "ok" | "no-agent" | "no-cancel" | "unavailable";
+
 /** The command bridge this adapter's child exposes. */
 export interface DshCommandBridge {
   /** The harness's own command catalog (empty when no agent is live). */
   list(): Promise<HarnessCommandEntry[]>;
   /** Execute one trimmed command line on the child's agent for `sessionId`. */
   execute(sessionId: string, line: string): Promise<HarnessBridgeOutcome>;
+  /**
+   * Cancel the child's active turn for `sessionId` — the harness's own
+   * mid-turn cancel, which the SDK wire does not expose. `no-agent` means the
+   * session has no live agent, so there is nothing to cancel (docs/adr/0004).
+   */
+  interrupt(sessionId: string): Promise<HarnessInterruptOutcome>;
   /**
    * Open the child's live assistant-frame stream (`GET /assistant-stream`) and
    * invoke `listener` for each forwarded frame. Returns a close handle. The
@@ -196,6 +208,25 @@ export function createCommandBridge(endpoint: string): DshCommandBridge {
           const message = typeof body["message"] === "string" ? body["message"] : "unrecognized bridge answer";
           return { status: "unavailable", message };
         }
+      }
+    },
+
+    async interrupt(sessionId: string): Promise<HarnessInterruptOutcome> {
+      let body: Record<string, unknown>;
+      try {
+        body = await callJson(endpoint, "POST", "/interrupt", JSON.stringify({ sessionId }), INTERRUPT_TIMEOUT_MS);
+      } catch {
+        return "unavailable";
+      }
+      switch (body["status"]) {
+        case "ok":
+          return "ok";
+        case "no-agent":
+          return "no-agent";
+        case "no-cancel":
+          return "no-cancel";
+        default:
+          return "unavailable";
       }
     },
 

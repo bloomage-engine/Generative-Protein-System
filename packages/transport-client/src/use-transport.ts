@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { AssistantRuntime } from "@assistant-ui/react";
 import { useAssistantTransportRuntime } from "@assistant-ui/react";
 import { messageConverter, pendingUserMessages } from "./converter.js";
@@ -100,6 +100,12 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
   // when the body does not carry it.
   const scopedApi = withScope(api, projectId, threadId);
 
+  // Set when the user stops a run. The service may not have converged out of
+  // `running` yet (a slow/unavailable runtime cancel), so a watch push of the
+  // still-running canonical state must not re-inflate the thread we just set
+  // idle. Cleared when a non-running snapshot arrives, or when a new run starts.
+  const abortedRef = useRef(false);
+
   const runtime = useAssistantTransportRuntime<RuntimeState>({
     api: scopedApi,
     protocol: "assistant-transport",
@@ -107,6 +113,8 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
     initialState: createInitialRuntimeState(),
     converter: (state, { pendingCommands }) => {
       const isRunning = state.status === "running";
+      // A new run supersedes a prior abort guard.
+      if (isRunning) abortedRef.current = false;
       const stateMessages = Object.values(state.messages);
       // The send is held in transit until the server's first frame, and the
       // state only gains the user's row when the server echoes it — so a
@@ -120,6 +128,23 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
       };
     },
     onFinish: options.onFinish,
+    onCancel: (params) => {
+      // Reached on a user cancel (no `error`) and again from the onError below
+      // (with `error`, after that path already ended the state `error`). Only a
+      // user cancel needs the service abort and a status that leaves `running`.
+      if (params.error) return;
+      abortedRef.current = true;
+      // The local cancel only aborts this fetch; the runtime still needs telling
+      // so the harness stops the turn (otherwise the next message queues behind
+      // it). Best-effort: a failed request must not block the UI from settling.
+      void requestAbort(`${base}/abort`, projectId, threadId).catch((err: unknown) => {
+        console.warn("[transport-client] abort request failed", err);
+      });
+      // Drop out of `running`: the aborted run sends no terminal frame, so the
+      // wire status would otherwise stay `running` and freeze the thread (the
+      // watch import is gated on it).
+      params.updateState((s) => ({ ...s, status: "idle" as const }));
+    },
     onError: (error, params) => {
       // Protocol-level invariant: a failed run always ends `error` in the
       // wire state, no matter what a consumer's callback does.
@@ -193,6 +218,13 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
     const adopt = (snapshot: unknown): void => {
       if (isBusy()) return;
       if (!snapshot || typeof snapshot !== "object") return;
+      const status = (snapshot as { status?: unknown }).status;
+      // After a user stop, ignore the service's still-running canonical state
+      // until it converges: re-importing it would re-inflate the thread the
+      // stop just settled. A non-running snapshot (the server catching up)
+      // releases the guard; a new run releases it in the converter.
+      if (abortedRef.current && status === "running") return;
+      if (status !== "running") abortedRef.current = false;
       // Whole-replace: the snapshot is the full cumulative transcript, so a
       // plain import converges the thread to the latest canonical state.
       try {
@@ -276,4 +308,23 @@ function scopeParams(projectId: string | null, threadId: string | null): string 
   if (projectId) params.set("projectId", projectId);
   if (threadId) params.set("threadId", threadId);
   return params.toString();
+}
+
+/**
+ * POST one run-control abort. The stop button's local `AbortController` only
+ * kills the client's SSE fetch; this is what tells the service's adapter to
+ * cancel the turn itself.
+ */
+async function requestAbort(
+  api: string,
+  projectId: string | null,
+  threadId: string | null,
+): Promise<void> {
+  const qs = scopeParams(projectId, threadId);
+  const res = await fetch(`${api}${qs ? `?${qs}` : ""}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  if (!res.ok) throw new Error(`abort answered ${res.status}`);
 }

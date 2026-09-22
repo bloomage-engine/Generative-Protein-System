@@ -25,6 +25,11 @@ export {
   type FileReferenceContext,
 } from "./file-reference.js";
 export {
+  resolveInlineFileReference,
+  useWorkspaceFileLink,
+  type WorkspaceFileLinkState,
+} from "./workspace-file-link.js";
+export {
   DEFAULT_WORKSPACE_API,
   WorkspaceApiProvider,
   useWorkspaceApi,

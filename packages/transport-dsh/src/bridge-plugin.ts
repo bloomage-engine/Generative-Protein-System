@@ -160,9 +160,21 @@ function warn(message: string, error?: unknown): void {
  * The agent a request targets. A named session resolves exactly; without one
  * this is the newest live top-level agent — what the dispatching UI would be
  * talking to — falling back to the newest live agent of any depth.
+ *
+ * `AgentRegistry.get` is documented as a shared agent/session id lookup, but a
+ * harness build whose agent id and session id diverge would miss; the scan over
+ * `agent.session.id` is that fallback.
  */
 function resolveAgent(ctx: BridgeHost, sessionId?: unknown): BridgeAgent | undefined {
-  if (typeof sessionId === "string" && sessionId !== "") return ctx.agents.get(sessionId);
+  if (typeof sessionId === "string" && sessionId !== "") {
+    const direct = ctx.agents.get(sessionId);
+    if (direct) return direct;
+    for (const agent of ctx.agents.list()) {
+      const session = (agent as { session?: { id?: unknown } }).session;
+      if (session !== undefined && session.id === sessionId) return agent;
+    }
+    return undefined;
+  }
   const top = ctx.agents.roots?.() ?? ctx.agents.listTopLevel?.() ?? [];
   return top.at(-1) ?? ctx.agents.list().at(-1);
 }
@@ -378,6 +390,54 @@ function streamAssistant(ctx: BridgeHost, res: ServerResponse): void {
   }
 }
 
+/**
+ * `POST /interrupt` — cancel the active turn of one exact session's agent.
+ *
+ * Mirrors the harness's own web UI: `agent.cancel({ kind: "user" }, {
+ * keepInbox: true })` aborts the in-flight turn (and any steering) while
+ * preserving queued work, so a prompt sent right after runs once the aborted
+ * activity converges to idle. The SDK wire has NO cancel method, so this bridge
+ * is the only way to stop a turn that is already running (docs/adr/0004).
+ */
+async function interruptTurn(ctx: BridgeHost, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readBody(req);
+  if (!body.ok) {
+    send(res, 400, { status: "failed", message: body.message });
+    return;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body.text);
+  } catch {
+    send(res, 400, { status: "failed", message: "unparsable JSON body" });
+    return;
+  }
+  const sessionId = (parsed as Record<string, unknown> | null)?.["sessionId"];
+  if (typeof sessionId !== "string" || sessionId === "") {
+    send(res, 400, { status: "failed", message: "expected { sessionId: string }" });
+    return;
+  }
+  const agent = resolveAgent(ctx, sessionId);
+  if (!agent) {
+    send(res, 200, { status: "no-agent" });
+    return;
+  }
+  const cancel = (agent as { cancel?: (cause: unknown, options?: unknown) => void }).cancel;
+  if (typeof cancel !== "function") {
+    // The agent exists but this harness build has no cancel method on it — a
+    // different failure from "no agent", and worth telling the adapter apart.
+    send(res, 200, { status: "no-cancel" });
+    return;
+  }
+  try {
+    cancel.call(agent, { kind: "user" }, { keepInbox: true });
+    send(res, 200, { status: "ok" });
+  } catch (err) {
+    warn("interrupt failed", err);
+    send(res, 200, { status: "failed", message: err instanceof Error ? err.message : String(err) });
+  }
+}
+
 async function dispatch(ctx: BridgeHost, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const path = (req.url ?? "").split("?")[0] ?? "";
   if (req.method === "GET" && path === "/commands") {
@@ -386,6 +446,10 @@ async function dispatch(ctx: BridgeHost, req: IncomingMessage, res: ServerRespon
   }
   if (req.method === "POST" && path === "/execute") {
     await executeCommand(ctx, req, res);
+    return;
+  }
+  if (req.method === "POST" && path === "/interrupt") {
+    await interruptTurn(ctx, req, res);
     return;
   }
   if (req.method === "GET" && path === "/assistant-stream") {

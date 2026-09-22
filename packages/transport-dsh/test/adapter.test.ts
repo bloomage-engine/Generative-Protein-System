@@ -697,6 +697,7 @@ test("live assistant frames reach the transcript through the bridge watch", asyn
   const bridge: DshCommandBridge = {
     list: async () => [],
     execute: async () => ({ status: "unknown" }),
+    interrupt: async () => "ok",
     subscribeAssistantStream: (listener) => {
       subscribed = true;
       streamListener = listener;
@@ -736,6 +737,51 @@ test("live assistant frames reach the transcript through the bridge watch", asyn
       deltas.some((delta) => delta.type === "stream-text" && delta.text === "Hello"),
       "the live text delta reached the client stream",
     );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("abort cancels the harness turn through the bridge", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-adapter-"));
+  const store = new FakeRecordStore();
+  const interrupted: string[] = [];
+  const bridge: DshCommandBridge = {
+    list: async () => [],
+    execute: async () => ({ status: "unknown" }),
+    interrupt: async (id) => {
+      interrupted.push(id);
+      return "ok";
+    },
+  };
+  // A turn that never resolves, so it is still in flight when abort runs.
+  const client: DshTurnClient = {
+    start: async () => {},
+    close: async () => {},
+    runTurn: () => new Promise<void>(() => {}),
+  };
+  const adapter = new DshRuntimeAdapter({
+    createClient: () => client,
+    createBridge: () => bridge,
+    bridgeDir: dir,
+  });
+  try {
+    await adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
+    const turn = (async () => {
+      for await (const _delta of adapter.run(sessionState({ sessionId: "sess-1" }), [
+        { type: "add-message", message: { id: "u1", role: "user", content: "hi" } },
+      ])) {
+        // drain
+      }
+    })();
+    // Let the run reach dispatch and mint its harness session id.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    adapter.abort();
+    await turn;
+
+    assert.equal(interrupted.length, 1, "abort reaches the child bridge");
+    assert.match(interrupted[0]!, /^sess-1-/, "with the session's harness id");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

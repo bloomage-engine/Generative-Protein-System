@@ -15,7 +15,7 @@ import type { RecordStoreLike, SessionState, StateDelta } from "@science-studio/
 import { sessionState } from "@science-studio/contract-tests";
 import type { PersistedTranscript, Run } from "@science-studio/record";
 import type { DshTurnClient } from "../src/index.js";
-import type { DshCommandBridge, HarnessCommandEntry } from "../src/bridge.js";
+import type { DshCommandBridge, HarnessCommandEntry, HarnessInterruptOutcome } from "../src/bridge.js";
 import type { HarnessBridgeOutcome } from "../src/commands.js";
 
 export function ev(type: string, data: unknown, seq = 1): SessionEvent {
@@ -171,6 +171,8 @@ export class ScriptedBridge implements DshCommandBridge {
   ];
   listCalls = 0;
   readonly calls: { sessionId: string; line: string }[] = [];
+  /** Harness session ids `/interrupt` was asked to cancel. */
+  readonly interrupted: string[] = [];
 
   constructor(private readonly script: BridgeScript = () => ({ status: "unknown" })) {}
 
@@ -182,6 +184,11 @@ export class ScriptedBridge implements DshCommandBridge {
   async execute(sessionId: string, line: string): Promise<HarnessBridgeOutcome> {
     this.calls.push({ sessionId, line });
     return this.script(sessionId, line);
+  }
+
+  async interrupt(sessionId: string): Promise<HarnessInterruptOutcome> {
+    this.interrupted.push(sessionId);
+    return "ok";
   }
 }
 

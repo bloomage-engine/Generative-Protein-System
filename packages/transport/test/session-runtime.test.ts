@@ -243,6 +243,28 @@ test("abort ends the flow without settling; a late settle still persists", async
   assert.equal(runs.length, 1, "the late settle is still recorded");
 });
 
+test("abort reaches the behavior's cancel with the active run id", async () => {
+  const cancelled: Array<[string, string | null]> = [];
+  const behavior: SessionBehavior<never> = {
+    apply: () => {},
+    dispatch: (_req, run) => {
+      run.targetRunId = "r1";
+    },
+    cancel: (sessionKey, runId) => {
+      cancelled.push([sessionKey, runId]);
+    },
+  };
+  const rt = new SessionRuntime<never>("s1", behavior, {});
+  const iterator = rt.run(session(), [addMessage("u1", "hi")])[Symbol.asyncIterator]();
+  await iterator.next(); // reconcile
+  await iterator.next(); // add-message u1
+  await iterator.next(); // session-status running
+  rt.abort();
+  assert.deepEqual(cancelled, [["s1", "r1"]]);
+  const end = await iterator.next();
+  assert.equal(end.done, true);
+});
+
 test("ctx exposes the claimed target run id and the one-tool-part merge invariant", async () => {
   const seenTargets: (string | null)[] = [];
   const behavior: SessionBehavior<
@@ -318,4 +340,30 @@ test("textOutput joins assistant text parts at or after a baseline", () => {
   ];
   assert.equal(textOutput(messages), "one\ntwo");
   assert.equal(textOutput(messages, 2), "two");
+});
+
+test("abort forces the session status out of running and notifies watchers", async () => {
+  const statuses: string[] = [];
+  const behavior: SessionBehavior<never> = {
+    apply: () => {},
+    // Stays in flight: never settles, so nothing else would leave `running`.
+    dispatch: () => {},
+  };
+  const rt = new SessionRuntime<never>("s1", behavior, {});
+  const iterator = rt.run(session(), [addMessage("u1", "hi")])[Symbol.asyncIterator]();
+  await iterator.next(); // reconcile
+  await iterator.next(); // add-message u1
+  await iterator.next(); // session-status running
+  // Subscribe once the Session is known: the baseline is the running state.
+  const off = rt.subscribe((snapshot) => statuses.push(snapshot.status));
+  assert.equal(rt.state.status, "running");
+
+  rt.abort();
+
+  assert.equal(rt.state.status, "idle", "abort leaves the canonical status out of running");
+  assert.deepEqual(statuses, ["running", "idle"], "watchers are pushed the idle status");
+  off();
+
+  const end = await iterator.next();
+  assert.equal(end.done, true);
 });

@@ -211,6 +211,12 @@ export interface DshHarnessCommands {
    * behavior drives as that session's first prompt.
    */
   execute(sessionId: string | null, line: string): Promise<HarnessCommandOutcome>;
+  /**
+   * Cancel the harness agent's active turn for one harness session id (a real
+   * mid-turn abort the SDK wire cannot express — docs/adr/0004). Resolves once
+   * the child acknowledges; a missing agent is a no-op.
+   */
+  interrupt(harnessSessionId: string): Promise<void>;
 }
 
 /**
