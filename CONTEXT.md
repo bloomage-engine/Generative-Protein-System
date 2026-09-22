@@ -301,7 +301,8 @@ _Avoid_: Experiment, Case, Investigation
 **Task**:
 A concrete piece of work delegated to an Agent (e.g. "run differential expression
 on this dataset").
-_Avoid_: Job, Chore, Assignment
+_Avoid_: Job, Compute Job (that is remote scheduled work, not a Task), Chore,
+Assignment
 
 **Artifact**:
 An output produced by a Run — a dataset, figure, report, code, or model.
@@ -342,3 +343,49 @@ _Avoid_: Recording at the depth of Project, Session, or Artifact as the atomic u
   exist. Workflow (DAG) orchestration is a later overlay.
 - **Runtime**: the agent runtime is swappable. Science Studio owns the research record;
   runtimes are adapters behind a single transport seam.
+
+## HPC Compute
+
+Vocabulary for running Compute Jobs on external HPC systems over SSH
+(docs/adr/0024). The connection is a deployment fact; its use is Project state.
+
+**HPC Endpoint**:
+A remote compute system Science Studio is configured to submit Compute Jobs to —
+a Slurm cluster or a plain Linux machine. Its definition lives in deployment
+settings; a Project binds to one to use it.
+_Avoid_: Cluster, Server, Remote, Queue
+
+**Compute Job**:
+A unit of remote work submitted to an HPC Endpoint and tracked as a record
+entity — a scheduler job where the Endpoint has one, a tracked background
+process where it does not. It belongs to a Project; the Session that submitted
+it is metadata.
+_Avoid_: Job (unqualified), Batch job, Run (that is a Research turn), Task
+
+**Scheduler Kind**:
+Whether an Endpoint's jobs are governed by Slurm (`slurm`) or executed directly
+on a plain machine (`linux`). The extension point for future schedulers.
+_Avoid_: Backend, Queue type, Mode
+
+**Project HPC Binding**:
+A Project's choice of HPC Endpoint plus its Project-level defaults (Remote Work
+Dir, default partition, default time), shared by every Session in the Project.
+A Project with no Binding cannot run jobs.
+_Avoid_: Endpoint config, Cluster settings
+
+**Remote Work Dir**:
+The directory on an HPC Endpoint owned by one Project, where its Compute Jobs
+run and its Staged files live. A job never sees the Project Workspace directly.
+_Avoid_: Scratch, Home, Staging area
+
+**Staging**:
+An explicit copy between the Project Workspace and a Project's Remote Work Dir.
+Never automatic: large datasets are assumed to already live on the cluster.
+_Avoid_: Sync, Mirror, Upload (as the domain term)
+
+**Compute Job State**:
+Where a Compute Job stands in its lifecycle: `submitted` → `pending` → `running`
+are non-terminal; `completed` / `failed` / `cancelled` are terminal; `unknown`
+means Science Studio could not confirm the remote truth and keeps the last known
+state. The remote scheduler remains the authority; our state is a reconciliation.
+_Avoid_: Status (the record's own term), Queue position
