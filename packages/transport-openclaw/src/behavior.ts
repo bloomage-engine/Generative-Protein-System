@@ -227,6 +227,19 @@ export function createOpenClawBehavior(deps: OpenClawBehaviorDeps): SessionBehav
       }
     },
 
+    cancel(sessionKey: string, runId: string | null): Promise<void> {
+      // The gateway cancels mid-turn: `chat.abort` stops the named run (or the
+      // session's active run) — the capability dsh's SDK wire lacks.
+      const params: Record<string, unknown> = { sessionKey };
+      if (runId) params["runId"] = runId;
+      return gateway
+        .request("chat.abort", params)
+        .then(() => undefined)
+        .catch((error) => {
+          log("chat.abort failed", error);
+        });
+    },
+
     beforePersist(ctx) {
       if (ctx.inRun) {
         // Local settles persist immediately; the reply-only rows (native command

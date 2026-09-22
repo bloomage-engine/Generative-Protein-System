@@ -378,6 +378,48 @@ function streamAssistant(ctx: BridgeHost, res: ServerResponse): void {
   }
 }
 
+/**
+ * `POST /interrupt` — cancel the active turn of one exact session's agent.
+ *
+ * Mirrors the harness's own web UI: `agent.cancel({ kind: "user" }, {
+ * keepInbox: true })` aborts the in-flight turn (and any steering) while
+ * preserving queued work, so a prompt sent right after runs once the aborted
+ * activity converges to idle. The SDK wire has NO cancel method, so this bridge
+ * is the only way to stop a turn that is already running (docs/adr/0004).
+ */
+async function interruptTurn(ctx: BridgeHost, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readBody(req);
+  if (!body.ok) {
+    send(res, 400, { status: "failed", message: body.message });
+    return;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body.text);
+  } catch {
+    send(res, 400, { status: "failed", message: "unparsable JSON body" });
+    return;
+  }
+  const sessionId = (parsed as Record<string, unknown> | null)?.["sessionId"];
+  if (typeof sessionId !== "string" || sessionId === "") {
+    send(res, 400, { status: "failed", message: "expected { sessionId: string }" });
+    return;
+  }
+  const agent = resolveAgent(ctx, sessionId);
+  const cancel = (agent as { cancel?: (cause: unknown, options?: unknown) => void } | undefined)?.cancel;
+  if (!agent || typeof cancel !== "function") {
+    send(res, 200, { status: "no-agent" });
+    return;
+  }
+  try {
+    cancel.call(agent, { kind: "user" }, { keepInbox: true });
+    send(res, 200, { status: "ok" });
+  } catch (err) {
+    warn("interrupt failed", err);
+    send(res, 200, { status: "failed", message: err instanceof Error ? err.message : String(err) });
+  }
+}
+
 async function dispatch(ctx: BridgeHost, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const path = (req.url ?? "").split("?")[0] ?? "";
   if (req.method === "GET" && path === "/commands") {
@@ -386,6 +428,10 @@ async function dispatch(ctx: BridgeHost, req: IncomingMessage, res: ServerRespon
   }
   if (req.method === "POST" && path === "/execute") {
     await executeCommand(ctx, req, res);
+    return;
+  }
+  if (req.method === "POST" && path === "/interrupt") {
+    await interruptTurn(ctx, req, res);
     return;
   }
   if (req.method === "GET" && path === "/assistant-stream") {

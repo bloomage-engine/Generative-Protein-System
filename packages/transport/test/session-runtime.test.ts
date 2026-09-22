@@ -243,6 +243,28 @@ test("abort ends the flow without settling; a late settle still persists", async
   assert.equal(runs.length, 1, "the late settle is still recorded");
 });
 
+test("abort reaches the behavior's cancel with the active run id", async () => {
+  const cancelled: Array<[string, string | null]> = [];
+  const behavior: SessionBehavior<never> = {
+    apply: () => {},
+    dispatch: (_req, run) => {
+      run.targetRunId = "r1";
+    },
+    cancel: (sessionKey, runId) => {
+      cancelled.push([sessionKey, runId]);
+    },
+  };
+  const rt = new SessionRuntime<never>("s1", behavior, {});
+  const iterator = rt.run(session(), [addMessage("u1", "hi")])[Symbol.asyncIterator]();
+  await iterator.next(); // reconcile
+  await iterator.next(); // add-message u1
+  await iterator.next(); // session-status running
+  rt.abort();
+  assert.deepEqual(cancelled, [["s1", "r1"]]);
+  const end = await iterator.next();
+  assert.equal(end.done, true);
+});
+
 test("ctx exposes the claimed target run id and the one-tool-part merge invariant", async () => {
   const seenTargets: (string | null)[] = [];
   const behavior: SessionBehavior<

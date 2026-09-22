@@ -285,8 +285,9 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   over the command bridge when this session HAS an agent, and driven as the
   session's FIRST PROMPT when it has none (docs/adr/0011). The bridge is a
   dependency-free cordis plugin the adapter ships into the child over a
-  per-launch profile patch, speaking `GET /commands`/`POST /execute` on a
-  private socket (local names win, an unknown `/name` is answered); the plugin
+  per-launch profile patch, speaking `GET /commands`/`POST /execute`/`POST
+  /interrupt` on a private socket (local names win, an unknown `/name` is
+  answered); the plugin
   ALSO holds an `agent/pre-step` listener, which is what makes the cold case
   safe — a `/`-line prompt is run by the registry and its step REJECTED, so the
   turn ends `blocked` and the model never sees it (the reply is the harness's own
@@ -313,7 +314,17 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   flow per Session (`SessionRuntime`), so concurrent runs would corrupt both
   streams. Run control reaches the adapter through `POST /api/transport/abort` and
   `POST /api/transport/approve`; `/approve` answers **501** when the runtime has
-  no approval surface (`RuntimeAdapter.approve` is optional).
+  no approval surface (`RuntimeAdapter.approve` is optional). **Abort is a REAL
+  mid-turn cancel**, not just a client-stream teardown: the kit's
+  `SessionRuntime.abort` ends the client flow AND calls the behavior's optional
+  `cancel(sessionKey, runId)`. openclaw issues `chat.abort {sessionKey, runId}`;
+  dsh — whose SDK wire has no cancel method — asks the child bridge (`POST
+  /interrupt`) to run the harness's own `agent.cancel({kind:"user"},
+  {keepInbox:true})`, so the running turn stops and a follow-up prompt is not
+  queued behind it. The workbench stop button drives this through the `apps/web`
+  abort proxy; `useTransport`'s `onCancel` posts it and drops the wire state to
+  `idle` (an aborted run sends no terminal frame, and the watch import is gated
+  on that status).
 
 ## Molecular-structure preview and the `molql` tool
 
@@ -638,8 +649,8 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   wires it explicitly rather than by `as any`, and the ONE `RecordStore` instance
   is deliberately shared by the adapter's sink and the service's
   `records`/project-session directory, so Runs and Sessions land together.
-- All seven `apps/web` proxies (`app/api/transport/route.ts`, `transport/commands`,
-  `transport/subagents`, `transport/watch`, `workspace/[...path]`,
+- All eight `apps/web` proxies (`app/api/transport/route.ts`, `transport/commands`,
+  `transport/abort`, `transport/subagents`, `transport/watch`, `workspace/[...path]`,
   `projects/[[...path]]`, `cron/[[...path]]`) forward the
   caller's `Authorization` header upstream — one line in
   `lib/service-proxy.ts` (`forwardedAuth`), so a new hop cannot forget it.

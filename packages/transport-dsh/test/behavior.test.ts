@@ -36,7 +36,11 @@ function behavior(over: Partial<Parameters<typeof createDshBehavior>[0]> = {}) {
     cwd: "/workspace",
     workspace: null,
     // No harness here: these tests drive the event→delta mapping.
-    harnessCommands: { list: async () => [], execute: async () => ({ status: "unknown" }) },
+    harnessCommands: {
+      list: async () => [],
+      execute: async () => ({ status: "unknown" }),
+      interrupt: async () => {},
+    },
     commandCatalog: async () => [],
     ...over,
   });
@@ -564,4 +568,26 @@ test("frames for an unknown session or with no active run are no-ops", () => {
     }),
   );
   assert.equal(run.deltas.length, 0);
+});
+
+test("cancel interrupts the harness turn for the session's harness id", async () => {
+  const interrupted: string[] = [];
+  const harnessSessions = new Map<string, string>([["sess-1", "harness-1"]]);
+  const b = behavior({
+    harnessSessions,
+    harnessCommands: {
+      list: async () => [],
+      execute: async () => ({ status: "unknown" }),
+      interrupt: async (id) => {
+        interrupted.push(id);
+      },
+    },
+  });
+
+  await b.cancel?.("sess-1", null);
+  assert.deepEqual(interrupted, ["harness-1"]);
+
+  // A session that never prompted has no harness id: nothing to cancel.
+  await b.cancel?.("sess-2", null);
+  assert.deepEqual(interrupted, ["harness-1"]);
 });

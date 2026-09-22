@@ -178,6 +178,15 @@ export interface SessionBehavior<E> {
   /** Watch policy. */
   watch?: WatchPolicy;
 
+  /**
+   * Cancel the runtime-side turn for a Session (a REAL abort, not just ending
+   * the client stream). The kit still ends the client flow itself; this hook
+   * reaches the adapter's own cancel when the runtime has one (openclaw
+   * `chat.abort`, dsh `agent.cancel` through the child bridge). Receives the
+   * active Run's runtime id when one was reported.
+   */
+  cancel?(sessionKey: string, runId: string | null): Promise<void> | void;
+
   /** Await the settle pipeline (persist included) before `run()` returns.
    *  Default `true`; openclaw sets `false` for fire-and-forget persistence. */
   awaitSettle?: boolean;
@@ -422,6 +431,13 @@ export class SessionRuntime<E> {
   /** End the active flow without settling (a client abort). Whether a later
    *  settle still records a Run is the adapter's policy. */
   abort(_reason?: string): void {
+    // A real, runtime-side cancel first (best-effort; a throw must not break
+    // the flow teardown), then end the client stream.
+    try {
+      void this.behavior.cancel?.(this.sessionKey, this.active?.targetRunId ?? null);
+    } catch (error) {
+      this.onError(error);
+    }
     this.active?.flow.end();
   }
 

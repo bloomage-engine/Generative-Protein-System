@@ -622,6 +622,15 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
       })();
     },
 
+    cancel(sessionKey: string) {
+      // The harness's own mid-turn cancel, over the child bridge — the SDK wire
+      // has no cancel method (docs/adr/0004). No harness id means this session
+      // has no agent, so there is nothing in flight to stop.
+      const harnessSessionId = harnessSessions.get(sessionKey);
+      if (!harnessSessionId) return;
+      return harnessCommands.interrupt(harnessSessionId);
+    },
+
     async beforePersist(ctx) {
       // `?.`-guarded (the seam method is optional; a non-record store no-ops).
       await recordStore?.saveSessionTranscript?.(ctx.sessionKey, {

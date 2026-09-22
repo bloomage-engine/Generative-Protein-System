@@ -228,6 +228,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private readonly harnessCommands: DshHarnessCommands = {
     list: () => this.listHarnessCommands(),
     execute: (sessionId, line) => this.executeHarnessCommand(sessionId, line),
+    interrupt: (harnessSessionId) => this.interruptHarnessSession(harnessSessionId),
   };
 
   async init(opts: RuntimeInitOptions): Promise<void> {
@@ -434,14 +435,35 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   }
 
   /**
-   * Abort in-flight runs. There is no wire-level cancel on the SDK protocol (a
-   * timed-out request keeps running server-side), so aborting stops the client
-   * stream but the harness finishes the turn in the background; the transcript
-   * keeps folding its events and the Run is still persisted when it settles
-   * (docs/adr/0004 — failed or interrupted turns are recorded).
+   * Abort in-flight runs. This is a REAL mid-turn cancel: each Session's
+   * behavior calls the harness's own `agent.cancel` through the child bridge
+   * (`{ kind: "user" }, { keepInbox: true }`), which aborts the running turn
+   * while preserving queued work — a follow-up prompt runs as soon as the
+   * aborted activity converges to idle, instead of waiting out a long turn.
+   * The SDK wire has no cancel method, so the bridge is the only route
+   * (docs/adr/0004). The kit also ends the local client flow immediately; a
+   * turn that still settles is recorded.
    */
   abort(reason?: string): void {
     for (const runtime of this.runtimes.values()) runtime.abort(reason);
+  }
+
+  /**
+   * Cancel the child's active turn for one harness session. Best-effort: no
+   * bridge (a child that could not set one up) or no live agent is a no-op, and
+   * a failed call is logged rather than thrown into the run teardown.
+   */
+  private async interruptHarnessSession(harnessSessionId: string): Promise<void> {
+    const bridge = this.bridge;
+    if (!bridge) return;
+    try {
+      const outcome = await bridge.interrupt(harnessSessionId);
+      if (outcome === "unavailable") {
+        console.warn("[dsh] mid-turn cancel unavailable over the command bridge");
+      }
+    } catch (err) {
+      console.warn("[dsh] mid-turn cancel failed", err);
+    }
   }
 
   /**

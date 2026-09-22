@@ -302,3 +302,32 @@ test("the child forwards live assistant frames as NDJSON over the bridge socket"
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("interrupt cancels the exact session's agent over the bridge", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-bridge-"));
+  const socket = join(dir, "b.sock");
+  const cancelled: Array<[unknown, unknown]> = [];
+  const agent = {
+    id: "sess-1",
+    cancel: (cause: unknown, options?: unknown) => {
+      cancelled.push([cause, options]);
+    },
+  };
+  const host = fakeHost(DESCRIPTORS, new Map([["sess-1", agent]]));
+  try {
+    apply(host.ctx, { socket });
+    await waitForPath(socket);
+    const bridge = createCommandBridge(socket);
+
+    assert.equal(await bridge.interrupt("sess-1"), "ok");
+    // The harness's own mid-turn cancel, with queued work preserved.
+    assert.deepEqual(cancelled, [[{ kind: "user" }, { keepInbox: true }]]);
+
+    // A session with no live agent has nothing to cancel.
+    assert.equal(await bridge.interrupt("ghost"), "no-agent");
+    assert.equal(cancelled.length, 1);
+  } finally {
+    host.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

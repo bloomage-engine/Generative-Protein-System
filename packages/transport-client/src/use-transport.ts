@@ -120,6 +120,22 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
       };
     },
     onFinish: options.onFinish,
+    onCancel: (params) => {
+      // Reached on a user cancel (no `error`) and again from the onError below
+      // (with `error`, after that path already ended the state `error`). Only a
+      // user cancel needs the service abort and a status that leaves `running`.
+      if (params.error) return;
+      // The local cancel only aborts this fetch; the runtime still needs telling
+      // so the harness stops the turn (otherwise the next message queues behind
+      // it). Best-effort: a failed request must not block the UI from settling.
+      void requestAbort(`${base}/abort`, projectId, threadId).catch((err: unknown) => {
+        console.warn("[transport-client] abort request failed", err);
+      });
+      // Drop out of `running`: the aborted run sends no terminal frame, so the
+      // wire status would otherwise stay `running` and freeze the thread (the
+      // watch import is gated on it).
+      params.updateState((s) => ({ ...s, status: "idle" as const }));
+    },
     onError: (error, params) => {
       // Protocol-level invariant: a failed run always ends `error` in the
       // wire state, no matter what a consumer's callback does.
@@ -276,4 +292,23 @@ function scopeParams(projectId: string | null, threadId: string | null): string 
   if (projectId) params.set("projectId", projectId);
   if (threadId) params.set("threadId", threadId);
   return params.toString();
+}
+
+/**
+ * POST one run-control abort. The stop button's local `AbortController` only
+ * kills the client's SSE fetch; this is what tells the service's adapter to
+ * cancel the turn itself.
+ */
+async function requestAbort(
+  api: string,
+  projectId: string | null,
+  threadId: string | null,
+): Promise<void> {
+  const qs = scopeParams(projectId, threadId);
+  const res = await fetch(`${api}${qs ? `?${qs}` : ""}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  if (!res.ok) throw new Error(`abort answered ${res.status}`);
 }
