@@ -17,6 +17,7 @@ export function TopBarSearch() {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const rootRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   const projectId = useStudioStore((s) => s.projectId);
   const openFile = useStudioStore((s) => s.openFile);
@@ -48,6 +49,24 @@ export function TopBarSearch() {
   }, []);
 
   const blurActive = () => (document.activeElement as HTMLElement | null)?.blur?.();
+
+  // ⌘K / Ctrl+K summons the search from anywhere; Escape (while the input is
+  // focused) dismisses the dropdown and blurs it.
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setOpen(true);
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      } else if (e.key === "Escape" && document.activeElement === inputRef.current) {
+        setOpen(false);
+        blurActive();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const pickFile = (path: string) => {
     openFile(path, path.split("/").slice(-1)[0] ?? path);
     setOpen(false);
@@ -71,8 +90,9 @@ export function TopBarSearch() {
       <div className="relative">
         <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input
+          ref={inputRef}
           value={query}
-          placeholder="Search files / sessions…"
+          placeholder="Search files / sessions… ⌘K / Ctrl+K"
           className="h-8 pl-7 text-xs"
           onChange={(e) => {
             setQuery(e.target.value);
