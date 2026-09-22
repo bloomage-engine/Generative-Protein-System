@@ -1,9 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAuiState, useThreadViewport } from "@assistant-ui/react";
+import {
+  unstable_useThreadMessageIds,
+  useAuiState,
+  useThreadViewport,
+} from "@assistant-ui/react";
 import type { ThreadMessage } from "@assistant-ui/react";
 import { cn } from "@/lib/utils";
+import { useStudioStore } from "@/store/studio-store";
 import { ConversationMap, type ConversationMapEntry } from "./conversation-map";
 
 const TITLE_LENGTH = 72;
@@ -134,13 +139,30 @@ export function ConversationMapAui({
   className?: string;
 }) {
   const messages = useAuiState((s) => s.thread.messages);
+  // The Thread renders only the last `visibleMessageCount` messages
+  // (`ThreadMessageWindow` hides the rest behind "Load more"). The map must
+  // bind to exactly that rendered window — hidden history stays out of the
+  // rail: a tick for a turn whose messages are not mounted is a dead control
+  // (clicking it scrolls to no element) and would advertise turns the reader
+  // cannot actually see.
+  const allIds = unstable_useThreadMessageIds();
+  const visibleCount = useStudioStore((s) => s.visibleMessageCount);
   const viewport = useThreadViewport((s) => s.element.viewport);
   const viewportHeight = useThreadViewport((s) => s.height.viewport);
   const [activeId, setActiveId] = useState<string | undefined>(undefined);
   const [visibleIds, setVisibleIds] = useState<readonly string[]>([]);
   const scheduleRef = useRef<(() => void) | undefined>(undefined);
 
-  const turns = useMemo(() => groupIntoTurns(messages), [messages]);
+  const visibleWindow = useMemo(
+    () => new Set(allIds.slice(-visibleCount)),
+    [allIds, visibleCount],
+  );
+  const visibleMessages = useMemo(
+    () => messages.filter((m) => visibleWindow.has(m.id)),
+    [messages, visibleWindow],
+  );
+
+  const turns = useMemo(() => groupIntoTurns(visibleMessages), [visibleMessages]);
   const entries = useMemo(() => turns.map(describe), [turns]);
 
   /** Which turn each message belongs to, so a message in view marks its turn. */
