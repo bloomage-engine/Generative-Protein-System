@@ -41,7 +41,7 @@ examples/transport-dsh-example     minimal assistant-ui example app over the dsh
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/design/                      design specs (research-agent-framework EN/ZH + implementation-plan)
-docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Session/Run + file store, 0008 runtime provisioning is per Project, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete, 0015 deployment settings are service-owned, 0016 subagent activity is an optional adapter surface (dsh keeps a durable ledger; addendum), 0017 cron scheduling is service-owned and a task is a workspace file, 0018 a dsh plugin instructs the parent to report subagent results, 0019 durable session and subagent transcript belongs to the record, 0020 dsh skills are configured through the workbench, 0021 the `/api` hop relays and the client surface owns failure policy, 0022 dsh live assistant streaming, 0023 the composer is a Lexical rich-text input, 0024 HPC remote execution is service-owned and a Compute Job is a record entity)
+docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Worktree/Session/Run + file store, 0008 runtime provisioning is per worktree, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete, 0015 deployment settings are service-owned, 0016 subagent activity is an optional adapter surface (dsh keeps a durable ledger; addendum), 0017 cron scheduling is service-owned and a task is a workspace file, 0018 a dsh plugin instructs the parent to report subagent results, 0019 durable session and subagent transcript belongs to the record, 0020 dsh skills are configured through the workbench, 0021 the `/api` hop relays and the client surface owns failure policy, 0022 dsh live assistant streaming, 0023 the composer is a Lexical rich-text input, 0024 HPC remote execution is service-owned and a Compute Job is a record entity, 0025 a Worktree is a record-scoped environment dimension)
 CONTEXT.md                        domain glossary (authoritative vocabulary)
 ```
 
@@ -80,12 +80,14 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `start` scripts default to `--no-sandbox` for this (`DESKTOP_ELECTRON_FLAGS=`
   opts out, and the secure alternative is
   `sudo chown root:root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 ...`).
-- Record layer: the v1 record is `Project` → `Session` → `Run` (docs/adr/0007).
-  Project/Session/Run routes live on the same service (`/api/projects*`), and the
-  store is persistent by default — `RECORD_STORE_PATH` (default
+- Record layer: the v1 record is `Project` → `Worktree` → `Session` → `Run`
+  (docs/adr/0007, extended by docs/adr/0025). Project/Session/Worktree routes
+  live on the same service (`/api/projects*`, `/api/worktrees*`), and the store
+  is persistent by default — `RECORD_STORE_PATH` (default
   `$XDG_DATA_HOME/science-studio/record.jsonl`) — with `RECORD_STORE=memory` to
   opt out. A `project-default` row is auto-ensured so a request that names no
-  Project still works.
+  Project still works, and its `main` worktree row is auto-ensured alongside it
+  (`main` is the Project root; a Session with no `worktreeId` normalizes to it).
 - Project/Session lifecycle (docs/adr/0014): a Project renames its `name` /
   a Session its `title` (ids are immutable; a Project id names its directory);
   `POST /api/projects/:id/{rename,archive,unarchive,delete}` and
@@ -99,16 +101,32 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   (or `PROJECT_ID`) cannot be renamed/archived/deleted (403); `GET /api/projects`
   returns its id so the UI locks those actions. Deleting a Project also releases
   its cached `Environment` (`EnvironmentProvider.release?()`).
-- Workspace file access is **opt-in** and served per **Project**: `PROJECT_ROOT`
-  is the host-side parent of every project directory (each Project's workspace is
-  `<PROJECT_ROOT>/<projectId>/`, shared flatly by all its Sessions — docs/adr/0006),
-  `PROJECT_AGENT_ROOT` is the agent-side counterpart, and
+- Worktrees ride the same lifecycle (docs/adr/0025): `GET /api/worktrees?projectId=`
+  lists a Project's worktrees (each row decorated with on-disk state),
+  `POST /api/worktrees` creates one (`{ projectId, name, branch?, base? }`; the
+  first create lazily runs `git init` + an initial commit, so a list never
+  touches the disk), and `POST /api/worktrees/:id/{rename,archive,unarchive,delete}`
+  manage them — `main` is protected (403) from rename/archive/delete. A
+  Worktree's path is DERIVED, never stored: `main` IS the Project root, else
+  `.worktrees/<id>/` under it. Archive releases that worktree's cached
+  environment (keeping the directory); delete releases the child, removes the
+  checkout, deletes its branch (so the same name is creatable again), recycles
+  any remainder, then cascades its Sessions + Runs. Sessions carry a `worktreeId`
+  (`POST /api/projects/:id/sessions` accepts it, validated against the record;
+  `GET .../sessions?worktreeId=` filters; a legacy row with none reads as `main`).
+- Workspace file access is **opt-in** and served per **(Project, Worktree)**:
+  `PROJECT_ROOT` is the host-side parent of every project directory — a Project's
+  workspace root is `<PROJECT_ROOT>/<projectId>/` (its `main` worktree), and a
+  linked worktree is `<PROJECT_ROOT>/<projectId>/.worktrees/<id>/`; the derived
+  path comes from `localWorkspace(env, projectId, worktreeId)`, never the record
+  (docs/adr/0006, 0025). `PROJECT_AGENT_ROOT` is the agent-side counterpart, and
   `WORKSPACE_MAX_INLINE_BYTES` is the inline cap; unset `PROJECT_ROOT` means
   `NullWorkspace` and no file surface. Routes live on the SAME service and ask
   `ProjectScopes` (`services/transport-service/src/project-scope.ts`) for the
   request's scope — the Principal, the Project (the query's `projectId`, else the
-  query's `project` (the older spelling), else the body's, else `project-default`)
-  and that Project's `Environment` — so no route spells the Project claim its own
+  query's `project` (the older spelling), else the body's, else `project-default`),
+  the Worktree (the `worktreeId` claim, else `main`), and that scope's
+  `Environment` — so no route spells the Project claim its own
   way and no route body repeats the preamble: `GET
   /api/workspace/{entries,stat,file}`, plus `GET
   /api/workspace/interactions?path=&molql=` and `POST
@@ -720,9 +738,10 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   wires it explicitly rather than by `as any`, and the ONE `RecordStore` instance
   is deliberately shared by the adapter's sink and the service's
   `records`/project-session directory, so Runs and Sessions land together.
-- All nine `apps/web` proxies (`app/api/transport/route.ts`, `transport/commands`,
+- All ten `apps/web` proxies (`app/api/transport/route.ts`, `transport/commands`,
   `transport/abort`, `transport/subagents`, `transport/watch`, `workspace/[...path]`,
-  `projects/[[...path]]`, `cron/[[...path]]`, `hpc/[[...path]]`) forward the
+  `projects/[[...path]]`, `cron/[[...path]]`, `hpc/[[...path]]`,
+  `worktrees/[[...path]]`) forward the
   caller's `Authorization` header upstream — one line in
   `lib/service-proxy.ts` (`forwardedAuth`), so a new hop cannot forget it.
   Single-user installs send none (no login); in hosted mode the enterprise

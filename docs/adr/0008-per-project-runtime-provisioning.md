@@ -1,4 +1,10 @@
-# Runtime provisioning is per Project
+# Runtime provisioning is per worktree
+
+> **Extended by ADR-0025:** the provisioning key is now `(projectId,
+> worktreeId)`, not `projectId` — a Worktree is a record-scoped environment
+> dimension, so there is one harness child per **live worktree**. Everything
+> below stands with that generalization; `environmentFor(projectId, worktreeId)`
+> replaces `environmentFor(projectId)`.
 
 ADR-0006 made the Project the workspace unit and the environment provider
 project-scoped, but kept **one adapter per user**: the composition root built a
@@ -22,12 +28,13 @@ Observed before this ADR: a new Project's Files panel listed
 in the Project that asked for them, and attachments pointed at the wrong Project's
 tree. Switching Projects changed the browser, not the session's directory.
 
-We therefore build **one adapter per Project**: `environmentFor(projectId)` creates
-an adapter and initializes it with that Project's own `Workspace`
-(`<PROJECT_ROOT>/<projectId>/`, agent side `<PROJECT_AGENT_ROOT>/<projectId>/`),
-and `LocalEnvironmentProvider` caches one `{ adapter, workspace }` per Project. A
-Project's Sessions share its adapter — and, for dsh, its harness child — while
-different Projects never share one.
+We therefore build **one adapter per worktree**: `environmentFor(projectId,
+worktreeId)` creates an adapter and initializes it with that worktree's own
+`Workspace` (the Project root for `main`, `.worktrees/<id>/` for a linked
+worktree; agent side under `PROJECT_AGENT_ROOT`), and `LocalEnvironmentProvider`
+caches one `{ adapter, workspace }` per `(projectId, worktreeId)`. A worktree's
+Sessions share its adapter — and, for dsh, its harness child — while different
+worktrees (and different Projects) never share one.
 
 **This supersedes ADR-0006's "one adapter stays one per user"** and the parts of
 `research-agent-framework.md` §4.2/§4.4/§14.3 that repeat it (its rejection of
@@ -35,7 +42,7 @@ different Projects never share one.
 workspace and sharing unit, the flat per-Project root, `<PROJECT_ROOT>` /
 `PROJECT_AGENT_ROOT`, `?project=` on the workspace routes — stands unchanged.
 
-- **Status**: accepted (supersedes the per-user-adapter clause of docs/adr/0006)
+- **Status**: accepted (supersedes the per-user-adapter clause of docs/adr/0006; extended by docs/adr/0025, which keys provisioning by `(projectId, worktreeId)`)
 - **Considered options**:
   - *Keep one shared adapter and hand the Project's workspace per run* — cannot
     work: dsh's cwd is a property of the spawned child, not of a turn, so a
@@ -54,13 +61,13 @@ workspace and sharing unit, the flat per-Project root, `<PROJECT_ROOT>` /
     Rejected: one uniform rule is what keeps the composition root runtime-blind.
   - *A cell/sandbox per Project* — the isolation ADR-0006 already rejected on
     cost grounds; still rejected, and still not what this fixes.
-- **Consequences**: an adapter exists per **used** Project, built lazily on the
+- **Consequences**: an adapter exists per **used** worktree, built lazily on the
   first request that names it (that request is never blocked by a slow runtime:
   `init` stays fire-and-forget and `run()` awaits readiness). dsh spawns one
-  harness child per Project — `DSH_TRANSCRIPT_DIR` is keyed by session id, and
-  session ids are unique across Projects, so the mirror stays shared. openclaw
-  opens one gateway connection per Project. `capabilities.perSessionCwd` keeps
-  its meaning ("the host sets the child's cwd"); it just no longer implies one
-  cwd for the whole deployment. Open item: multiple backend connections carry the
-  same gateway client id (`cli`) — verified against a live gateway for one
+  harness child per live worktree — `DSH_TRANSCRIPT_DIR` is keyed by session id,
+  and session ids are unique across worktrees, so the mirror stays shared.
+  openclaw opens one gateway connection per worktree. `capabilities.perSessionCwd`
+  keeps its meaning ("the host sets the child's cwd"); it just no longer implies
+  one cwd for the whole deployment. Open item: multiple backend connections carry
+  the same gateway client id (`cli`) — verified against a live gateway for one
   connection, not yet for several.

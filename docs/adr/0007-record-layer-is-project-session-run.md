@@ -1,5 +1,12 @@
 # The v1 record layer is Project → Session → Run, on a file-backed store
 
+> **Vocabulary note (added by ADR-0025):** the v1 record is now
+> `Project → Worktree → Session → Run`. A `Worktree` sits between Project and
+> Session as a git worktree of the Project's repository; the Project root is the
+> reserved `main` worktree and every Session carries a `worktreeId` (an absent
+> one normalizes to `main`). Worktrees were added by
+> docs/adr/0025; everything else here stands.
+
 The record layer published `Project`/`Study`/`Task`/`Run`/`Artifact`/`Evidence`/
 `Conclusion`/`Session`/`AgentBlueprint`, but only `Session` and `Run` were ever
 exercised: `Project`, `Task`, `Evidence`, `Conclusion` and `AgentBlueprint` had
@@ -10,7 +17,8 @@ the session key), and `Run` itself was write-only — `addRun` had no reader, an
 "Project owns Sessions and shares their results" could not survive a restart.
 
 We cut the v1 record layer down to what is actually load-bearing — **`Project →
-Session → Run`** — and give it a persistence implementation, so the Project/
+Session → Run`**, later extended to `Project → Worktree → Session → Run` by
+ADR-0025 — and give it a persistence implementation, so the Project/
 Session surface of ADR-0006 is real rather than per-process.
 
 **What stays.** `Project` (`createProject`/`getProject`/`listProjects`),

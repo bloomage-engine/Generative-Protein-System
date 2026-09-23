@@ -114,6 +114,16 @@ platform's coarsest unit of oversight. The auto-ensured bootstrap Project cannot
 be renamed, archived or deleted (docs/adr/0014).
 _Avoid_: Space, Organization, Folder
 
+**Worktree**:
+A git worktree of a Project's repository: an isolated checkout on its own branch,
+which groups the Sessions that run in it under one working directory and one
+runtime (docs/adr/0025). A Project's root directory IS its reserved `main`
+Worktree; linked Worktrees live under `.worktrees/<id>/`. `id` is unique within
+the Project and immutable, `name` is the only mutable field, and the on-disk path
+is derived from the id, never stored. A Session belongs to exactly one Worktree.
+_Avoid_: Branch (a Worktree is a checkout, not just a ref), Clone, Project
+Workspace
+
 **Delete**:
 The irreversible-from-the-UI removal of a Project or Session: the record rows go
 (a Project cascades its Sessions and their Runs; a Session cascades its Runs) and
