@@ -9,6 +9,7 @@ import type {
   Worktree,
 } from "./types.js";
 import type { RecordStore } from "./index.js";
+import { sessionWorktreeId } from "./worktree.js";
 
 /**
  * Dev/test-grade in-memory implementation of the authoritative record store.
@@ -22,7 +23,10 @@ export function createInMemoryRecordStore(): RecordStore {
   const transcripts = new Map<Id, PersistedTranscript>();
   const subagents = new Map<Id, Subagent>();
   const computeJobs = new Map<Id, ComputeJob>();
-  const worktrees = new Map<Id, Worktree>();
+  // Worktrees are keyed by (projectId, id): `main` is reserved PER PROJECT, so
+  // a bare id cannot identify a Worktree (docs/adr/0025).
+  const worktrees = new Map<string, Worktree>();
+  const worktreeKey = (projectId: Id, id: Id): string => `${projectId}\u0000${id}`;
 
   const clone = <T>(v: T): T => structuredClone(v);
   const ordered = <T>(map: Map<Id, T>, matches: (v: T) => boolean): T[] =>
@@ -84,15 +88,15 @@ export function createInMemoryRecordStore(): RecordStore {
         if (job.projectId === id) computeJobs.delete(job.id);
       }
       for (const w of [...worktrees.values()]) {
-        if (w.projectId === id) worktrees.delete(w.id);
+        if (w.projectId === id) worktrees.delete(worktreeKey(id, w.id));
       }
     },
     async addWorktree(worktree: Worktree): Promise<Worktree> {
-      worktrees.set(worktree.id, clone(worktree));
+      worktrees.set(worktreeKey(worktree.projectId, worktree.id), clone(worktree));
       return clone(worktree);
     },
-    async getWorktree(id: Id): Promise<Worktree | null> {
-      const w = worktrees.get(id);
+    async getWorktree(projectId: Id, id: Id): Promise<Worktree | null> {
+      const w = worktrees.get(worktreeKey(projectId, id));
       return w ? clone(w) : null;
     },
     async listWorktrees(
@@ -104,32 +108,35 @@ export function createInMemoryRecordStore(): RecordStore {
         (w) => w.projectId === projectId && (opts.includeArchived === true || w.archivedAt === undefined),
       );
     },
-    async updateWorktree(id: Id, patch: { name: string }): Promise<Worktree> {
-      const prev = worktrees.get(id);
-      if (!prev) throw new Error(`worktree not found: ${id}`);
+    async updateWorktree(projectId: Id, id: Id, patch: { name: string }): Promise<Worktree> {
+      const key = worktreeKey(projectId, id);
+      const prev = worktrees.get(key);
+      if (!prev) throw new Error(`worktree not found: ${projectId}/${id}`);
       const next = { ...prev, name: patch.name };
-      worktrees.set(id, clone(next));
+      worktrees.set(key, clone(next));
       return clone(next);
     },
-    async archiveWorktree(id: Id, archivedAt: string): Promise<Worktree> {
-      const prev = worktrees.get(id);
-      if (!prev) throw new Error(`worktree not found: ${id}`);
+    async archiveWorktree(projectId: Id, id: Id, archivedAt: string): Promise<Worktree> {
+      const key = worktreeKey(projectId, id);
+      const prev = worktrees.get(key);
+      if (!prev) throw new Error(`worktree not found: ${projectId}/${id}`);
       const next = { ...prev, archivedAt };
-      worktrees.set(id, clone(next));
+      worktrees.set(key, clone(next));
       return clone(next);
     },
-    async unarchiveWorktree(id: Id): Promise<Worktree> {
-      const prev = worktrees.get(id);
-      if (!prev) throw new Error(`worktree not found: ${id}`);
+    async unarchiveWorktree(projectId: Id, id: Id): Promise<Worktree> {
+      const key = worktreeKey(projectId, id);
+      const prev = worktrees.get(key);
+      if (!prev) throw new Error(`worktree not found: ${projectId}/${id}`);
       const { archivedAt: _dropped, ...rest } = prev;
-      worktrees.set(id, clone(rest));
+      worktrees.set(key, clone(rest));
       return clone(rest);
     },
-    async deleteWorktree(id: Id): Promise<void> {
-      worktrees.delete(id);
+    async deleteWorktree(projectId: Id, id: Id): Promise<void> {
+      worktrees.delete(worktreeKey(projectId, id));
       const removed = new Set<Id>();
       for (const session of [...sessions.values()]) {
-        if (session.worktreeId === id) {
+        if (sessionWorktreeId(session) === id && session.projectId === projectId) {
           sessions.delete(session.id);
           transcripts.delete(session.id);
           removed.add(session.id);

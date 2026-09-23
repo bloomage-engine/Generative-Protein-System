@@ -72,10 +72,10 @@ test("worktrees satisfy the RecordStore contract in both stores", async () => {
       (await store.listWorktrees("p1")).map((w) => w.id),
       ["main", "exp-a"],
     );
-    assert.equal((await store.getWorktree("exp-a"))?.branch, "exp/a");
-    assert.equal(await store.getWorktree("missing"), null);
+    assert.equal((await store.getWorktree("p1", "exp-a"))?.branch, "exp/a");
+    assert.equal(await store.getWorktree("p1", "missing"), null);
 
-    await store.archiveWorktree("exp-a", "2026-02-01T00:00:00.000Z");
+    await store.archiveWorktree("p1", "exp-a", "2026-02-01T00:00:00.000Z");
     assert.deepEqual(
       (await store.listWorktrees("p1")).map((w) => w.id),
       ["main"],
@@ -84,16 +84,23 @@ test("worktrees satisfy the RecordStore contract in both stores", async () => {
       (await store.listWorktrees("p1", { includeArchived: true })).map((w) => w.id),
       ["main", "exp-a"],
     );
-    await store.unarchiveWorktree("exp-a");
-    assert.equal((await store.getWorktree("exp-a"))?.archivedAt, undefined);
+    await store.unarchiveWorktree("p1", "exp-a");
+    assert.equal((await store.getWorktree("p1", "exp-a"))?.archivedAt, undefined);
 
-    await store.updateWorktree("exp-a", { name: "Renamed" });
-    assert.equal((await store.getWorktree("exp-a"))?.name, "Renamed");
+    await store.updateWorktree("p1", "exp-a", { name: "Renamed" });
+    assert.equal((await store.getWorktree("p1", "exp-a"))?.name, "Renamed");
 
     // Rows are copies.
     const fetched = (await store.listWorktrees("p1"))[0]!;
     fetched.name = "mutated";
-    assert.equal((await store.getWorktree("main"))?.name, "main");
+    assert.equal((await store.getWorktree("p1", "main"))?.name, "main");
+
+    // Two Projects may each have a `main` worktree without shadowing (the id is
+    // only unique WITHIN a project).
+    await store.createProject(project({ id: "p2", name: "Other" }));
+    await store.addWorktree(worktree({ id: "main", projectId: "p2" }));
+    assert.equal((await store.getWorktree("p1", "main"))?.projectId, "p1");
+    assert.equal((await store.getWorktree("p2", "main"))?.projectId, "p2");
   });
 });
 
@@ -108,8 +115,8 @@ test("deleting a worktree cascades its sessions and runs", async () => {
     await store.addRun(run({ id: "r1", sessionId: "s1" }));
     await store.addRun(run({ id: "r2", sessionId: "s2" }));
 
-    await store.deleteWorktree("exp-a");
-    assert.equal(await store.getWorktree("exp-a"), null);
+    await store.deleteWorktree("p1", "exp-a");
+    assert.equal(await store.getWorktree("p1", "exp-a"), null);
     assert.equal(await store.getSession("s1"), null);
     assert.equal((await store.getSession("s2"))?.id, "s2");
     assert.deepEqual(
@@ -132,4 +139,28 @@ test("deleting a project cascades its worktrees", async () => {
 test("sessionWorktreeId defaults a legacy session to main", () => {
   assert.equal(sessionWorktreeId(session()), DEFAULT_WORKTREE_ID);
   assert.equal(sessionWorktreeId(session({ worktreeId: "exp-a" })), "exp-a");
+});
+
+test("JSONL worktree rows and legacy sessions survive a reopen", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ss-record-worktree-reopen-"));
+  try {
+    const path = join(dir, "record.jsonl");
+    const first = await createJsonlRecordStore(path);
+    await first.createProject(project());
+    await first.addWorktree(worktree({ id: "exp-a", name: "Experiment A", branch: "exp/a" }));
+    // A session persisted WITHOUT a worktreeId (the pre-worktree shape).
+    await first.addSession({ ...session({ id: "s-legacy" }), worktreeId: undefined });
+    await first.addSession(session({ id: "s-linked", worktreeId: "exp-a" }));
+
+    const second = await createJsonlRecordStore(path);
+    assert.equal((await second.getWorktree("p1", "exp-a"))?.branch, "exp/a");
+    assert.deepEqual(
+      (await second.listWorktrees("p1")).map((w) => w.id),
+      ["exp-a"],
+    );
+    assert.equal(sessionWorktreeId((await second.getSession("s-legacy"))!), "main");
+    assert.equal((await second.getSession("s-linked"))?.worktreeId, "exp-a");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

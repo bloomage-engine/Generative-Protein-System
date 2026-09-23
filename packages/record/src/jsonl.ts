@@ -16,6 +16,7 @@ import { appendFile, mkdir, readFile, readdir, rename, unlink, writeFile } from 
 import { dirname, join } from "node:path";
 import type { RecordStore } from "./index.js";
 import type { ComputeJob, Id, Project, Run, Session, PersistedTranscript, Subagent, Worktree } from "./types.js";
+import { DEFAULT_WORKTREE_ID, sessionWorktreeId } from "./worktree.js";
 
 type Row =
   | { t: "project"; v: Project }
@@ -25,15 +26,17 @@ type Row =
   /**
    * A deletion tombstone. Deletes must be durable, and the log is append-only,
    * so a removed row leaves a drop behind; the loader applies it and compaction
-   * simply never writes it (it serializes the in-memory tables).
+   * simply never writes it (it serializes the in-memory tables). A worktree
+   * tombstone also carries its `projectId` — the id alone is ambiguous.
    */
-  | { t: "drop"; table: "project" | "session" | "worktree" | "run"; id: Id };
+  | { t: "drop"; table: "project" | "session" | "worktree" | "run"; id: Id; projectId?: Id };
 
 interface Tables {
   projects: Map<Id, Project>;
   sessions: Map<Id, Session>;
   runs: Map<Id, Run>;
-  worktrees: Map<Id, Worktree>;
+  /** Keyed `${projectId}\u0000${id}` — `main` is reserved per Project. */
+  worktrees: Map<string, Worktree>;
 }
 
 function apply(tables: Tables, row: Row): void {
@@ -42,7 +45,7 @@ function apply(tables: Tables, row: Row): void {
       tables.projects.set(row.v.id, row.v);
       break;
     case "session": {
-      const session = row.v.worktreeId === undefined ? { ...row.v, worktreeId: "main" } : row.v;
+      const session = row.v.worktreeId === undefined ? { ...row.v, worktreeId: DEFAULT_WORKTREE_ID } : row.v;
       tables.sessions.set(session.id, session);
       break;
     }
@@ -50,12 +53,12 @@ function apply(tables: Tables, row: Row): void {
       tables.runs.set(row.v.id, row.v);
       break;
     case "worktree":
-      tables.worktrees.set(row.v.id, row.v);
+      tables.worktrees.set(`${row.v.projectId}\u0000${row.v.id}`, row.v);
       break;
     case "drop":
       if (row.table === "project") tables.projects.delete(row.id);
       else if (row.table === "session") tables.sessions.delete(row.id);
-      else if (row.table === "worktree") tables.worktrees.delete(row.id);
+      else if (row.table === "worktree") tables.worktrees.delete(`${row.projectId}\u0000${row.id}`);
       else tables.runs.delete(row.id);
       break;
   }
@@ -172,8 +175,8 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
   const clone = <T>(v: T): T => structuredClone(v);
   const ordered = <T>(map: Map<Id, T>, matches: (v: T) => boolean): T[] =>
     [...map.values()].filter(matches).map(clone);
-  const drop = (table: "project" | "session" | "worktree" | "run", id: Id): Promise<void> =>
-    append({ t: "drop", table, id });
+  const drop = (table: "project" | "session" | "worktree" | "run", id: Id, projectId?: Id): Promise<void> =>
+    append({ t: "drop", table, id, projectId });
 
   const rootDir = dirname(path);
   const transcriptsDir = join(rootDir, "transcripts");
@@ -258,8 +261,8 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
       }
       for (const worktree of [...tables.worktrees.values()]) {
         if (worktree.projectId === id) {
-          await drop("worktree", worktree.id);
-          tables.worktrees.delete(worktree.id);
+          await drop("worktree", worktree.id, id);
+          tables.worktrees.delete(`${id}\u0000${worktree.id}`);
         }
       }
       await drop("project", id);
@@ -268,11 +271,11 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
     },
     async addWorktree(worktree: Worktree): Promise<Worktree> {
       await append({ t: "worktree", v: worktree });
-      tables.worktrees.set(worktree.id, clone(worktree));
+      tables.worktrees.set(`${worktree.projectId}\u0000${worktree.id}`, clone(worktree));
       return clone(worktree);
     },
-    async getWorktree(id: Id): Promise<Worktree | null> {
-      const w = tables.worktrees.get(id);
+    async getWorktree(projectId: Id, id: Id): Promise<Worktree | null> {
+      const w = tables.worktrees.get(`${projectId}\u0000${id}`);
       return w ? clone(w) : null;
     },
     async listWorktrees(
@@ -284,34 +287,37 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
         (w) => w.projectId === projectId && (opts.includeArchived === true || w.archivedAt === undefined),
       );
     },
-    async updateWorktree(id: Id, patch: { name: string }): Promise<Worktree> {
-      const prev = tables.worktrees.get(id);
-      if (!prev) throw new Error(`worktree not found: ${id}`);
+    async updateWorktree(projectId: Id, id: Id, patch: { name: string }): Promise<Worktree> {
+      const key = `${projectId}\u0000${id}`;
+      const prev = tables.worktrees.get(key);
+      if (!prev) throw new Error(`worktree not found: ${projectId}/${id}`);
       const next = { ...prev, name: patch.name };
       await append({ t: "worktree", v: next });
-      tables.worktrees.set(id, clone(next));
+      tables.worktrees.set(key, clone(next));
       return clone(next);
     },
-    async archiveWorktree(id: Id, archivedAt: string): Promise<Worktree> {
-      const prev = tables.worktrees.get(id);
-      if (!prev) throw new Error(`worktree not found: ${id}`);
+    async archiveWorktree(projectId: Id, id: Id, archivedAt: string): Promise<Worktree> {
+      const key = `${projectId}\u0000${id}`;
+      const prev = tables.worktrees.get(key);
+      if (!prev) throw new Error(`worktree not found: ${projectId}/${id}`);
       const next = { ...prev, archivedAt };
       await append({ t: "worktree", v: next });
-      tables.worktrees.set(id, clone(next));
+      tables.worktrees.set(key, clone(next));
       return clone(next);
     },
-    async unarchiveWorktree(id: Id): Promise<Worktree> {
-      const prev = tables.worktrees.get(id);
-      if (!prev) throw new Error(`worktree not found: ${id}`);
+    async unarchiveWorktree(projectId: Id, id: Id): Promise<Worktree> {
+      const key = `${projectId}\u0000${id}`;
+      const prev = tables.worktrees.get(key);
+      if (!prev) throw new Error(`worktree not found: ${projectId}/${id}`);
       const { archivedAt: _dropped, ...rest } = prev;
       await append({ t: "worktree", v: rest });
-      tables.worktrees.set(id, clone(rest));
+      tables.worktrees.set(key, clone(rest));
       return clone(rest);
     },
-    async deleteWorktree(id: Id): Promise<void> {
+    async deleteWorktree(projectId: Id, id: Id): Promise<void> {
       const removed = new Set<Id>();
       for (const session of [...tables.sessions.values()]) {
-        if (session.worktreeId === id) {
+        if (sessionWorktreeId(session) === id && session.projectId === projectId) {
           await drop("session", session.id);
           tables.sessions.delete(session.id);
           await removeSessionDurable(session.id);
@@ -324,8 +330,8 @@ export async function createJsonlRecordStore(path: string): Promise<RecordStore>
           tables.runs.delete(run.id);
         }
       }
-      await drop("worktree", id);
-      tables.worktrees.delete(id);
+      await drop("worktree", id, projectId);
+      tables.worktrees.delete(`${projectId}\u0000${id}`);
     },
     async addSession(session: Session): Promise<Session> {
       await append({ t: "session", v: session });
