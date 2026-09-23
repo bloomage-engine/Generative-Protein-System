@@ -2,13 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   PLAIN_TEXT_CELL_LIMIT,
+  columnAtOffset,
   columnsToKeep,
   conservationBandColor,
   filterRowsByQuery,
   groupSpans,
   rowWindow,
+  rulerForColumns,
   rulerLabel,
-  rulerLine,
   shouldUsePlainText,
 } from "../src/grid.js";
 
@@ -38,12 +39,28 @@ test("ruler: the 1..9/0 cycle with the hundreds digit every 100", () => {
   assert.equal(rulerLabel(15), "5");
   assert.equal(rulerLabel(100), "1");
   assert.equal(rulerLabel(200), "2");
-  assert.equal(rulerLine(12), "123456789012");
+  assert.equal(rulerLabel(0), " ");
 });
 
-test("rulerLine blanks the dropped (filtered-out) columns but keeps their width", () => {
-  const keep = new Set([0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11]); // the 4th column (1-based) dropped
-  assert.equal(rulerLine(12, keep), "123\u00A056789012");
+test("rulerForColumns labels the COMPACTED columns with their ORIGINAL numbers", () => {
+  // full width, no filter
+  assert.equal(rulerForColumns([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]), "123456789012");
+  // 1-based column 4 dropped: the labels stay glued to their characters
+  assert.equal(rulerForColumns([0, 1, 2, 4]), "1235");
+  assert.equal(rulerForColumns([]), "");
+});
+
+test("columnAtOffset: the x → original-column hit test behind every pointer interaction", () => {
+  const keep = [0, 1, 3];
+  assert.equal(columnAtOffset(0, 7, keep), 0);
+  assert.equal(columnAtOffset(6.9, 7, keep), 0);
+  assert.equal(columnAtOffset(7, 7, keep), 1);
+  assert.equal(columnAtOffset(14, 7, keep), 3);
+  assert.equal(columnAtOffset(20.9, 7, keep), 3);
+  assert.equal(columnAtOffset(21, 7, keep), -1); // past the last kept column
+  assert.equal(columnAtOffset(-1, 7, keep), -1); // inside the name column
+  assert.equal(columnAtOffset(3, 7, []), -1); // no columns visible
+  assert.equal(columnAtOffset(3, 0, keep), -1); // degenerate char width
 });
 
 test("conservationBandColor: identity scale, gap-heavy override, clamped input", () => {

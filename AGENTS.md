@@ -461,8 +461,9 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   renderer's "Raw text" toggle is that affordance).
 - **Mentions are plain text over the existing seam.** Double-click (or the
   "insert" button) toggles `@<project>/<path>/<seqName>@<col>[-<col>]` in the
-  composer through `ComposerInsertProvider`, keyed `path|seqName|start|end` —
-  exactly the structure-mention `molqlTargetKey` rule — then reveals the
+  composer through `ComposerInsertProvider`, keyed
+  `<project>/<path>::<seqName>@<start>-<end>` — exactly the structure-mention
+  `molqlTargetKey` rule — then reveals the
   conversation pane. No new directive, no service route, no agent-side plugin:
   the agent reads the alignment TEXT from its own cwd; if tools are ever added,
   `parseMsaMention` is the parse rule they reuse.

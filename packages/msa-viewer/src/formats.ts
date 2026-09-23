@@ -86,7 +86,14 @@ function contentLines(text: string): string[] {
 export function sniffFormat(text: string): MsaFormat | null {
   for (const raw of contentLines(text)) {
     const t = raw.trim();
-    if (/^#\s*STOCKHOLM/i.test(t) || t.startsWith("#=GS") || t.startsWith("#=PC")) return "stockholm";
+    if (
+      /^#\s*STOCKHOLM/i.test(t) ||
+      t.startsWith("#=GS") ||
+      t.startsWith("#=GC") ||
+      t.startsWith("#=PC")
+    ) {
+      return "stockholm";
+    }
     if (t.startsWith("#")) continue; // comment (mmseqs output may carry one) — not a decision line
     if (/^CLUSTAL\b/i.test(t)) return "clustalw";
     if (t.startsWith(">")) return "fasta";
@@ -120,6 +127,26 @@ export function parseAlignment(text: string): MsaParseResult {
   }
 }
 
+/**
+ * Merge same-label annotation fragments (one per interleaved block) into one
+ * full-length annotation, in first-seen label order. Parsers call this before
+ * building the result so a renderer can index `chars` by the ORIGINAL column —
+ * per-block fragments would misplace every block after the first and collide on
+ * a label-only React key.
+ */
+export function mergeAnnotations(annotations: MsaAnnotation[]): MsaAnnotation[] {
+  const merged = new Map<string, string>();
+  const order: string[] = [];
+  for (const a of annotations) {
+    if (!merged.has(a.label)) {
+      merged.set(a.label, "");
+      order.push(a.label);
+    }
+    merged.set(a.label, (merged.get(a.label) ?? "") + a.chars);
+  }
+  return order.map((label) => ({ label, chars: merged.get(label) ?? "" }));
+}
+
 function alignOrUnalign(
   names: string[],
   chunks: Map<string, string>,
@@ -144,12 +171,14 @@ function parseClustal(raw: string): MsaParseResult {
   const chunks = new Map<string, string>();
   const annotations: MsaAnnotation[] = [];
   let blockConsensus: string | null = null;
+  let blockIndent: number | null = null;
 
   const flushBlock = (): void => {
     if (blockConsensus !== null && blockConsensus !== "") {
       annotations.push({ label: "consensus", chars: blockConsensus });
     }
     blockConsensus = null;
+    blockIndent = null;
   };
 
   for (const line of raw.split("\n")) {
@@ -160,20 +189,26 @@ function parseClustal(raw: string): MsaParseResult {
     if (/^CLUSTAL\b/i.test(line)) continue;
     const first = line[0];
     if (first === undefined || first === " " || first === "*") {
-      // A consensus/comment line starts at indent 0 with `* : . -` symbols (a name
-      // starts at column 0 with a letter/digit). Anything else here is garbage.
+      // A consensus/comment line starts with `* : . -` symbols (a sequence line
+      // starts with a name). Anything else here is garbage.
       if (!/^[*.: \-]+$/.test(line)) {
         throw new MsaParseError("clustalw", `unrecognized line: ${line.trim().slice(0, 40)}`);
       }
-      blockConsensus = (blockConsensus ?? "") + line.trim();
+      // Drop the name-field indent (the sequence text's start column) but never
+      // eat into a meaningful leading mark: an unmarked first column is a space
+      // and must survive into the merged annotation.
+      const lead = /^\s*/.exec(line)![0].length;
+      const strip = blockIndent === null ? lead : Math.min(blockIndent, lead);
+      blockConsensus = (blockConsensus ?? "") + line.slice(strip).replace(/\s+$/, "");
       continue;
     }
-    const m = line.match(/^\s*([^\s]+)\s+([A-Za-z\-*.:_]+)\s*$/);
+    const m = line.match(/^\s*([^\s]+)(\s+)([A-Za-z\-*.:_]+)\s*$/);
     if (!m) {
       throw new MsaParseError("clustalw", `sequence line does not parse: ${line.trim().slice(0, 40)}`);
     }
     const name = m[1]!;
-    const seq = m[2]!;
+    const seq = m[3]!;
+    if (blockIndent === null) blockIndent = m[1]!.length + m[2]!.length;
     if (!chunks.has(name)) {
       chunks.set(name, "");
       names.push(name);
@@ -181,7 +216,7 @@ function parseClustal(raw: string): MsaParseResult {
     chunks.set(name, (chunks.get(name) ?? "") + seq);
   }
   flushBlock();
-  return alignOrUnalign(names, chunks, annotations);
+  return alignOrUnalign(names, chunks, mergeAnnotations(annotations));
 }
 
 function parseStockholm(raw: string): MsaParseResult {
@@ -202,9 +237,10 @@ function parseStockholm(raw: string): MsaParseResult {
       if (name !== undefined && !names.includes(name) && !seqs.has(name)) names.push(name);
       continue;
     }
-    if (t.startsWith("#=PC")) {
+    if (t.startsWith("#=GC") || t.startsWith("#=PC")) {
       const parts = t.split(/\s+/);
-      // `#=PC <label> <chars...>`
+      // `#=GC <label> <chars...>` is the real Stockholm per-column annotation
+      // (`#=GC RF`, `#=GC ss_cons`); `#=PC` is the legacy spelling
       annotations.push({ label: parts[1] ?? "annot", chars: parts.slice(2).join("") });
       continue;
     }
@@ -221,7 +257,7 @@ function parseStockholm(raw: string): MsaParseResult {
     }
     seqs.set(name, (seqs.get(name) ?? "") + seq);
   }
-  return alignOrUnalign(names, seqs, annotations);
+  return alignOrUnalign(names, seqs, mergeAnnotations(annotations));
 }
 
 function parseFasta(raw: string): MsaParseResult {
@@ -233,10 +269,14 @@ function parseFasta(raw: string): MsaParseResult {
     if (t.startsWith(">")) {
       const name = t.slice(1).trim().split(/\s+/)[0] ?? "";
       if (name === "") throw new MsaParseError("fasta", "a record header has no name");
-      if (!chunks.has(name)) {
-        chunks.set(name, "");
-        names.push(name);
+      if (chunks.has(name)) {
+        // Interleaved block continuation is a Clustal/Stockholm concept; in FASTA a
+        // repeated header means two distinct records. Concatenating them would
+        // silently corrupt the record (and can even fake a length match).
+        throw new MsaParseError("fasta", `duplicate record name: ${name}`);
       }
+      chunks.set(name, "");
+      names.push(name);
       continue;
     }
     if (chunks.size === 0) {
@@ -248,11 +288,17 @@ function parseFasta(raw: string): MsaParseResult {
   return alignOrUnalign(names, chunks);
 }
 
+/**
+ * The real `mmseqs easy-search` / BLAST-tabular `.result` column order:
+ * query, target, pident, length, mismatch, gapopen, qstart, qend, tstart, tend,
+ * evalue, [score]. 11 columns without the bit score, 12 with it.
+ */
 const MMSEQS_FIELDS = [
   "query",
   "target",
+  "pident",
   "length",
-  "id",
+  "mismatch",
   "gapopen",
   "qstart",
   "qend",
@@ -260,40 +306,40 @@ const MMSEQS_FIELDS = [
   "tend",
   "evalue",
   "score",
-  "alignment",
 ] as const;
 
 function parseMmseqs(raw: string): MmseqsResult {
   const rows: (string | number)[][] = [];
-  let maxFields = 10;
+  let maxFields = 11;
   for (const line of raw.split("\n")) {
     const t = line.trim();
     if (t === "" || t.startsWith("#")) continue;
     const fields = t.split(/\s+/);
-    if (fields.length < 10) {
-      throw new MsaParseError("mmseqs", `row has ${fields.length} fields (needs 10+): ${t.slice(0, 48)}`);
+    if (fields.length < 11) {
+      throw new MsaParseError("mmseqs", `row has ${fields.length} fields (expected 11 or 12): ${t.slice(0, 48)}`);
     }
     if (fields.length > 12) {
-      throw new MsaParseError("mmseqs", `row has ${fields.length} fields (max 12): ${t.slice(0, 48)}`);
+      throw new MsaParseError(
+        "mmseqs",
+        `row has ${fields.length} fields (expected 11 or 12 — a convertalis alignment column is not supported): ${t.slice(0, 48)}`,
+      );
     }
     const row: (string | number)[] = [fields[0]!, fields[1]!];
-    for (let i = 2; i <= 9; i++) {
+    for (let i = 2; i <= 10; i++) {
       const f = fields[i]!;
       const n = Number(f);
       if (!Number.isFinite(n)) {
-        throw new MsaParseError("mmseqs", `field ${i + 1} is not numeric: "${f}"`);
+        throw new MsaParseError("mmseqs", `field ${i + 1} (${MMSEQS_FIELDS[i]}) is not numeric: "${f}"`);
       }
       row.push(n);
     }
-    if (fields.length === 11) {
-      const f = fields[10]!;
+    if (fields.length === 12) {
+      const f = fields[11]!;
       const n = Number(f);
-      row.push(Number.isFinite(n) ? n : f);
-      maxFields = 11;
-    } else if (fields.length === 12) {
-      const f11 = fields[10]!;
-      const n11 = Number(f11);
-      row.push(Number.isFinite(n11) ? n11 : f11, fields[11]!);
+      if (!Number.isFinite(n)) {
+        throw new MsaParseError("mmseqs", `field 12 (score) is not numeric: "${f}"`);
+      }
+      row.push(n);
       maxFields = 12;
     }
     rows.push(row);

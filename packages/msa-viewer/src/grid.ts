@@ -47,14 +47,27 @@ export function rulerLabel(column: number): string {
   return String(column % 10);
 }
 
-/** The ruler string over `columns`; dropped columns keep their width but lose their label. */
-export function rulerLine(columns: number, keep?: ReadonlySet<number>): string {
-  let out = "";
-  for (let c = 0; c < columns; c++) {
-    if (keep !== undefined && !keep.has(c)) out += "\u00A0";
-    else out += rulerLabel(c + 1);
-  }
-  return out;
+/**
+ * The ruler over a COMPACTED column set: the rows render only the kept columns,
+ * so the ruler does too — each label is the column's ORIGINAL 1-based number, glued
+ * to the character it describes. (A blank-padded full-width ruler would drift one
+ * position right of its character after the first dropped column.)
+ */
+export function rulerForColumns(keep: readonly number[]): string {
+  return keep.map((c) => rulerLabel(c + 1)).join("");
+}
+
+/**
+ * Map a pointer x offset (px, relative to the sequence text's left edge) to the
+ * ORIGINAL 0-based column under it, or -1 when the offset is left of the text or
+ * past the last kept column. The single home of the grid's hit-test arithmetic —
+ * a block-level probe measuring the container instead of one character is exactly
+ * the bug this keeps testable.
+ */
+export function columnAtOffset(x: number, charWidth: number, keep: readonly number[]): number {
+  if (x < 0 || charWidth <= 0 || keep.length === 0) return -1;
+  const index = Math.floor(x / charWidth);
+  return keep[index] ?? -1;
 }
 
 /** Deterministic identity → color scale (red = conserved → gray = variable). */

@@ -15,12 +15,13 @@ import { DEFAULT_CONSERVED, columnStats, isConservedCol, tableStats } from "../s
 import type { MsaTarget } from "../mention.js";
 import {
   PLAIN_TEXT_CELL_LIMIT,
+  columnAtOffset,
   columnsToKeep,
   conservationBandColor,
   filterRowsByQuery,
   groupSpans,
   rowWindow,
-  rulerLine,
+  rulerForColumns,
   shouldUsePlainText,
 } from "../grid.js";
 
@@ -28,6 +29,8 @@ const ROW_HEIGHT = 20;
 const OVERSCAN = 4;
 const NAME_WIDTH = 168; // px
 const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+/** Opaque over the host theme, so a sticky name column/header never shows rows through. */
+const OPAQUE = "var(--background, Canvas)";
 
 type CellClass = "seq" | "gap" | "conserved" | "selected" | "hoverCell" | "hoverRow" | "hoverCol";
 
@@ -59,6 +62,7 @@ interface Drag {
 }
 
 export function MsaGrid({ data, className, onMention }: MsaGridProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewport, setViewport] = useState(0);
@@ -104,7 +108,6 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
     () => columnsToKeep(data.columns, data.sequences, colStats, { conservedOnly, hideGaps }, DEFAULT_CONSERVED),
     [data.columns, data.sequences, colStats, conservedOnly, hideGaps],
   );
-  const keepSet = useMemo(() => new Set(keep), [keep]);
   const table = useMemo(() => tableStats(data), [data]);
   const plain = shouldUsePlainText(data.sequences.length, data.columns);
 
@@ -135,17 +138,17 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
 
   const columnFromEvent = (e: ReactMouseEvent<HTMLDivElement>, rowEl: HTMLDivElement): number => {
     const rect = rowEl.getBoundingClientRect();
-    const x = e.clientX - rect.left - NAME_WIDTH;
-    if (x < 0) return -1;
-    const colInText = Math.floor(x / charWidth);
-    const c = keep[colInText];
-    return c === undefined ? -1 : c;
+    return columnAtOffset(e.clientX - rect.left - NAME_WIDTH, charWidth, keep);
   };
 
   const onRowMouseDown = (e: ReactMouseEvent<HTMLDivElement>, seqName: string): void => {
+    if (plain) return; // plain mode: the notice promises no selection
     const col = columnFromEvent(e, e.currentTarget);
     if (col < 0) return;
     e.preventDefault();
+    // preventDefault suppresses the browser's focus-on-mousedown; focus the grid
+    // ourselves so the Esc handler reliably receives the key.
+    rootRef.current?.focus({ preventScroll: true });
     if (inSelection(seqName, col)) {
       setSelection(null); // a second click on the selected cell clears it
       return;
@@ -155,6 +158,7 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
   };
 
   const onRowMouseMove = (e: ReactMouseEvent<HTMLDivElement>, seqName: string): void => {
+    if (plain) return;
     const col = columnFromEvent(e, e.currentTarget);
     if (col < 0) {
       setHover(null);
@@ -169,7 +173,7 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
   };
 
   const onRowDoubleClick = (e: ReactMouseEvent<HTMLDivElement>, seqName: string): void => {
-    if (!onMention) return;
+    if (plain || !onMention) return; // no mention at a size whose columns are not selectable
     const col = columnFromEvent(e, e.currentTarget);
     const target =
       col >= 0 && selection !== null && inSelection(seqName, col)
@@ -194,6 +198,7 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
 
   return (
     <div
+      ref={rootRef}
       className={className}
       style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", minHeight: 0 }}
       tabIndex={0}
@@ -258,15 +263,32 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
           lineHeight: `${ROW_HEIGHT}px`,
         }}
       >
-        {/* Sticky header: annotations, conservation band, ruler */}
-        <div style={{ position: "sticky", top: 0, zIndex: 2, background: "transparent" }}>
-          <span ref={charProbeRef} aria-hidden style={{ visibility: "hidden", display: "block", height: 0, overflow: "hidden" }}>
+        {/* Sticky header: annotations, conservation band, ruler. `width: gridWidth`
+            makes it scroll horizontally WITH the rows (an auto-width block stops at
+            the pane width and would drift out of alignment). */}
+        <div style={{ position: "sticky", top: 0, zIndex: 2, width: gridWidth, background: OPAQUE }}>
+          {/* Absolutely positioned (shrink-to-fit) — a block-level probe would measure
+              the container instead of one character and corrupt every hit test. */}
+          <span
+            ref={charProbeRef}
+            aria-hidden
+            style={{ position: "absolute", top: 0, left: 0, visibility: "hidden", whiteSpace: "pre", pointerEvents: "none" }}
+          >
             0000000000
           </span>
-          {data.annotations.map((a) => (
-            <div key={`${a.label}`} style={{ display: "flex", whiteSpace: "pre", height: 16, color: "#64748b" }}>
+          {data.annotations.map((a, ai) => (
+            <div key={`${a.label}-${ai}`} style={{ display: "flex", whiteSpace: "pre", height: 16, color: "#64748b" }}>
               <span
-                style={{ width: NAME_WIDTH, flex: "0 0 auto", overflow: "hidden", textOverflow: "ellipsis" }}
+                style={{
+                  position: "sticky",
+                  left: 0,
+                  zIndex: 1,
+                  width: NAME_WIDTH,
+                  flex: "0 0 auto",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  background: OPAQUE,
+                }}
                 title={a.label}
               >
                 {a.label}
@@ -276,7 +298,7 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
           ))}
           {!plain && showBand && (
             <div style={{ display: "flex", whiteSpace: "pre", height: 6 }}>
-              <span style={{ width: NAME_WIDTH, flex: "0 0 auto" }} />
+              <span style={{ position: "sticky", left: 0, zIndex: 1, width: NAME_WIDTH, flex: "0 0 auto", background: OPAQUE }} />
               {groupSpans("·".repeat(keep.length), (i) => {
                 const c = keep[i];
                 const st = c === undefined ? undefined : colStats[c];
@@ -290,8 +312,8 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
           )}
           {!plain && (
             <div style={{ display: "flex", whiteSpace: "pre", height: 14, color: "#64748b" }}>
-              <span style={{ width: NAME_WIDTH, flex: "0 0 auto" }} />
-              <span>{rulerLine(data.columns, keepSet)}</span>
+              <span style={{ position: "sticky", left: 0, zIndex: 1, width: NAME_WIDTH, flex: "0 0 auto", background: OPAQUE }} />
+              <span>{rulerForColumns(keep)}</span>
             </div>
           )}
         </div>
@@ -309,7 +331,17 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
                 onDoubleClick={(e) => onRowDoubleClick(e, s.name)}
               >
                 <span
-                  style={{ display: "inline-block", width: NAME_WIDTH, overflow: "hidden", textOverflow: "ellipsis", opacity: 0.9 }}
+                  style={{
+                    display: "inline-block",
+                    position: "sticky",
+                    left: 0,
+                    zIndex: 1,
+                    width: NAME_WIDTH,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    background: OPAQUE,
+                    opacity: 0.9,
+                  }}
                   title={s.name}
                 >
                   {s.name}

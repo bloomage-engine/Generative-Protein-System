@@ -20,10 +20,10 @@ Researchers drop alignment and search output into a Project workspace: ClustalW/
 **In scope:**
 
 - New workspace package `packages/msa-viewer` (root `workspaces` + root build chain).
-- Parsers (pure, Node-testable): aligned multi-sequence FASTA, unaligned FASTA, ClustalW (with optional consensus line), Stockholm (sequence lines + `#=PC` per-position annotation blocks), and the mmseqs2 whitespace-separated `.result` table (10/11/12-field rows, optional alignment-string column).
+- Parsers (pure, Node-testable): aligned multi-sequence FASTA, unaligned FASTA, ClustalW (with optional consensus line), Stockholm (sequence lines + `#=GC`/`#=PC` per-position annotation blocks), and the mmseqs2 whitespace-separated `.result` table (BLAST-tabular order, 11/12-field rows).
 - Column statistics (pure, Node-testable): per-column identity and gap fraction, per-sequence gap fraction and length, whole-table average identity, plus a "conserved column" predicate with documented defaults.
 - Mention codec (pure, Node-testable): `@<project>/<path>/<seqName>@<col>` and `@<project>/<path>/<seqName>@<start>-<end>`, formatted and parsed, compatible with a trailing ` #label` (stripped before parse, same convention as structure mentions).
-- React components (browser entry): `MsaGrid` (row-virtualized monospace grid, crosshair selection, conservation band, 10/100 column ruler, sequence-name search, "conserved only" / gap filters, statistics readout, plain-text degradation for very large alignments), `MsaResultTable` (sortable columns, identity / E-value threshold filters, optional expansion of a pairwise alignment column), and a simple unaligned-rows list.
+- React components (browser entry): `MsaGrid` (row-virtualized monospace grid, crosshair selection, conservation band, 10/100 column ruler, sequence-name column sticky on the left, sequence-name search, "conserved only" / gap filters, statistics readout, plain-text degradation for very large alignments), `MsaResultTable` (sortable columns, identity / E-value threshold filters), and a simple unaligned-rows list.
 - `apps/web`: `"msa"` in `kindFor` (by file name, per the repo convention), an `MsaRenderer` that fetches its own bytes (like the other specialist viewers), routes by parse result, and offers a plain-text fallback on parse failure; mention insertion via the existing `ComposerInsertProvider` seam, double-click toggling an already-inserted target off (same keying as structure mentions).
 - Tests: package-level Node tests for formats / stats / mention; a `kindFor` case in `apps/web/test/file-kinds.test.mjs`; `npm run build` (the real type gate) and `npm run test` green.
 
@@ -62,17 +62,17 @@ type MsaParseResult =
   | { kind: "mmseqs";    fields: string[]; rows: (string | number)[][] };
 ```
 
-- `aligned`: every `seq` has length `columns` (gaps are `-`); `annotations` holds Clustal consensus lines and Stockholm `#=PC` blocks (label + one char per column).
+- `aligned`: every `seq` has length `columns` (gaps are `-`); `annotations` holds Clustal consensus lines and Stockholm `#=GC`/`#=PC` blocks (label + one char per column), each **merged across blocks** into one full-length string per label.
 - `unaligned`: FASTA whose sequences do not all share a length; `seq` is the raw concatenated record.
-- `mmseqs`: `fields` is the canonical order (query, target, length, id, gapopen, qstart, qend, tstart, tend, evalue, score?, alignment?); numeric cells are numbers, accessions stay strings; an alignment-string column, when present, lands last.
+- `mmseqs`: `fields` is the canonical order — the real `mmseqs easy-search` / BLAST-tabular layout: **query, target, pident, length, mismatch, gapopen, qstart, qend, tstart, tend, evalue, [score]**; numeric cells are numbers, accessions stay strings; no alignment-string column (the `convertalis` detail output is a different, unsupported file).
 
 **Parsing rules.**
 
-- Content sniffing decides the parser first, the (declared) extension second: a `# STOCKHOLM 1.0` header or a line starting `#=GS`/`#=PC` → Stockholm; a line matching `^CLUSTAL` → ClustalW; a `>` record header → FASTA; a whitespace row of ≥ 10 fields with numeric columns 3–10 → mmseqs. Unrecognized content is a typed parse error (the renderer catches it), never a crash.
-- ClustalW: name + wrapped sequence lines (re-wrapped to any width are re-joined); the line(s) following each sequence block, present for every block, are consensus annotations; sequences may be interleaved (multi-block).
-- FASTA: the sequence `name` is the first whitespace-delimited token of the `>` header (a description part in the header is dropped in v1).
-- Stockholm: sequence lines `NAME  SEQ...`; `#=GS NAME VALUE` are kept as sequence metadata (name only in v1); the first `#=PC LABEL SEQ...` block(s) become `annotations`; parsing runs until `//` **or end-of-file** (a missing terminator is tolerated, since some tools omit it).
-- mmseqs `.result`: split on runs of whitespace; a row needs ≥ 10 fields; fields 3–10 (and 11 when present) are parsed as numbers where possible; the final field is kept as an alignment string when it is not numeric.
+- Content sniffing decides the parser first, the (declared) extension second: a `# STOCKHOLM 1.0` header or a line starting `#=GS`/`#=GC`/`#=PC` → Stockholm; a line matching `^CLUSTAL` → ClustalW; a `>` record header → FASTA; a whitespace row of ≥ 10 fields with numeric columns 3–10 → mmseqs. Unrecognized content is a typed parse error (the renderer catches it), never a crash.
+- ClustalW: name + wrapped sequence lines (re-wrapped to any width are re-joined); the line(s) following each sequence block, present for every block, are consensus annotations, with the block's name-field indent stripped (a space for an unmarked column survives) and the per-block fragments **merged per label**; sequences may be interleaved (multi-block).
+- FASTA: the sequence `name` is the first whitespace-delimited token of the `>` header (a description part in the header is dropped in v1); a repeated header is a typed error (interleaving is a Clustal/Stockholm concept — concatenating two records would corrupt the data).
+- Stockholm: sequence lines `NAME  SEQ...`; `#=GS NAME VALUE` are kept as sequence metadata (name only in v1); `#=GC LABEL SEQ...` (the real per-column annotation tag: `#=GC RF`, `#=GC ss_cons`) and the legacy `#=PC LABEL SEQ...` become `annotations`; parsing runs until `//` **or end-of-file** (a missing terminator is tolerated, since some tools omit it).
+- mmseqs `.result`: split on runs of whitespace; a row needs **11 or 12** fields; fields 3–11 (`pident`…`evalue`) are numbers, and the optional 12th (`score`) is a number too — non-numeric where a number is required is a typed error, never `NaN` cells; > 12 fields is a typed error (a `convertalis` detail column is not supported).
 - BOM and CRLF are normalized; blank lines are skipped; parsers are pure (`text` in, value out) and total over the recognized set (recognized content never throws; it is either parsed or classified as unrecognized).
 
 ### Statistics (`./stats`)
@@ -101,14 +101,15 @@ Everything is total over `aligned` results; `unaligned` and `mmseqs` are answere
 Common props: `{ project: string; path: string; data: MsaParseResult }` plus `onMention(target)` where `target = { seqName, start, end }` (the web renderer formats it through `formatMsaMention`).
 
 - **`MsaGrid`** (aligned):
-  - Rendering: monospace; sequence-name column sticky on the left; a ruler row numbered every 10/100 columns; **row virtualization only** (a dependency-free window over the visible rows; each visible row is rendered as grouped same-class character spans, not one span per cell); the conservation band is a strip above the grid, one cell per column, colored on an identity scale (red = conserved → gray = variable), toggleable.
+  - Rendering: monospace; sequence-name column sticky on the left (so row labels survive horizontal scrolling) with an opaque background; a ruler row over the **compacted** column set — rows, band, ruler and annotation rows all render exactly the kept columns, and each ruler label is the column's original 1-based number glued to its character (never a blank-padded full-width ruler, which drifts out of alignment as soon as a column is filtered out); **row virtualization only** (a dependency-free window over the visible rows; each visible row is rendered as grouped same-class character spans, not one span per cell); the conservation band is a strip above the grid, one cell per column, colored on an identity scale (red = conserved → gray = variable), toggleable. The sticky header is as wide as the grid so it scrolls horizontally with the rows.
   - Selection: single click selects one cell (cross-highlight of its row and column) — selecting does **not** touch the composer; a drag over a row selects a contiguous run; a second single click on the same cell clears the selection; `Esc` clears.
-  - Mention: **double-click** (or the per-selection "insert" affordance) calls `onMention({seqName, start, end})`; a double-click on a target that already carries a mention **removes** it — the toggle is keyed in the web renderer (target key), and the grid only reports "this target was (re-)activated". So: single clicks manage selection, double clicks manage the mention, and they never fight.
+  - Mention: **double-click** (or the per-selection "insert" affordance) calls `onMention({seqName, start, end})`; a double-click on a target that already carries a mention **removes** it — the toggle is keyed in the web renderer (target key), and the grid only reports "this target was (re-)activated". So: single clicks manage selection, double clicks manage the mention, and they never fight. The pointer→column hit test is a pure function (`columnAtOffset`) so it is testable without a DOM.
+  - In plain-text mode the pointer handlers are inert — the notice's promise ("selection … disabled at this size") is the actual behavior, and no mention is inserted from a size whose columns are not selectable.
   - Hover: full row + column light highlight and a tooltip (sequence name, 1-based column, that column's identity / gap fraction).
   - Filters: sequence-name search (rows), "conserved columns only" (columns, via `isConservedCol`), "hide gaps" (columns where every sequence is `-`).
   - Scale guard: when `sequences × columns > 250 000`, the grid auto-degrades to a **plain-text mode** (virtualized raw text rows, no per-character spans) with a one-line notice and a search that still works — the same "friendly line, never a blank pane" rule the other renderers follow.
   - Like every renderer in a tab, it never asserts its own `visibility` (the open-file pane hides tabs with `visibility:hidden`, and a child's `visibility:visible` would resurrect it).
-- **`MsaResultTable`** (mmseqs): a table over `fields` (numeric right-aligned, sortable header), with two threshold inputs — identity ≥ (default 30) and E-value ≤ (default 1) — and row-count readout; when the `alignment` field is present, each row can expand to the two aligned sequence lines (monospace block) with a per-hit identity label.
+- **`MsaResultTable`** (mmseqs): a table over `fields` (numeric right-aligned, sortable header), with two threshold inputs — identity ≥ (default 30, read from the real `pident` column) and E-value ≤ (default 1, read from the real `evalue` column) — and a row-count readout. There is no row expansion: the BLAST-tabular `.result` carries no alignment string (see the amendment below).
 - **`UnalignedList`** (unaligned FASTA): one row per sequence — name, length, and an "insert" affordance that calls `onMention({seqName, start: 1, end: length})`.
 
 ### `apps/web` wiring
@@ -154,3 +155,48 @@ Gates: `npm run build` (build chain gains `msa-viewer` between `molql-viewer` an
 2. This spec, committed on the branch.
 3. `writing-plans` produces the implementation plan; execution method chosen at that gate.
 4. Implementation strictly in plan order, TDD for the pure modules first (parsers → stats → mention → components → web wiring), with `npm run build` + `npm run test` + the web `file-kinds` cases green at each step's end.
+
+## Amendment — post-review corrections (2026-09-23)
+
+The whole-branch review found two defects the spec itself carried, plus geometry/annotation
+behavior the spec was silent on. All are corrected above; recorded here so the change of
+intent is visible.
+
+1. **mmseqs `.result` column order (spec defect).** The original data model invented the
+   order `query, target, length, id, gapopen, …`. Real `mmseqs easy-search` (and BLAST
+   `-outfmt 6`) output is `query, target, pident, length, mismatch, gapopen, qstart, qend,
+   tstart, tend, evalue, [score]`. With the invented order the table mislabeled every
+   column from the third on, and — because the `evalue` header landed on a coordinate
+   column — the default "E-value ≤ 1" filter hid essentially every real hit. The parser
+   now implements the real layout and accepts 11 or 12 columns; the table's identity
+   filter reads `pident` and its E-value filter reads `evalue`.
+2. **The alignment-string column and the row expansion are removed (spec defect).** They
+   existed only because of the invented layout; the real `.result` has no alignment
+   column. A `convertalis` detail file (a different shape) is out of scope and fails as a
+   typed error rather than rendering misleadingly.
+3. **Stockholm annotation tag corrected (spec defect).** Stockholm 1.0 defines `#=GC` for
+   per-column annotations (`#=GC RF`, `#=GC ss_cons`); the spec's `#=PC` is not a standard
+   feature line. Both are now accepted (`#=GC` is what real Pfam/Rfam files carry).
+4. **Multi-block annotations are merged per label (spec silence).** One annotation per
+   block would misplace every block after the first (fragments are indexed by original
+   column) and collide on a label-only React key. `mergeAnnotations` joins them into one
+   full-length string per label; the Clustal parser also strips the block's name-field
+   indent instead of `trim()`-ing the consensus line (an unmarked leading column is a
+   space and must survive).
+5. **One column geometry, applied to rows, band, ruler and annotations (spec silence).**
+   Rows render the compacted kept columns, so the ruler does too, each label carrying its
+   original 1-based number; a blank-padded full-width ruler drifts one position right of
+   its character after the first filtered column. The sticky header is as wide as the grid
+   so it scrolls with the rows, and the sequence-name column is sticky-left with an opaque
+   background (both were specified but unimplemented).
+6. **The pointer hit test is a pure function (implementation defect).** The character-width
+   probe was a block-level element measuring its container, which corrupted every
+   click/drag/double-click column mapping (and therefore every composer mention).
+   `columnAtOffset` now owns that arithmetic and is covered by Node tests; the probe is
+   absolutely positioned so it shrink-wraps its text.
+7. **A repeated FASTA header is a typed error (spec silence).** Concatenating two records
+   with the same name silently corrupts data (and can fake an aligned length match);
+   interleaved blocks are a Clustal/Stockholm concept only.
+8. **Plain-text mode is inert (spec silence).** The notice promised that selection is
+   disabled at the ≥ 250 000-cell size; the pointer handlers now honor that literally
+   instead of inserting a mention at an unselectable column.

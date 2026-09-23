@@ -2,6 +2,7 @@
 
 export {
   isMsaFile,
+  mergeAnnotations,
   parseAlignment,
   sniffFormat,
   MsaParseError,
@@ -37,13 +38,14 @@ export {
 
 export {
   PLAIN_TEXT_CELL_LIMIT,
+  columnAtOffset,
   columnsToKeep,
   conservationBandColor,
   filterRowsByQuery,
   groupSpans,
   rowWindow,
+  rulerForColumns,
   rulerLabel,
-  rulerLine,
   shouldUsePlainText,
   type ColumnFilter,
   type RowWindow,

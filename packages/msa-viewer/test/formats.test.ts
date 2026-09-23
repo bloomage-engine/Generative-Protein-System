@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   MsaParseError,
   isMsaFile,
+  mergeAnnotations,
   parseAlignment,
   sniffFormat,
   type MsaSequence,
@@ -36,9 +37,12 @@ const STOCKHOLM = [
 const FASTA_ALIGNED = `>Seq1\n${SEQ26}\n>Seq2\n${SEQ26B}\n`;
 const FASTA_UNALIGNED = `>Seq1\n${SEQ26}\n>Short\nMAAVL\n`;
 
-const MMSEQS_TAB_11 = "A00001|db|prot\tB00001|db|prot\t26\t82.5\t2\t1\t26\t1\t26\t3e-12\t142.6\n";
-const MMSEQS_SPACE_12 =
-  `A00001|db|prot B00001|db|prot 26 82.5 2 1 26 1 26 3e-12 142.6 ${SEQ26.slice(0, 12)}-${SEQ26.slice(12)}\n`;
+// Real `mmseqs easy-search` / BLAST-tabular `.result`: query, target, pident, length,
+// mismatch, gapopen, qstart, qend, tstart, tend, evalue, [score]. 12 columns with the
+// bit score, 11 without.
+const MMSEQS_12 = "A00001|db|prot\tB00001|db|prot\t82.5\t26\t4\t1\t1\t26\t1\t26\t3e-12\t142.6\n";
+const MMSEQS_12_SPACED = MMSEQS_12.replace(/\t/g, " ");
+const MMSEQS_11 = "A00001|db|prot B00001|db|prot 82.5 26 4 1 1 26 1 26 3e-12\n";
 
 test("isMsaFile: recognized alignments and search results by name (case-insensitive)", () => {
   for (const name of [
@@ -67,17 +71,18 @@ test("sniffFormat recognizes each format from the first content line", () => {
   assert.equal(sniffFormat(CLUSTAL), "clustalw");
   assert.equal(sniffFormat(STOCKHOLM), "stockholm");
   assert.equal(sniffFormat("#=GS Seq1 AC x\nSeq1  ABC\n//"), "stockholm");
+  assert.equal(sniffFormat("#=GC RF xxxx\nSeq1  ABC\n//"), "stockholm"); // Pfam-style GC-first
   assert.equal(sniffFormat(FASTA_ALIGNED), "fasta");
-  assert.equal(sniffFormat(MMSEQS_TAB_11.replace("\t", " ")), "mmseqs");
+  assert.equal(sniffFormat(MMSEQS_12), "mmseqs");
 });
 
 test("sniffFormat skips comment lines and rejects unrecognized content", () => {
-  assert.equal(sniffFormat("# from mmseqs\n" + MMSEQS_TAB_11.replace(/\t/g, " ")), "mmseqs");
+  assert.equal(sniffFormat("# from mmseqs\n" + MMSEQS_12_SPACED), "mmseqs");
   assert.equal(sniffFormat("hello world\njust some text\n"), null);
   assert.equal(sniffFormat(""), null);
 });
 
-test("ClustalW: two blocks re-join per sequence; consensus annotations kept per block", () => {
+test("ClustalW: two blocks re-join per sequence; consensus blocks MERGE into one full-length annotation", () => {
   const r = parseAlignment(CLUSTAL);
   assert.equal(r.kind, "aligned");
   if (r.kind !== "aligned") return;
@@ -85,9 +90,46 @@ test("ClustalW: two blocks re-join per sequence; consensus annotations kept per 
   assert.equal(r.columns, 27);
   assert.equal(r.sequences[0]!.seq, "MAAVLTTVLLLLLLAAPAKAAAADGAG");
   assert.equal(r.sequences[1]!.seq, "MAALVTTVLLLLLLAAPAKAAAADGGA");
-  assert.equal(r.annotations.length, 2);
+  // one merged annotation (not one fragment per block — those would misplace
+  // every block after the first and collide on the React key)
+  assert.equal(r.annotations.length, 1);
   assert.equal(r.annotations[0]!.label, "consensus");
-  assert.equal(r.annotations.flatMap((a) => a.chars).join("").length, 27);
+  assert.equal(r.annotations[0]!.chars, "*".repeat(27));
+});
+
+test("ClustalW: a consensus line's name-field indent is stripped, an unmarked leading column is preserved", () => {
+  const INDENT = " ".repeat(15); // "Seq1" + 11 spaces = the name field
+  const text = [
+    "CLUSTAL W 1.85",
+    "",
+    `Seq1${" ".repeat(11)}MKA`,
+    `Seq2${" ".repeat(11)}M-A`,
+    `${INDENT} **`, // column 1 unmarked, then conserved
+    "",
+    `Seq1${" ".repeat(11)}TTV`,
+    `Seq2${" ".repeat(11)}TTV`,
+    `${INDENT}***`,
+    "",
+  ].join("\n");
+  const r = parseAlignment(text);
+  assert.equal(r.kind, "aligned");
+  if (r.kind !== "aligned") return;
+  assert.equal(r.columns, 6);
+  assert.equal(r.annotations.length, 1);
+  assert.equal(r.annotations[0]!.chars, " *****"); // space preserved, blocks joined in order
+});
+
+test("mergeAnnotations: per-label concatenation in first-seen order", () => {
+  const merged = mergeAnnotations([
+    { label: "consensus", chars: "ab" },
+    { label: "RF", chars: "xx" },
+    { label: "consensus", chars: "cd" },
+  ]);
+  assert.deepEqual(merged, [
+    { label: "consensus", chars: "abcd" },
+    { label: "RF", chars: "xx" },
+  ]);
+  assert.deepEqual(mergeAnnotations([]), []);
 });
 
 test("Stockholm: GS name kept, PC annotation, trailing // (or EOF) tolerated", () => {
@@ -126,31 +168,61 @@ test("FASTA: the name is the first header token; a description is dropped; an em
   assert.equal(r.sequences[0]!.name, "Seq1");
   assert.throws(() => parseAlignment(">\nMAAVL\n"), MsaParseError);
   assert.throws(() => parseAlignment("MAAVL\n"), MsaParseError); // data before any header
+  // a repeated header is NOT block interleaving (that is a Clustal/Stockholm
+  // concept) — concatenating would silently corrupt the record
+  assert.throws(() => parseAlignment(">Seq1\nMAAVL\n>Seq1\nTTVLL\n"), MsaParseError);
 });
 
-test("mmseqs .result: tab or space separated; 10/11/12-field rows; numeric fields become numbers", () => {
-  const t = parseAlignment(MMSEQS_TAB_11);
+test("Stockholm: a real Pfam-style #=GC per-column annotation is kept (alongside #=PC)", () => {
+  const text = [
+    "# STOCKHOLM 1.0",
+    `Seq1 ${SEQ26}`,
+    `Seq2 ${SEQ26B}`,
+    `#=GC RF        ${"x".repeat(26)}`,
+    `#=GC ss_cons   ${">".repeat(26)}`,
+    "//",
+  ].join("\n");
+  const r = parseAlignment(text);
+  assert.equal(r.kind, "aligned");
+  if (r.kind !== "aligned") return;
+  assert.equal(r.annotations.length, 2);
+  assert.deepEqual(r.annotations.map((a) => a.label), ["RF", "ss_cons"]);
+  assert.equal(r.annotations[0]!.chars.length, 26);
+  assert.equal(r.annotations[1]!.chars, ">".repeat(26));
+});
+
+test("mmseqs .result: real BLAST-tabular order, tab or space separated, numeric cells become numbers", () => {
+  const t = parseAlignment(MMSEQS_12);
   assert.equal(t.kind, "mmseqs");
   if (t.kind !== "mmseqs") return;
-  assert.equal(t.fields.length, 11);
-  assert.deepEqual(t.rows[0]!.slice(0, 11), [
-    "A00001|db|prot",
-    "B00001|db|prot",
-    26, 82.5, 2, 1, 26, 1, 26, 3e-12, 142.6,
+  assert.deepEqual(t.fields, [
+    "query", "target", "pident", "length", "mismatch", "gapopen",
+    "qstart", "qend", "tstart", "tend", "evalue", "score",
   ]);
-  const s = parseAlignment(MMSEQS_SPACE_12);
-  if (s.kind !== "mmseqs") return;
-  assert.equal(s.fields.length, 12);
-  assert.equal(s.rows[0]![10], 142.6);
-  assert.equal(typeof s.rows[0]![11], "string");
-  const ten = parseAlignment("A|db|p B|db|p 26 82.5 2 1 26 1 26 3e-12\n");
-  if (ten.kind !== "mmseqs") return;
-  assert.equal(ten.fields.length, 10);
+  assert.deepEqual(t.rows[0], [
+    "A00001|db|prot", "B00001|db|prot",
+    82.5, 26, 4, 1, 1, 26, 1, 26, 3e-12, 142.6,
+  ]);
+  // tabs and spaces are the same table
+  assert.deepEqual(parseAlignment(MMSEQS_12_SPACED), t);
+  // 11 columns: no bit score, evalue last
+  const noScore = parseAlignment(MMSEQS_11);
+  if (noScore.kind !== "mmseqs") return;
+  assert.equal(noScore.fields.length, 11);
+  assert.equal(noScore.rows[0]!.length, 11);
+  assert.equal(noScore.rows[0]![10], 3e-12); // evalue, read from the real column
 });
 
-test("mmseqs .result: malformed rows are typed errors, never silent", () => {
-  assert.throws(() => parseAlignment("A p B p 10 90.0 1 1 10 1\n"), MsaParseError); // 9 fields
-  assert.throws(() => parseAlignment("A p B p xx 90.0 1 1 10 1 2e-3 5.0\n"), MsaParseError); // non-numeric field 3
+test("mmseqs .result: malformed rows are typed errors, never NaN cells", () => {
+  // 10 fields (ends at tstart — no evalue)
+  assert.throws(() => parseAlignment("A00001|db|prot B00001|db|prot 82.5 26 4 1 1 26 1\n"), MsaParseError);
+  // non-numeric pident
+  assert.throws(() => parseAlignment("A00001|db|prot B00001|db|prot xx 26 4 1 1 26 1 26 3e-12 142.6\n"), MsaParseError);
+  // too many fields (a convertalis detail column is not supported)
+  assert.throws(
+    () => parseAlignment("A00001|db|prot B00001|db|prot 82.5 26 4 1 1 26 1 26 3e-12 142.6 qaln taln\n"),
+    MsaParseError,
+  );
   assert.throws(() => parseAlignment("# only a comment\n"), MsaParseError); // no rows
 });
 
