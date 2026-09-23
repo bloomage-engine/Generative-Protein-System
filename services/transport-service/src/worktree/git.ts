@@ -1,0 +1,141 @@
+import { spawn } from "node:child_process";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+export interface GitResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+export interface GitRunner {
+  run(args: string[], opts?: { cwd?: string; timeoutMs?: number }): Promise<GitResult>;
+}
+
+export class GitError extends Error {
+  constructor(message: string, readonly stderr: string, readonly code: number) {
+    super(message);
+    this.name = "GitError";
+  }
+}
+
+const DEFAULT_TIMEOUT_MS = 30_000;
+export const GITIGNORE_ENTRIES = [".worktrees/", ".science-studio/"] as const;
+const COMMITTER = ["-c", "user.name=Science Studio", "-c", "user.email=science-studio@localhost"];
+
+export function createGitRunner(opts: { gitBin?: string } = {}): GitRunner {
+  const gitBin = opts.gitBin ?? process.env.GIT_BINARY ?? "git";
+  return {
+    run(args, runOpts = {}) {
+      return new Promise((resolve) => {
+        const child = spawn(gitBin, args, { cwd: runOpts.cwd, stdio: ["ignore", "pipe", "pipe"] });
+        let stdout = "";
+        let stderr = "";
+        let settled = false;
+        const timeoutMs = runOpts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          child.kill("SIGKILL");
+          resolve({ code: -1, stdout, stderr: `${stderr}\ngit timed out after ${timeoutMs}ms`.trim() });
+        }, timeoutMs);
+        timer.unref?.();
+        child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+        child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+        child.on("error", (err) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve({ code: -1, stdout, stderr: err.message });
+        });
+        child.on("close", (code) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve({ code: code ?? -1, stdout, stderr });
+        });
+      });
+    },
+  };
+}
+
+/** True when `dir` is inside a git work tree (false for a missing binary). */
+export async function isRepo(git: GitRunner, dir: string): Promise<boolean> {
+  const result = await git.run(["rev-parse", "--is-inside-work-tree"], { cwd: dir });
+  return result.code === 0 && result.stdout.trim() === "true";
+}
+
+async function ensureGitignore(dir: string): Promise<void> {
+  const file = join(dir, ".gitignore");
+  let current = "";
+  try {
+    current = await readFile(file, "utf8");
+  } catch {
+    current = "";
+  }
+  const lines = new Set(current.split("\n").map((line) => line.trim()));
+  const missing = GITIGNORE_ENTRIES.filter((entry) => !lines.has(entry));
+  if (missing.length === 0) return;
+  const prefix = current === "" || current.endsWith("\n") ? current : `${current}\n`;
+  await writeFile(file, `${prefix}${missing.join("\n")}\n`, "utf8");
+}
+
+async function must(git: GitRunner, args: string[], cwd: string): Promise<string> {
+  const result = await git.run(args, { cwd });
+  if (result.code !== 0) {
+    throw new GitError(`git ${args.join(" ")} failed`, result.stderr.trim(), result.code);
+  }
+  return result.stdout;
+}
+
+/** Lazily initialize `dir` as a git repo with a first commit. Idempotent. */
+export async function ensureRepo(git: GitRunner, dir: string): Promise<boolean> {
+  if (await isRepo(git, dir)) return false;
+  await must(git, ["init", "-b", "main"], dir);
+  await ensureGitignore(dir);
+  await must(git, ["add", "-A"], dir);
+  await must(git, [...COMMITTER, "commit", "-m", "Initialize project workspace"], dir);
+  return true;
+}
+
+export async function currentBranch(git: GitRunner, dir: string): Promise<string> {
+  return (await must(git, ["rev-parse", "--abbrev-ref", "HEAD"], dir)).trim();
+}
+
+export async function worktreeAdd(
+  git: GitRunner,
+  opts: { repoDir: string; path: string; branch: string; base: string; createBranch: boolean },
+): Promise<void> {
+  const args = opts.createBranch
+    ? ["worktree", "add", "-b", opts.branch, opts.path, opts.base]
+    : ["worktree", "add", opts.path, opts.branch];
+  await must(git, args, opts.repoDir);
+}
+
+export async function worktreeRemove(
+  git: GitRunner,
+  opts: { repoDir: string; path: string; force: boolean },
+): Promise<void> {
+  const args = ["worktree", "remove", ...(opts.force ? ["--force"] : []), opts.path];
+  await must(git, args, opts.repoDir);
+}
+
+/** Parse `git worktree list --porcelain` into path/branch pairs. */
+export async function listWorktrees(
+  git: GitRunner,
+  repoDir: string,
+): Promise<{ path: string; branch: string | null }[]> {
+  const out = await must(git, ["worktree", "list", "--porcelain"], repoDir);
+  const result: { path: string; branch: string | null }[] = [];
+  let current: { path: string; branch: string | null } | null = null;
+  for (const line of out.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      if (current) result.push(current);
+      current = { path: line.slice("worktree ".length), branch: null };
+    } else if (line.startsWith("branch ") && current) {
+      current.branch = line.slice("branch ".length).replace(/^refs\/heads\//, "");
+    }
+  }
+  if (current) result.push(current);
+  return result;
+}
