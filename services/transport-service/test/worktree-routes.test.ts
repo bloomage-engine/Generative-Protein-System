@@ -199,3 +199,36 @@ test("a session is created under a claimed worktree and listed by it", async () 
     await rm(projectRoot, { recursive: true, force: true });
   }
 });
+
+test("a session with worktreeId main is created on a fresh project (main auto-ensured)", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const records = await createInMemoryRecordStore();
+  await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
+  const backend: Backend = {
+    principal: new LocalPrincipalResolver(),
+    environments: new LocalEnvironmentProvider({
+      environmentFor: async () => ({ adapter: adapter(), workspace: new NullWorkspace() }),
+    }),
+    cors: { origin: true },
+    records,
+    recordDefaults: { projectId: "project-default", projectName: "D", agentId: "main" },
+    projectRoot,
+  };
+  const app = await createTransportService({ backend });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const base = `http://127.0.0.1:${(app.server.address() as { port: number }).port}`;
+  try {
+    // No worktree/transport request has run: the `main` row does not exist yet.
+    const created = await fetch(`${base}/api/projects/project-default/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ worktreeId: "main" }),
+    });
+    assert.equal(created.status, 201);
+    const { session } = (await created.json()) as { session: { worktreeId?: string } };
+    assert.equal(session.worktreeId, "main");
+  } finally {
+    await app.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});

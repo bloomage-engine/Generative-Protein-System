@@ -250,8 +250,13 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       typeof body.worktreeId === "string" && body.worktreeId ? body.worktreeId : undefined;
     // Validate the claimed worktree BEFORE the project-missing catch, so an
     // unknown worktree is a 404 through the error handler rather than a
-    // misleading "project not found".
-    if (worktreeId) await directory.requireWorktree(id, worktreeId);
+    // misleading "project not found". Ensure `main` first: `createSession` and
+    // `POST /api/projects` never create it, so a fresh Project's `main` row may
+    // not exist yet (the "any worktree-touching path ensures main" rule).
+    if (worktreeId) {
+      await directory.ensureWorktree(id);
+      await directory.requireWorktree(id, worktreeId);
+    }
     try {
       const session = await directory.createSession(id, {
         ...(typeof body.agentId === "string" && body.agentId ? { agentId: body.agentId } : {}),
