@@ -1,0 +1,156 @@
+# MSA Viewer for File Preview
+
+Work on branch `molstar-msa`.
+
+## Summary
+
+Alignments and pairwise-search result files are common in a research workspace, but today the workbench shows them as raw text. This adds an interactive MSA viewer on the human-preview path, mirroring the existing structure-viewer pattern:
+
+- a new package `@science-studio/msa-viewer` that owns the pure, Node-testable logic (format parsing, column statistics, the mention codec) plus the browser-only React components (alignment grid, mmseqs result table);
+- a new `"msa"` file kind in `apps/web` and a new `MsaRenderer` center-pane renderer that routes to the right sub-view (aligned grid / unaligned rows / mmseqs hit table / plain-text fallback) and inserts viewer mentions into the composer through the same seam the structure renderer uses.
+
+No new service routes, no agent-side plugin, no record change, and no molstar dependency: the MSA grid is a text grid, and Mol\* 5.9.0 ships no MSA component (only a single-sequence strip and a two-sequence alignment algorithm — verified against the installed tree). The agent already has the alignment file in its own cwd and can read it as plain text; the viewer mention doubles as a stable reference the agent can follow.
+
+## Motivation
+
+Researchers drop alignment and search output into a Project workspace: ClustalW/Stockholm/aligned-FASTA MSAs and mmseqs2 `.result` hit tables. There is no way to read them as alignments — no per-column conservation, no click-to-select, no selection reference they can hand to the agent. The structure files already have a specialist viewer (`StructureRenderer` + `@science-studio/molql-viewer`); sequence alignments need the equivalent.
+
+## Scope
+
+**In scope:**
+
+- New workspace package `packages/msa-viewer` (root `workspaces` + root build chain).
+- Parsers (pure, Node-testable): aligned multi-sequence FASTA, unaligned FASTA, ClustalW (with optional consensus line), Stockholm (sequence lines + `#=PC` per-position annotation blocks), and the mmseqs2 whitespace-separated `.result` table (10/11/12-field rows, optional alignment-string column).
+- Column statistics (pure, Node-testable): per-column identity and gap fraction, per-sequence gap fraction and length, whole-table average identity, plus a "conserved column" predicate with documented defaults.
+- Mention codec (pure, Node-testable): `@<project>/<path>/<seqName>@<col>` and `@<project>/<path>/<seqName>@<start>-<end>`, formatted and parsed, compatible with a trailing ` #label` (stripped before parse, same convention as structure mentions).
+- React components (browser entry): `MsaGrid` (row-virtualized monospace grid, crosshair selection, conservation band, 10/100 column ruler, sequence-name search, "conserved only" / gap filters, statistics readout, plain-text degradation for very large alignments), `MsaResultTable` (sortable columns, identity / E-value threshold filters, optional expansion of a pairwise alignment column), and a simple unaligned-rows list.
+- `apps/web`: `"msa"` in `kindFor` (by file name, per the repo convention), an `MsaRenderer` that fetches its own bytes (like the other specialist viewers), routes by parse result, and offers a plain-text fallback on parse failure; mention insertion via the existing `ComposerInsertProvider` seam, double-click toggling an already-inserted target off (same keying as structure mentions).
+- Tests: package-level Node tests for formats / stats / mention; a `kindFor` case in `apps/web/test/file-kinds.test.mjs`; `npm run build` (the real type gate) and `npm run test` green.
+
+**Out of scope:**
+
+- Agent-side plugins, service routes, or record changes (the agent reads the text file directly from its cwd).
+- Any molstar dependency in the package (there is nothing to render in 3D).
+- Running any alignment algorithm here (msa-viewer does not compare sequences; it parses and presents).
+- GenBank / FASTA internal-feature parsing; Stockholm annotations are surfaced as rows, not parsed into a full annotation model.
+- Canvas-based grid rendering (DOM row virtualization first; add a canvas path later if a real file demands it).
+- Side-by-side comparison of multiple MSA files, export, or editing.
+- A source-view editor for MSA files (the specialist renderer is the pane; "open as plain text" is the fallback — the same decision structure files already made).
+
+## Design
+
+### `packages/msa-viewer`
+
+Mirrors the shape of `packages/molql-viewer`: explicit exports (no `export *`), pure modules in their own entries (Node-testable), React in the browser entry. The package has **no dependencies** beyond `react` (peer) and dev tooling; it imports nothing from the rest of the monorepo.
+
+| Entry | Contents | Node-testable |
+|---|---|---|
+| `.` | `MsaGrid`, `MsaResultTable`, `UnalignedList` (React, browser-only) | no |
+| `./formats` | `parseAlignment(text)` with content sniffing + per-format parsers, `MsaParseResult` types | yes |
+| `./stats` | per-column / per-sequence / table statistics, `isConservedCol` | yes |
+| `./mention` | `formatMsaMention(...)`, `parseMsaMention(text)` | yes |
+
+Build: `tsc -b` like its siblings; tests: `node --import tsx --test test/*.test.ts`.
+
+### Data model (`./formats`)
+
+```ts
+type MsaParseResult =
+  | { kind: "aligned";   sequences: { name: string; seq: string }[];
+                            columns: number; annotations: { label: string; chars: string }[] }
+  | { kind: "unaligned"; sequences: { name: string; seq: string }[] }
+  | { kind: "mmseqs";    fields: string[]; rows: (string | number)[][] };
+```
+
+- `aligned`: every `seq` has length `columns` (gaps are `-`); `annotations` holds Clustal consensus lines and Stockholm `#=PC` blocks (label + one char per column).
+- `unaligned`: FASTA whose sequences do not all share a length; `seq` is the raw concatenated record.
+- `mmseqs`: `fields` is the canonical order (query, target, length, id, gapopen, qstart, qend, tstart, tend, evalue, score?, alignment?); numeric cells are numbers, accessions stay strings; an alignment-string column, when present, lands last.
+
+**Parsing rules.**
+
+- Content sniffing decides the parser first, the (declared) extension second: a `# STOCKHOLM 1.0` header or a line starting `#=GS`/`#=PC` → Stockholm; a line matching `^CLUSTAL` → ClustalW; a `>` record header → FASTA; a whitespace row of ≥ 10 fields with numeric columns 3–10 → mmseqs. Unrecognized content is a typed parse error (the renderer catches it), never a crash.
+- ClustalW: name + wrapped sequence lines (re-wrapped to any width are re-joined); the line(s) following each sequence block, present for every block, are consensus annotations; sequences may be interleaved (multi-block).
+- FASTA: the sequence `name` is the first whitespace-delimited token of the `>` header (a description part in the header is dropped in v1).
+- Stockholm: sequence lines `NAME  SEQ...`; `#=GS NAME VALUE` are kept as sequence metadata (name only in v1); the first `#=PC LABEL SEQ...` block(s) become `annotations`; parsing runs until `//` **or end-of-file** (a missing terminator is tolerated, since some tools omit it).
+- mmseqs `.result`: split on runs of whitespace; a row needs ≥ 10 fields; fields 3–10 (and 11 when present) are parsed as numbers where possible; the final field is kept as an alignment string when it is not numeric.
+- BOM and CRLF are normalized; blank lines are skipped; parsers are pure (`text` in, value out) and total over the recognized set (recognized content never throws; it is either parsed or classified as unrecognized).
+
+### Statistics (`./stats`)
+
+- `columnStats(result): { identity: number; gapFraction: number }[]` — identity = share of the most frequent non-gap character, gapFraction = share of `-` (per column).
+- `sequenceStats(result): { name: string; length: number; gapFraction: number }[]`.
+- `tableStats(result): { sequences: number; columns: number; averageIdentity: number; conservedColumns: number }`.
+- `isConservedCol({identity, gapFraction}, opts?)` — defaults `minIdentity: 0.9`, `maxGapFraction: 0.1` (documented on the function; overridable).
+
+Everything is total over `aligned` results; `unaligned` and `mmseqs` are answered with empty/`null` shapes, not exceptions.
+
+### Mention codec (`./mention`)
+
+```
+@<project>/<path>/<seqName>@<col>            one cell
+@<project>/<path>/<seqName>@<start>-<end>    a run (start <= end, 1-based)
+```
+
+- `formatMsaMention(project, path, seqName, col?: [start, end])` — emits the canonical form.
+- `parseMsaMention(text)`: a `#label` suffix (leading space + `#`, the structure-mention convention) is stripped first; the body splits as `@` + `project` (first segment) + middle segments = `path` (may itself contain `/`) + last segment; the last segment splits on the first unescaped `@` into `seqName` and the position. Returns a typed result; malformed input is a typed `MentionParseError` (with reason), never a partial object.
+- The grammar is intentionally the shape of the structure mention (`@<project>/<path>/<expression>`), so future agent-side tools can reuse one reading rule (`parseSelectionItem`-adjacent) across both viewer kinds.
+- Mentions are **plain composer text** (a directive is not emitted and the service lifts nothing) — identical policy to structure mentions.
+
+### React components (browser entry)
+
+Common props: `{ project: string; path: string; data: MsaParseResult }` plus `onMention(target)` where `target = { seqName, start, end }` (the web renderer formats it through `formatMsaMention`).
+
+- **`MsaGrid`** (aligned):
+  - Rendering: monospace; sequence-name column sticky on the left; a ruler row numbered every 10/100 columns; **row virtualization only** (a dependency-free window over the visible rows; each visible row is rendered as grouped same-class character spans, not one span per cell); the conservation band is a strip above the grid, one cell per column, colored on an identity scale (red = conserved → gray = variable), toggleable.
+  - Selection: single click selects one cell (cross-highlight of its row and column) — selecting does **not** touch the composer; a drag over a row selects a contiguous run; a second single click on the same cell clears the selection; `Esc` clears.
+  - Mention: **double-click** (or the per-selection "insert" affordance) calls `onMention({seqName, start, end})`; a double-click on a target that already carries a mention **removes** it — the toggle is keyed in the web renderer (target key), and the grid only reports "this target was (re-)activated". So: single clicks manage selection, double clicks manage the mention, and they never fight.
+  - Hover: full row + column light highlight and a tooltip (sequence name, 1-based column, that column's identity / gap fraction).
+  - Filters: sequence-name search (rows), "conserved columns only" (columns, via `isConservedCol`), "hide gaps" (columns where every sequence is `-`).
+  - Scale guard: when `sequences × columns > 250 000`, the grid auto-degrades to a **plain-text mode** (virtualized raw text rows, no per-character spans) with a one-line notice and a search that still works — the same "friendly line, never a blank pane" rule the other renderers follow.
+  - Like every renderer in a tab, it never asserts its own `visibility` (the open-file pane hides tabs with `visibility:hidden`, and a child's `visibility:visible` would resurrect it).
+- **`MsaResultTable`** (mmseqs): a table over `fields` (numeric right-aligned, sortable header), with two threshold inputs — identity ≥ (default 30) and E-value ≤ (default 1) — and row-count readout; when the `alignment` field is present, each row can expand to the two aligned sequence lines (monospace block) with a per-hit identity label.
+- **`UnalignedList`** (unaligned FASTA): one row per sequence — name, length, and an "insert" affordance that calls `onMention({seqName, start: 1, end: length})`.
+
+### `apps/web` wiring
+
+| File | Change |
+|---|---|
+| `components/studio/file-utils.ts` | `kindFor` gains `"msa"` for `.clustal`, `.clustal.om`, `.sto`, `.stockholm`, `.fasta`, `.fa`, `.faa`, `.fna`, `.aln`, `.result`, and any name ending in `_result` (name-based, per the repo convention; the mime map does not decide this) |
+| `components/studio/file-preview-pane.tsx` | the `Preview` switch routes kind `"msa"` to the new renderer |
+| `components/studio/renderers/MsaRenderer.tsx` | new; thin shell over `MsaParser` |
+| `components/studio/renderers/MsaParser.tsx` | new; fetch → parse → route to `MsaGrid` / `UnalignedList` / `MsaResultTable` / fallback |
+| `test/file-kinds.test.mjs` | new `"msa"` cases + regression of the existing routing |
+
+- **Fetching, like the specialist viewers, is the renderer's own job** — `MsaParser` fetches `workspaceFileUrl(api, path, { project })`, reads it as a byte stream and decodes UTF-8, and classifies failures through the existing 503/404/413 helpers. This keeps the two text-mime lists that "must stay in sync" (`mimeFor` in `packages/workspace`, `looksTextual` in `transport-client`) untouched; an alignment arriving as `application/octet-stream` then still renders (the viewer does not depend on the server calling it text).
+- **Routing on the parse result**: `aligned` → `MsaGrid`; `unaligned` → `UnalignedList`; `mmseqs` → `MsaResultTable`; a parse error or an empty file → a friendly error / hint block with an **"open as plain text"** action that renders the already-fetched bytes through the existing `PlainTextRenderer` (no second fetch).
+- **Mentions**: `MsaRenderer` consumes `useComposerInsert()` (the same context `StructureRenderer` uses); each target carries a key of `path|seqName|start|end`, and re-activating an already-inserted target (double-click or the "insert" affordance) **removes** that mention — the toggle is keyed exactly like structure mentions' `molqlTargetKey` — then the conversation pane is revealed via the store, as structure clicks do today.
+- Tabs, StrictMode double-mount, and the status bar need no changes: kind routing is the only entry point.
+
+### Errors and edge cases
+
+| Case | Behavior |
+|---|---|
+| content matches no known format | parse error surfaced as a friendly block + "open as plain text" |
+| empty file / single empty record | hint + "open as plain text" |
+| alignment too large for the grid | auto plain-text mode (250 k-cell guard) with a notice |
+| 404 / 503 (no workspace) / over inline cap | the existing `requestError` / `isWorkspaceUnavailable` classification and message lines, unchanged |
+| BOM / CRLF / re-wrapped sequence lines | normalized inside the parsers, invisible to the UI |
+
+### Testing
+
+| Layer | What | How |
+|---|---|---|
+| `msa-viewer/test/formats.test.ts` | ClustalW (incl. consensus + multi-block), Stockholm (incl. `#=PC`), aligned FASTA, unaligned FASTA, mmseqs `.result` (10 / 11 / 12-field rows, alignment column), sniffing, BOM/CRLF, unrecognized content → typed error | `node --import tsx --test` (pure Node) |
+| `msa-viewer/test/stats.test.ts` | identity / gap fraction / table stats; all-gap and single-sequence columns; `unaligned`/`mmseqs` total shapes; `isConservedCol` defaults and overrides | same |
+| `msa-viewer/test/mention.test.ts` | format/parse round-trip (cell + run), ` #label` tolerance, project-with-slashes path, malformed inputs → typed error | same |
+| `apps/web/test/file-kinds.test.mjs` | `kindFor` → `"msa"` for every listed extension and the `_result` suffix; existing kinds unchanged | web e2e command |
+| `apps/web` renderers | the pure logic is already covered above; the four-state routing and the mention seam follow the established StructureRenderer pattern and are not given a separate browser-e2e in v1 | — |
+
+Gates: `npm run build` (build chain gains `msa-viewer` between `molql-viewer` and `transport-openclaw`; it has no monorepo imports, so position is free) and `npm run test` (the package's suite joins the root run) both green.
+
+### Delivery
+
+1. `git switch -c molstar-msa` (done — branch exists on `f5042fa`).
+2. This spec, committed on the branch.
+3. `writing-plans` produces the implementation plan; execution method chosen at that gate.
+4. Implementation strictly in plan order, TDD for the pure modules first (parsers → stats → mention → components → web wiring), with `npm run build` + `npm run test` + the web `file-kinds` cases green at each step's end.
