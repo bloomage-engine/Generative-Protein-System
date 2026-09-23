@@ -51,8 +51,12 @@ export interface ScopeMemory {
   version: 1;
   /** The Project the workbench was last scoped to. */
   lastProjectId: string | null;
-  /** The Worktree last in effect inside `lastProjectId`. */
-  lastWorktreeId: string | null;
+  /**
+   * Per Project: the Worktree last in effect inside it. Per-Project on purpose —
+   * a single global field would let a Project switch adopt another Project's
+   * same-named checkout (a Worktree id is only unique within its Project).
+   */
+  worktrees: Record<string, string>;
   /** Per `(projectId, worktreeId)`: the Session it last had in effect (docs/adr/0009). */
   sessions: Record<string, string>;
 }
@@ -69,7 +73,7 @@ export function parseScopeMemory(raw: string | null | undefined): ScopeMemory {
   const empty: ScopeMemory = {
     version: 1,
     lastProjectId: null,
-    lastWorktreeId: null,
+    worktrees: {},
     sessions: {},
   };
   if (!raw) return empty;
@@ -85,7 +89,7 @@ export function parseScopeMemory(raw: string | null | undefined): ScopeMemory {
   const candidate = value as {
     version?: unknown;
     lastProjectId?: unknown;
-    lastWorktreeId?: unknown;
+    worktrees?: unknown;
     sessions?: unknown;
   };
   // v1 is the only shape there is: an unversioned or future blob is not guessed at.
@@ -98,14 +102,19 @@ export function parseScopeMemory(raw: string | null | undefined): ScopeMemory {
     }
   }
 
+  const worktrees: Record<string, string> = {};
+  if (typeof candidate.worktrees === "object" && candidate.worktrees !== null) {
+    for (const [projectId, worktreeId] of Object.entries(candidate.worktrees)) {
+      if (typeof worktreeId === "string" && worktreeId.length > 0) worktrees[projectId] = worktreeId;
+    }
+  }
+
   const lastProjectId = candidate.lastProjectId;
-  const lastWorktreeId = candidate.lastWorktreeId;
   return {
     version: 1,
     lastProjectId:
       typeof lastProjectId === "string" && lastProjectId.length > 0 ? lastProjectId : null,
-    lastWorktreeId:
-      typeof lastWorktreeId === "string" && lastWorktreeId.length > 0 ? lastWorktreeId : null,
+    worktrees,
     sessions,
   };
 }
@@ -140,11 +149,15 @@ export function rememberScope(memory: ScopeMemory, scope: Scope): ScopeMemory {
   if (scope.projectId && scope.worktreeId && scope.sessionId) {
     sessions[sessionKey(scope.projectId, scope.worktreeId)] = scope.sessionId;
   }
+  const worktrees = { ...memory.worktrees };
+  if (scope.projectId && scope.worktreeId) {
+    worktrees[scope.projectId] = scope.worktreeId;
+  }
   return {
     version: 1,
     lastProjectId: scope.projectId,
-    // A scope that names no Worktree leaves the remembered one alone.
-    lastWorktreeId: scope.worktreeId ?? memory.lastWorktreeId,
+    // A scope that names no Worktree leaves that Project's remembered one alone.
+    worktrees,
     sessions,
   };
 }
@@ -163,15 +176,15 @@ function writeSession(
   return {
     version: 1,
     lastProjectId: memory.lastProjectId,
-    lastWorktreeId: memory.lastWorktreeId,
+    worktrees: memory.worktrees,
     sessions,
   };
 }
 
 /**
  * Drop what the record no longer lists. Only ever called with a list the record
- * actually answered with — an unreachable store is not an empty one. The
- * remembered Worktree goes only when its Project does.
+ * actually answered with — an unreachable store is not an empty one. A
+ * remembered Worktree goes only when its own Project does.
  */
 export function pruneScopeMemory(memory: ScopeMemory, projects: Project[]): ScopeMemory {
   const live = new Set(projects.map((project) => project.id));
@@ -179,11 +192,15 @@ export function pruneScopeMemory(memory: ScopeMemory, projects: Project[]): Scop
   for (const [key, sessionId] of Object.entries(memory.sessions)) {
     if (live.has(sessionKeyProject(key))) sessions[key] = sessionId;
   }
+  const worktrees: Record<string, string> = {};
+  for (const [projectId, worktreeId] of Object.entries(memory.worktrees)) {
+    if (live.has(projectId)) worktrees[projectId] = worktreeId;
+  }
   const projectSurvives = memory.lastProjectId !== null && live.has(memory.lastProjectId);
   return {
     version: 1,
     lastProjectId: projectSurvives ? memory.lastProjectId : null,
-    lastWorktreeId: projectSurvives ? memory.lastWorktreeId : null,
+    worktrees,
     sessions,
   };
 }
@@ -228,11 +245,9 @@ export function resolveProject(input: {
   return { projectId, sessionHint, memory: rememberScope(memory, { projectId, worktreeId: null, sessionId: null }) };
 }
 
-/** The Worktree a Project remembers, else `main` (a global field, only for its own Project). */
+/** The Worktree a Project remembers, else `main` (per-Project, so it can never leak across). */
 function rememberedWorktree(memory: ScopeMemory, projectId: string): string {
-  return memory.lastProjectId === projectId && memory.lastWorktreeId !== null
-    ? memory.lastWorktreeId
-    : DEFAULT_WORKTREE_ID;
+  return memory.worktrees[projectId] ?? DEFAULT_WORKTREE_ID;
 }
 
 function rememberedSession(
@@ -273,9 +288,10 @@ export function resolveSession(input: {
 
 /**
  * Pick the Worktree to open inside an already-chosen Project: the URL's claim
- * when the Project's list holds it, else the remembered Worktree when it is
- * still listed, else `main`. A claim the record does not list is never opened
- * (docs/adr/0025); the returned memory remembers the pick.
+ * when the Project's list holds it, else the Worktree that PROJECT remembered
+ * (`memory.worktrees[projectId]`) when it is still listed, else `main`. A claim
+ * the record does not list is never opened (docs/adr/0025); the returned memory
+ * remembers the pick under the Project, so it can never leak to another one.
  */
 export function resolveWorktree(input: {
   projectId: string | null;
@@ -284,12 +300,17 @@ export function resolveWorktree(input: {
   worktrees: Worktree[];
 }): { worktreeId: string; memory: ScopeMemory } {
   const listed = new Set(input.worktrees.map((w) => w.id));
+  const rememberedForProject = input.projectId
+    ? input.memory.worktrees[input.projectId]
+    : undefined;
   const claimed =
     input.claimedWorktreeId !== null && listed.has(input.claimedWorktreeId) ? input.claimedWorktreeId : null;
   const remembered =
-    input.memory.lastWorktreeId !== null && listed.has(input.memory.lastWorktreeId) ? input.memory.lastWorktreeId : null;
+    rememberedForProject !== undefined && listed.has(rememberedForProject) ? rememberedForProject : null;
   const worktreeId = claimed ?? remembered ?? DEFAULT_WORKTREE_ID;
-  return { worktreeId, memory: { ...input.memory, lastWorktreeId: worktreeId } };
+  const worktrees = { ...input.memory.worktrees };
+  if (input.projectId) worktrees[input.projectId] = worktreeId;
+  return { worktreeId, memory: { ...input.memory, worktrees } };
 }
 
 /**

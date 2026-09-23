@@ -30,7 +30,7 @@ const PROJECTS = [project("p1"), project("p2")];
 const memory = (overrides = {}) => ({
   version: 1,
   lastProjectId: null,
-  lastWorktreeId: null,
+  worktrees: {},
   sessions: {},
   ...overrides,
 });
@@ -43,9 +43,13 @@ test("parseScopeMemory reads only the shape it knows", () => {
   assert.deepEqual(parseScopeMemory('{"version":1,"lastProjectId":"p1","sessions":{"p1":"s1"}}'), memory({ lastProjectId: "p1", sessions: { p1: "s1" } }));
   assert.deepEqual(
     parseScopeMemory(
-      `{"version":1,"lastProjectId":"p1","lastWorktreeId":"exp-a","sessions":{"p1${SEP_JSON}exp-a":"s1","p2":7,"p3":""}}`,
+      `{"version":1,"lastProjectId":"p1","worktrees":{"p1":"exp-a","p2":7,"p3":""},"sessions":{"p1${SEP_JSON}exp-a":"s1","p2":7,"p3":""}}`,
     ),
-    memory({ lastProjectId: "p1", lastWorktreeId: "exp-a", sessions: { [wt("p1", "exp-a")]: "s1" } }),
+    memory({
+      lastProjectId: "p1",
+      worktrees: { p1: "exp-a" },
+      sessions: { [wt("p1", "exp-a")]: "s1" },
+    }),
   );
 });
 
@@ -53,22 +57,30 @@ test("pruneScopeMemory drops what the record no longer lists", () => {
   const pruned = pruneScopeMemory(
     memory({
       lastProjectId: "p9",
-      lastWorktreeId: "exp-a",
+      worktrees: { p9: "exp-a", p1: "exp-a" },
       sessions: { [wt("p1", "main")]: "s1", [wt("p9", "main")]: "s9" },
     }),
     PROJECTS,
   );
   assert.deepEqual(
     pruned,
-    memory({ lastProjectId: null, lastWorktreeId: null, sessions: { [wt("p1", "main")]: "s1" } }),
+    memory({
+      lastProjectId: null,
+      worktrees: { p1: "exp-a" },
+      sessions: { [wt("p1", "main")]: "s1" },
+    }),
   );
 
   // A surviving Project keeps its remembered worktree.
   const kept = pruneScopeMemory(
-    memory({ lastProjectId: "p1", lastWorktreeId: "exp-a", sessions: { [wt("p1", "exp-a")]: "s1" } }),
+    memory({
+      lastProjectId: "p1",
+      worktrees: { p1: "exp-a" },
+      sessions: { [wt("p1", "exp-a")]: "s1" },
+    }),
     PROJECTS,
   );
-  assert.equal(kept.lastWorktreeId, "exp-a");
+  assert.equal(kept.worktrees.p1, "exp-a");
 });
 
 test("resolveProject prefers the URL's Project, then the remembered one, then the first", () => {
@@ -111,7 +123,7 @@ test("resolveProject remembers the worktree's Session", () => {
     claimedSessionId: null,
     memory: memory({
       lastProjectId: "p1",
-      lastWorktreeId: "exp-a",
+      worktrees: { p1: "exp-a" },
       sessions: { [wt("p1", "exp-a")]: "s-exp" },
     }),
     projects: PROJECTS,
@@ -168,29 +180,53 @@ test("resolveWorktree falls back to the remembered worktree, else main", () => {
   const remembered = resolveWorktree({
     projectId: "p1",
     claimedWorktreeId: null,
-    memory: memory({ lastProjectId: "p1", lastWorktreeId: "exp-a" }),
+    memory: memory({ lastProjectId: "p1", worktrees: { p1: "exp-a" } }),
     worktrees,
   });
   assert.equal(remembered.worktreeId, "exp-a");
-  assert.equal(remembered.memory.lastWorktreeId, "exp-a");
+  assert.equal(remembered.memory.worktrees.p1, "exp-a");
 
   const gone = resolveWorktree({
     projectId: "p1",
     claimedWorktreeId: null,
-    memory: memory({ lastProjectId: "p1", lastWorktreeId: "gone" }),
+    memory: memory({ lastProjectId: "p1", worktrees: { p1: "gone" } }),
     worktrees,
   });
   assert.equal(gone.worktreeId, "main", "a remembered worktree the record does not list is not opened");
-  assert.equal(gone.memory.lastWorktreeId, "main");
+  assert.equal(gone.memory.worktrees.p1, "main");
 
   // A claim the record does not list also loses to the remembered one.
   const rememberedWins = resolveWorktree({
     projectId: "p1",
     claimedWorktreeId: "nope",
-    memory: memory({ lastProjectId: "p1", lastWorktreeId: "exp-a" }),
+    memory: memory({ lastProjectId: "p1", worktrees: { p1: "exp-a" } }),
     worktrees,
   });
   assert.equal(rememberedWins.worktreeId, "exp-a");
+});
+
+test("resolveWorktree remembers the worktree per Project, never across", () => {
+  const p1Worktrees = [{ id: "main" }, { id: "exp-a" }];
+  const p2Worktrees = [{ id: "main" }, { id: "exp-a" }];
+  // p1 remembers exp-a; p2 has a same-named checkout but remembers nothing.
+  const choice = resolveWorktree({
+    projectId: "p2",
+    claimedWorktreeId: null,
+    memory: memory({ lastProjectId: "p1", worktrees: { p1: "exp-a" } }),
+    worktrees: p2Worktrees,
+  });
+  assert.equal(choice.worktreeId, "main", "another Project's same-named worktree is not adopted");
+  assert.deepEqual(choice.memory.worktrees, { p1: "exp-a", p2: "main" });
+  assert.equal(
+    resolveWorktree({
+      projectId: "p1",
+      claimedWorktreeId: null,
+      memory: memory({ lastProjectId: "p1", worktrees: { p1: "exp-a" } }),
+      worktrees: p1Worktrees,
+    }).worktreeId,
+    "exp-a",
+    "and each Project keeps its own",
+  );
 });
 
 test("resolveSession opens the hint, else the Project's newest Session", () => {
@@ -236,7 +272,7 @@ test("resolveSession keeps one Session per (Project, Worktree)", () => {
     sessions: [session("s-exp")],
     memory: memory({
       lastProjectId: "p1",
-      lastWorktreeId: "exp-a",
+      worktrees: { p1: "exp-a" },
       sessions: { [wt("p1", "main")]: "s-main" },
     }),
   });

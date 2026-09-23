@@ -101,8 +101,8 @@ export function StudioPage({
         // the URL's claim wins when the record lists it, else the Project's
         // remembered worktree, else `main`. A claim the record does not list is
         // never opened — the transport route would fabricate it — and
-        // `resolveWorktree` returns a memory whose `lastWorktreeId` is the
-        // resolved one, so a deleted worktree is pruned as it falls back.
+        // `resolveWorktree` writes the resolved id back under this Project in
+        // the memory, so a deleted worktree is pruned as it falls back.
         const worktrees = await fetchWorktrees(WORKTREES_API, project.projectId);
         if (cancelled) return;
         const resolved = resolveWorktree({
