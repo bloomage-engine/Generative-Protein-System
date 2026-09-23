@@ -59,10 +59,14 @@ async function fetchAlignmentText(
   api: string,
   path: string,
   project: string | null,
+  worktree: string | null,
   signal: AbortSignal,
 ): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
   const attempt = (download: boolean): Promise<Response> =>
-    fetch(workspaceFileUrl(api, path, download ? { download: true, project } : { project }), { signal });
+    fetch(
+      workspaceFileUrl(api, path, download ? { download: true, project, worktree } : { project, worktree }),
+      { signal },
+    );
   let res = await attempt(false);
   if (res.status === 413) res = await attempt(true); // over the inline cap: stream it
   if (!res.ok) return { ok: false, message: friendlyError(res.status) };
@@ -72,7 +76,7 @@ async function fetchAlignmentText(
 }
 
 export function MsaRenderer({ path, name }: { path: string; name: string }) {
-  const { api, project } = useWorkspaceApi();
+  const { api, project, worktree } = useWorkspaceApi();
   const [state, setState] = useState<FetchState>({ status: "loading" });
   const [showRaw, setShowRaw] = useState(false);
 
@@ -82,7 +86,7 @@ export function MsaRenderer({ path, name }: { path: string; name: string }) {
     setShowRaw(false);
     void (async () => {
       try {
-        const result = await fetchAlignmentText(api, path, project, controller.signal);
+        const result = await fetchAlignmentText(api, path, project, worktree, controller.signal);
         if (controller.signal.aborted) return;
         setState(result.ok ? { status: "ready", text: result.text } : { status: "error", message: result.message });
       } catch (err) {
@@ -91,7 +95,7 @@ export function MsaRenderer({ path, name }: { path: string; name: string }) {
       }
     })();
     return () => controller.abort();
-  }, [api, path, project]);
+  }, [api, path, project, worktree]);
 
   const parsed = useMemo(() => {
     if (state.status !== "ready") return null;

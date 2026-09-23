@@ -51,16 +51,21 @@ const inflight = new Map<string, Promise<boolean>>();
 /** Coalesce the token-by-token rerenders of a streaming inline-code span. */
 const DEBOUNCE_MS = 150;
 
-function cacheKey(api: string, project: string | null, path: string): string {
-  return `${api}\u0000${project ?? ""}\u0000${path}`;
+function cacheKey(api: string, project: string | null, worktree: string | null, path: string): string {
+  return `${api}\u0000${project ?? ""}\u0000${worktree ?? ""}\u0000${path}`;
 }
 
-function checkExists(api: string, project: string | null, path: string): Promise<boolean> {
-  const key = cacheKey(api, project, path);
+function checkExists(
+  api: string,
+  project: string | null,
+  worktree: string | null,
+  path: string,
+): Promise<boolean> {
+  const key = cacheKey(api, project, worktree, path);
   if (exists.has(key)) return Promise.resolve(true);
   const pending = inflight.get(key);
   if (pending) return pending;
-  const task = fetchWorkspaceStat(api, path, project)
+  const task = fetchWorkspaceStat(api, path, project, worktree)
     .then((stat) => {
       const isFile = stat.kind === "file";
       if (isFile) exists.add(key);
@@ -74,14 +79,15 @@ function checkExists(api: string, project: string | null, path: string): Promise
 }
 
 /**
- * Whether `path` is a real file in the active Project's workspace. Reads the
- * workspace scope from context, so it must render under `WorkspaceApiProvider`.
+ * Whether `path` is a real file in the active (Project, Worktree) workspace.
+ * Reads the workspace scope from context, so it must render under
+ * `WorkspaceApiProvider`.
  */
 export function useWorkspaceFileLink(path: string | null): WorkspaceFileLinkState {
-  const { api, project } = useWorkspaceApi();
+  const { api, project, worktree } = useWorkspaceApi();
   const [state, setState] = useState<WorkspaceFileLinkState>(() => {
     if (!path) return "missing";
-    return exists.has(cacheKey(api, project, path)) ? "exists" : "checking";
+    return exists.has(cacheKey(api, project, worktree, path)) ? "exists" : "checking";
   });
 
   useEffect(() => {
@@ -89,14 +95,14 @@ export function useWorkspaceFileLink(path: string | null): WorkspaceFileLinkStat
       setState("missing");
       return;
     }
-    if (exists.has(cacheKey(api, project, path))) {
+    if (exists.has(cacheKey(api, project, worktree, path))) {
       setState("exists");
       return;
     }
     setState("checking");
     let cancelled = false;
     const timer = setTimeout(() => {
-      void checkExists(api, project, path).then((isFile) => {
+      void checkExists(api, project, worktree, path).then((isFile) => {
         if (!cancelled) setState(isFile ? "exists" : "missing");
       });
     }, DEBOUNCE_MS);
@@ -104,7 +110,7 @@ export function useWorkspaceFileLink(path: string | null): WorkspaceFileLinkStat
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [api, project, path]);
+  }, [api, project, worktree, path]);
 
   return state;
 }

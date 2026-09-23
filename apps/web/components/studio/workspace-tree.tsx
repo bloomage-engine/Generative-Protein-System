@@ -57,8 +57,9 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
   const scope = useWorkspaceApi();
   const api = scope.api;
   const proj = project ?? scope.project;
+  const worktree = scope.worktree;
 
-  const root = useWorkspaceRoot({ project: proj });
+  const root = useWorkspaceRoot({ project: proj, worktree });
   const openFile = useStudioStore((s) => s.openFile);
   const activeTabPath = useStudioStore((s) => s.activeTabPath);
   const filesOpen = useStudioStore((s) => s.rightSections.files);
@@ -89,7 +90,7 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
         return rootListingRef.current?.entries ?? [];
       }
       try {
-        const listing = await fetchWorkspaceEntries(api, id, proj);
+        const listing = await fetchWorkspaceEntries(api, id, proj, worktree);
         setLoadError(null);
         return listing.entries;
       } catch (error) {
@@ -99,7 +100,7 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
         return [];
       }
     },
-    [api, proj],
+    [api, proj, worktree],
   );
 
   const tree = useTree<Entry>({
@@ -199,7 +200,7 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
       setUploading(files.length);
       try {
         for (const file of files) {
-          await uploadWorkspaceFile(api, dir ? `${dir}/${file.name}` : file.name, file, proj);
+          await uploadWorkspaceFile(api, dir ? `${dir}/${file.name}` : file.name, file, proj, worktree);
         }
       } catch (err) {
         setActionError(err instanceof Error ? err.message : String(err));
@@ -210,7 +211,7 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
       // revalidate the root and every loaded folder so it shows up.
       void refresh();
     },
-    [api, proj, refresh],
+    [api, proj, worktree, refresh],
   );
 
   const handleDownload = useCallback(
@@ -218,14 +219,14 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
       // A real navigation to the file's download URL — the service answers with
       // `content-disposition: attachment`, so the browser saves it.
       const a = document.createElement("a");
-      a.href = workspaceFileUrl(api, entry.path, { download: true, project: proj });
+      a.href = workspaceFileUrl(api, entry.path, { download: true, project: proj, worktree });
       a.download = entry.name;
       document.body.appendChild(a);
       a.click();
       a.remove();
       closeMenu();
     },
-    [api, proj, closeMenu],
+    [api, proj, worktree, closeMenu],
   );
 
   const handleDelete = useCallback(
@@ -239,14 +240,14 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
       if (!confirmed) return;
       setActionError(null);
       try {
-        await deleteWorkspaceEntry(api, entry.path, proj);
+        await deleteWorkspaceEntry(api, entry.path, proj, worktree);
       } catch (err) {
         setActionError(err instanceof Error ? err.message : String(err));
         return;
       }
       void refresh();
     },
-    [api, proj, closeMenu, refresh],
+    [api, proj, worktree, closeMenu, refresh],
   );
 
   // Dismiss the menu on any outside pointer press or Escape.

@@ -164,11 +164,11 @@ function TabPanel({ active, children }: { active: boolean; children: React.React
 }
 
 function Preview({ path, name }: { path: string; name: string }) {
-  const { api, project } = useWorkspaceApi();
+  const { api, project, worktree } = useWorkspaceApi();
   const closeTab = useStudioStore((s) => s.closeTab);
   const kind = kindFor(name);
-  const downloadUrl = workspaceFileUrl(api, path, { download: true, project });
-  const fileUrl = workspaceFileUrl(api, path, { project });
+  const downloadUrl = workspaceFileUrl(api, path, { download: true, project, worktree });
+  const fileUrl = workspaceFileUrl(api, path, { project, worktree });
 
   const [sourceView, setSourceView] = useState(false);
   const [editedText, setEditedText] = useState<string | null>(null);
@@ -181,12 +181,12 @@ function Preview({ path, name }: { path: string; name: string }) {
     if (editedText == null) return;
     setSaving(true);
     try {
-      await uploadWorkspaceFile(api, path, new Blob([editedText]), project);
+      await uploadWorkspaceFile(api, path, new Blob([editedText]), project, worktree);
       setDirty(false);
     } finally {
       setSaving(false);
     }
-  }, [api, editedText, path, project]);
+  }, [api, editedText, path, project, worktree]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">

@@ -27,10 +27,10 @@ import { useStudioStore } from "@/store/studio-store";
  * `ssr: false`.
  */
 export function StructureRenderer({ path, name }: { path: string; name: string }) {
-  const { api, project } = useWorkspaceApi();
+  const { api, project, worktree } = useWorkspaceApi();
   const url = useMemo(
-    () => workspaceFileUrl(api, path, { download: true, project }),
-    [api, path, project],
+    () => workspaceFileUrl(api, path, { download: true, project, worktree }),
+    [api, path, project, worktree],
   );
 
   const [error, setError] = useState<string | null>(null);

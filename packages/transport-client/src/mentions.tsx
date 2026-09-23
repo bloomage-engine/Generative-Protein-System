@@ -44,10 +44,16 @@ export interface WorkspaceMentions {
 }
 
 export function useWorkspaceMentions(
-  opts: { project?: string | null; initialPath?: string; withParent?: boolean } = {},
+  opts: {
+    project?: string | null;
+    worktree?: string | null;
+    initialPath?: string;
+    withParent?: boolean;
+  } = {},
 ): WorkspaceMentions {
   const browser = useWorkspaceBrowser({
     ...(opts.project !== undefined ? { project: opts.project } : {}),
+    ...(opts.worktree !== undefined ? { worktree: opts.worktree } : {}),
     ...(opts.initialPath !== undefined ? { initialPath: opts.initialPath } : {}),
   });
   const withParent = opts.withParent ?? false;
