@@ -82,6 +82,17 @@ export interface ProjectScopes {
     reply: FastifyReply,
     run: (scope: ProjectScope) => Promise<T>,
   ): Promise<T | FastifyReply>;
+  /**
+   * Like {@link withWorkspace}, but against an EXPLICIT Project instead of the
+   * request's claim — for a route that resolves its Project from elsewhere
+   * (e.g. the workspace file the user is currently viewing).
+   */
+  withWorkspaceFor<T>(
+    request: FastifyRequest,
+    projectId: Id,
+    reply: FastifyReply,
+    run: (scope: ProjectScope) => Promise<T>,
+  ): Promise<T | FastifyReply>;
 }
 
 /**
@@ -123,17 +134,31 @@ export function createProjectScopes(opts: ProjectScopeOptions): ProjectScopes {
     };
   };
 
+  const acquireProject = async (principal: Principal, projectId: Id): Promise<ProjectScope> => {
+    return {
+      principal,
+      projectId,
+      threadId: null,
+      environment: await environments.acquire(principal, projectId),
+    };
+  };
+
+  const withWorkspace = async <T>(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    run: (scope: ProjectScope) => Promise<T>,
+  ): Promise<T | FastifyReply> => {
+    try {
+      return await run(await acquire(request));
+    } catch (err) {
+      return sendWorkspaceError(reply, err);
+    }
+  };
+
   return {
     acquire,
-
-    async acquireProject(principal, projectId) {
-      return {
-        principal,
-        projectId,
-        threadId: null,
-        environment: await environments.acquire(principal, projectId),
-      };
-    },
+    acquireProject,
+    withWorkspace,
 
     async sessionOf(request) {
       const scope = await acquire(request);
@@ -141,9 +166,9 @@ export function createProjectScopes(opts: ProjectScopeOptions): ProjectScopes {
       return { ...scope, session: await directory.resolveOrCreateSession(scope.projectId, sessionKey) };
     },
 
-    async withWorkspace(request, reply, run) {
+    async withWorkspaceFor(request, projectId, reply, run) {
       try {
-        return await run(await acquire(request));
+        return await run(await acquireProject(request.principal!, projectId));
       } catch (err) {
         return sendWorkspaceError(reply, err);
       }

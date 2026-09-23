@@ -47,7 +47,7 @@ export {
   applyMeasurementToolResult,
   type ApplyMeasurementOptions,
 } from "./apply-measurements.js";
-export { setActiveMolqlViewer, getActiveMolqlViewer } from "./registry.js";
+export { setMolqlViewer, getMolqlViewer, removeMolqlViewer } from "./registry.js";
 export type { MolqlSelectionTarget } from "./target.js";
 export { MolqlViewer, type MolqlLoadUrl } from "./viewer.js";
 export {

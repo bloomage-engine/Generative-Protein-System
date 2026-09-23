@@ -12,7 +12,16 @@ import {
 import { StudioShell } from "./studio/shell";
 import { FrontendBridge } from "./assistant-ui/frontend-bridge";
 import { ComposerInsertProvider } from "./assistant-ui/composer-insert";
-import { useStudioStore } from "@/store/studio-store";
+import { useStudioStore, activeStructurePath } from "@/store/studio-store";
+
+/**
+ * The service-only view context for one send: the structure file the user is
+ * viewing (or `null`). Module-level and store-reading so `Session` (which must
+ * never re-render) can pass it without a subscription.
+ */
+function sendView(): { activeStructure: string | null } {
+  return { activeStructure: activeStructurePath(useStudioStore.getState()) };
+}
 
 /**
  * One Project's Session: the conversation over the assistant-transport runtime
@@ -67,6 +76,7 @@ const Session = memo(function Session({
     api,
     projectId,
     threadId: sessionId,
+    view: sendView,
     // The status bar's metrics come from the record; a finished run is the
     // signal to refetch. Read the store imperatively so this component — which
     // must never re-render — takes no store subscription.

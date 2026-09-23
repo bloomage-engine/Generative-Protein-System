@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { parseMolqlToolResult } from "@science-studio/molql-viewer/directive";
 import {
   createMolqlResult,
+  executeMolqlTool,
+  fetchActiveStructure,
   fetchInteractions,
   SERVICE_URL,
   INTERACTION_TOOL_NAME,
@@ -164,5 +166,76 @@ test("handles missing table field in response", async () => {
     assert.equal(result.table, "");
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+// ── fetchActiveStructure / executeMolqlTool ──
+
+test("fetchActiveStructure returns the viewed file's path", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url: string | URL | Request) => {
+    assert.ok(String(url).endsWith("/api/transport/active-structure"));
+    return new Response(JSON.stringify({ path: "a.pdb" }), { status: 200 });
+  };
+  try {
+    assert.deepEqual(await fetchActiveStructure(), { path: "a.pdb" });
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("fetchActiveStructure reports no file, and null when the check cannot run", async () => {
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => new Response(JSON.stringify({ path: null }), { status: 200 });
+    assert.deepEqual(await fetchActiveStructure(), { path: null });
+
+    globalThis.fetch = async () => new Response("boom", { status: 500 });
+    assert.equal(await fetchActiveStructure(), null);
+
+    globalThis.fetch = async () => {
+      throw new Error("ECONNREFUSED");
+    };
+    assert.equal(await fetchActiveStructure(), null);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("executeMolqlTool fails when no structure file is open", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ path: null }), { status: 200 });
+  try {
+    await assert.rejects(
+      () => executeMolqlTool({ molql: "(sel.atom.all)" }),
+      /No structure file is currently open/,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("executeMolqlTool returns the directive when a structure file is open", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ path: "a.pdb" }), { status: 200 });
+  try {
+    const result = await executeMolqlTool({ molql: "(sel.atom.all)" });
+    assert.equal(result.type, "molql-selection");
+    assert.equal(result.molql, "(sel.atom.all)");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("executeMolqlTool passes through when the check cannot run (best-effort)", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("ECONNREFUSED");
+  };
+  try {
+    const result = await executeMolqlTool({ molql: "(sel.atom.all)" });
+    assert.equal(result.type, "molql-selection");
+  } finally {
+    globalThis.fetch = original;
   }
 });

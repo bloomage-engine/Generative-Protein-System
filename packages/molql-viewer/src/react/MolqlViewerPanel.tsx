@@ -2,11 +2,15 @@
 
 import { useEffect, useRef } from "react";
 import { structureFormat } from "../formats.js";
-import { setActiveMolqlViewer } from "../registry.js";
+import { removeMolqlViewer, setMolqlViewer } from "../registry.js";
 import type { MolqlTarget } from "../selection.js";
 import { MolqlViewer } from "../viewer.js";
 
 export interface MolqlViewerPanelProps {
+  /** The workspace-relative path of the structure file this viewer shows. It
+   *  keys the viewer registry, so an app can target the file the user is
+   *  viewing instead of whichever viewer mounted last. */
+  path: string;
   /** Inline file content (text formats). Takes precedence over `fileUrl`. */
   fileContent?: string;
   /** URL to load from (any format). */
@@ -59,6 +63,7 @@ async function loadInto(
  * host app must import this module dynamically with `ssr: false`.
  */
 export function MolqlViewerPanel({
+  path,
   fileContent,
   fileUrl,
   fileName,
@@ -88,7 +93,7 @@ export function MolqlViewerPanel({
     ready
       .then(() => {
         if (viewerRef.current !== viewer) return;
-        setActiveMolqlViewer(viewer);
+        setMolqlViewer(path, viewer);
         onReady?.(viewer);
       })
       .catch((err: unknown) => onErrorRef.current?.(toError(err)));
@@ -97,7 +102,7 @@ export function MolqlViewerPanel({
       if (viewerRef.current === viewer) {
         viewerRef.current = null;
         initRef.current = null;
-        setActiveMolqlViewer(null);
+        removeMolqlViewer(path, viewer);
       }
       void viewer.dispose();
     };

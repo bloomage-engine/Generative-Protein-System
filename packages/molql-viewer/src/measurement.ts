@@ -41,6 +41,14 @@ export interface MolqlMeasurementDirective {
   selections: string[];
   /** Human-readable explanation the agent attached, if any. */
   description?: string;
+  /** The Project the numbers were computed for, when the wire carried it. */
+  project?: string;
+  /**
+   * The workspace-relative structure file the numbers were computed for. The
+   * app draws the measurement on THIS file's viewer (not merely the active tab),
+   * so a result for file A can never be drawn onto file B.
+   */
+  path?: string;
 }
 
 const KINDS: ReadonlySet<string> = new Set<MeasurementKind>([
@@ -98,10 +106,15 @@ export function parseMeasurementToolResult(input: unknown): MolqlMeasurementDire
     typeof nested.description === "string" && nested.description.trim()
       ? nested.description
       : undefined;
+  const project =
+    typeof nested.project === "string" && nested.project.trim() ? nested.project : undefined;
+  const path = typeof nested.path === "string" && nested.path.trim() ? nested.path : undefined;
 
   return {
     kind,
     selections,
     ...(description ? { description } : {}),
+    ...(project ? { project } : {}),
+    ...(path ? { path } : {}),
   };
 }

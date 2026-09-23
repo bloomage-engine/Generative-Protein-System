@@ -1,21 +1,28 @@
 import type { MolqlSelectionTarget } from "./target.js";
 
 /**
- * The active viewer registry.
+ * The viewer registry, keyed by the workspace path of the structure file each
+ * viewer shows.
  *
- * A page mounts at most one structure viewer at a time (the workbench's center
- * preview pane), so a module-level slot is enough for the free
- * `applyMolqlSelection(molql)` / the tool-result bridge to reach the mounted
- * instance without threading React context through the chat subtree.
+ * The preview pane keeps EVERY open tab mounted (hidden tabs stay alive so their
+ * scroll/selection state survives a switch), so a pathless single slot would let
+ * whichever viewer initialized last win — and the agent's selection would land
+ * on a hidden tab. Keying by path lets the app target the file the user is
+ * actually viewing: `getMolqlViewer(activeStructurePath)`.
  */
-let active: MolqlSelectionTarget | null = null;
+const viewers = new Map<string, MolqlSelectionTarget>();
 
-/** Register (or clear) the viewer that free-standing apply calls target. */
-export function setActiveMolqlViewer(viewer: MolqlSelectionTarget | null): void {
-  active = viewer;
+/** Register the viewer that shows the structure file at `path`. */
+export function setMolqlViewer(path: string, viewer: MolqlSelectionTarget): void {
+  viewers.set(path, viewer);
 }
 
-/** The viewer registered by the most recently mounted `MolqlViewerPanel`. */
-export function getActiveMolqlViewer(): MolqlSelectionTarget | null {
-  return active;
+/** The viewer for `path`, or `null` when that file has no open viewer. */
+export function getMolqlViewer(path: string): MolqlSelectionTarget | null {
+  return viewers.get(path) ?? null;
+}
+
+/** Remove `viewer` only if it is still the one registered for `path`. */
+export function removeMolqlViewer(path: string, viewer: MolqlSelectionTarget): void {
+  if (viewers.get(path) === viewer) viewers.delete(path);
 }
