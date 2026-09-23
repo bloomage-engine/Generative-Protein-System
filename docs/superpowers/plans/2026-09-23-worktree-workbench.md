@@ -179,7 +179,7 @@ Expected: FAIL — `resolveWorktree` is not exported / `scopePath` arity.
 
 In `apps/web/lib/scope-memory.ts`:
 - Add `worktreeId` to `Scope`.
-- Add `lastWorktreeId: string | null` to `ScopeMemory`; update `parseScopeMemory` (default null), `rememberScope` (set `lastWorktreeId` when the scope names one), `pruneScopeMemory` (keep it only when the Project survives).
+- Add `worktrees: Record<string, string>` to `ScopeMemory` (PER PROJECT, like `sessions` — a global `lastWorktreeId` would let a Project switch adopt another Project's same-named checkout); update `parseScopeMemory` (default `{}`), `rememberScope` (set `worktrees[projectId]` when the scope names a worktree), `pruneScopeMemory` (drop entries whose Project is gone).
 - Key `sessions` by `${projectId}\u0000${worktreeId}`; update `writeSession`/`resolveSession` to take the worktreeId and key accordingly.
 - Define `export const DEFAULT_WORKTREE_ID = "main";` LOCALLY in scope-memory.ts. This module must stay React-free and artifact-independent: keep the `@science-studio/transport-client` import TYPE-ONLY (it erases under Node type stripping), and do NOT value-import the client package — its runtime entry pulls React/assistant-ui. A local constant (with the comment that the value mirrors the record/client constant) keeps `node --test apps/web/test/scope-memory.test.mjs` runnable without a built `dist`.
 - Add `resolveWorktree`:
@@ -192,12 +192,15 @@ export function resolveWorktree(input: {
   worktrees: Worktree[];
 }): { worktreeId: string; memory: ScopeMemory } {
   const listed = new Set(input.worktrees.map((w) => w.id));
+  const rememberedForProject = input.projectId ? input.memory.worktrees[input.projectId] : undefined;
   const claimed =
     input.claimedWorktreeId !== null && listed.has(input.claimedWorktreeId) ? input.claimedWorktreeId : null;
   const remembered =
-    input.memory.lastWorktreeId !== null && listed.has(input.memory.lastWorktreeId) ? input.memory.lastWorktreeId : null;
+    rememberedForProject !== undefined && listed.has(rememberedForProject) ? rememberedForProject : null;
   const worktreeId = claimed ?? remembered ?? DEFAULT_WORKTREE_ID;
-  return { worktreeId, memory: { ...input.memory, lastWorktreeId: worktreeId } };
+  const worktrees = { ...input.memory.worktrees };
+  if (input.projectId) worktrees[input.projectId] = worktreeId;
+  return { worktreeId, memory: { ...input.memory, worktrees } };
 }
 ```
 
@@ -391,7 +394,7 @@ Change its props to `{ routeProjectId?, routeWorktreeId?, routeSessionId? }`. Af
 
 - [ ] **Step 2: Update the routes**
 
-- Rewrite `apps/web/app/projects/[projectId]/sessions/[sessionId]/page.tsx`: keep it as a compatibility redirect that renders `StudioPage` with `routeWorktreeId=null` (resolution lands on `main`).
+- Rewrite `apps/web/app/projects/[projectId]/sessions/[sessionId]/page.tsx`: keep it as a compatibility pass-through that renders `StudioPage` with `routeWorktreeId={DEFAULT_WORKTREE_ID}` (the pre-worktree deep link is `main`-scoped; a `null` claim would fall through to the REMEMBERED worktree and could open a different session).
 - Create the new nested route `apps/web/app/projects/[projectId]/worktrees/[worktreeId]/sessions/[sessionId]/page.tsx` whose `params` are passed as `routeProjectId`/`routeWorktreeId`/`routeSessionId`.
 
 - [ ] **Step 3: Verify**
