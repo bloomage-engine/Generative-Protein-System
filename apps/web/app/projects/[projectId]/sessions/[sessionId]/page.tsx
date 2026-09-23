@@ -1,11 +1,14 @@
 import { StudioPage } from "@/components/studio/page";
 
 /**
- * The conversation deep-link: `/projects/<projectId>/sessions/<sessionId>`.
+ * The LEGACY conversation deep-link: `/projects/<projectId>/sessions/<sessionId>`.
  *
- * The URL scopes the session (refresh/share-safe): route params seed the
- * store, then the same `StudioPage`/`SessionView` workbench renders — identical
- * to the SPA home but with the route's Project/Session pre-selected.
+ * It predates the Worktree scope, so it names no worktree and stays as a
+ * compatibility pass-through: `StudioPage` resolves one (`routeWorktreeId=null`
+ * falls back to the Project's remembered worktree, else `main`) and then mirrors
+ * the full three-part URL with `history.replaceState`. A reload of the new
+ * `/projects/<projectId>/worktrees/<worktreeId>/sessions/<sessionId>` route never
+ * reaches here; this is only an old bookmark or link.
  */
 export default async function SessionPage({
   params,
@@ -13,5 +16,7 @@ export default async function SessionPage({
   params: Promise<{ projectId: string; sessionId: string }>;
 }) {
   const { projectId, sessionId } = await params;
-  return <StudioPage routeProjectId={projectId} routeSessionId={sessionId} />;
+  return (
+    <StudioPage routeProjectId={projectId} routeWorktreeId={null} routeSessionId={sessionId} />
+  );
 }

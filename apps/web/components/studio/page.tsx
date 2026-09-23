@@ -1,26 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchProjectsOverview, fetchProjectSessions, fetchSettings, DEFAULT_WORKTREE_ID } from "@science-studio/transport-client";
-import { readScopeMemory, resolveProject, resolveSession } from "@/lib/scope-memory";
+import { fetchProjectsOverview, fetchProjectSessions, fetchSettings, fetchWorktrees } from "@science-studio/transport-client";
+import { readScopeMemory, resolveProject, resolveSession, resolveWorktree } from "@/lib/scope-memory";
 import { SETTINGS_API } from "./settings-dialog";
 import { StudioHost } from "./host";
 import { useStudioStore } from "@/store/studio-store";
 
 const PROJECTS_API = process.env.NEXT_PUBLIC_PROJECTS_URL ?? "/api/projects";
+const WORKTREES_API = process.env.NEXT_PUBLIC_WORKTREES_URL ?? "/api/worktrees";
 
 /**
  * Seeds the store's scope (Project/Session), then renders the workbench. Both
  * entry surfaces run through here:
  *
- *  - The session deep-link passes `routeProjectId`/`routeSessionId`.
+ *  - The session deep-link passes
+ *    `routeProjectId`/`routeWorktreeId`/`routeSessionId`.
  *  - The SPA home passes nothing, and falls back to the scope this browser left
  *    behind (`readScopeMemory` — docs/adr/0009).
  *
  * Either way the scope is a CLAIM until the record answers: the workbench opens
  * the URL's Project when the record lists it, else the remembered one, else the
- * first Project, with a Session from that Project's own list (else its newest).
- * An id the record does not list is never opened, let alone remembered — the
+ * first Project; then the URL's Worktree when that Project's list holds it, else
+ * the remembered one, else `main`; then a Session from that `(Project, Worktree)`
+ * pair's own list (else its newest). An id the record does not list is never
+ * opened, let alone remembered — the
  * transport route MINTS a Project/Session row for an unknown key rather than
  * refusing it, so the probe for a stale id would fabricate the very row it
  * claims to resume (docs/adr/0009).
@@ -38,9 +42,11 @@ const PROJECTS_API = process.env.NEXT_PUBLIC_PROJECTS_URL ?? "/api/projects";
  */
 export function StudioPage({
   routeProjectId = null,
+  routeWorktreeId = null,
   routeSessionId = null,
 }: {
   routeProjectId?: string | null;
+  routeWorktreeId?: string | null;
   routeSessionId?: string | null;
 }) {
   const api = PROJECTS_API;
@@ -91,27 +97,45 @@ export function StudioPage({
           return;
         }
 
-        const sessions = await fetchProjectSessions(api, project.projectId);
+        // Resolve the Worktree against the Project's OWN list (docs/adr/0025):
+        // the URL's claim wins when the record lists it, else the Project's
+        // remembered worktree, else `main`. A claim the record does not list is
+        // never opened — the transport route would fabricate it — and
+        // `resolveWorktree` returns a memory whose `lastWorktreeId` is the
+        // resolved one, so a deleted worktree is pruned as it falls back.
+        const worktrees = await fetchWorktrees(WORKTREES_API, project.projectId);
+        if (cancelled) return;
+        const resolved = resolveWorktree({
+          projectId: project.projectId,
+          claimedWorktreeId: routeWorktreeId,
+          memory: project.memory,
+          worktrees,
+        });
+
+        const sessions = await fetchProjectSessions(api, project.projectId, {
+          worktreeId: resolved.worktreeId,
+        });
         if (cancelled) return;
 
-        // MINIMAL boot scope for now: always `main`. Task 6 resolves the real
-        // Worktree (fetch `/api/worktrees`, `resolveWorktree` against the URL's
-        // claim / the memory) before this line; until then `main` is the one
-        // worktree the record guarantees exists for every Project.
-        const worktreeId = DEFAULT_WORKTREE_ID;
         const session = resolveSession({
           projectId: project.projectId,
-          worktreeId,
+          worktreeId: resolved.worktreeId,
           hint: project.sessionHint,
           sessions,
-          memory: project.memory,
+          memory: resolved.memory,
         });
         s().setScope(
-          { projectId: project.projectId, worktreeId, sessionId: session.sessionId },
+          {
+            projectId: project.projectId,
+            worktreeId: resolved.worktreeId,
+            sessionId: session.sessionId,
+          },
           session.memory,
         );
-        // After the commit: `setSessions` is what the pane shows while it is
-        // expanded on the active Project.
+        // After the commit: `setScope` resets `worktrees` to null on a Project
+        // switch, so the freshly-listed ones land here; `setSessions` is what
+        // the pane shows while it is expanded on the active Project.
+        s().setWorktrees(worktrees);
         s().setSessions(sessions);
         if (!session.sessionId) s().setLeftView("project");
         applyThreadSettings();
