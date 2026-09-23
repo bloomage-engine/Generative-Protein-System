@@ -420,6 +420,11 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       workspace: opts.workspace ?? null,
       harnessCommands: this.harnessCommands,
       commandCatalog: () => this.listCommands(),
+      // The prompt's readiness gate (see `DshBehaviorDeps.ensureReady`). The
+      // adapter's own `run()` kicks this off in the background BEFORE the
+      // first frames stream, so a cold start delays the model — not the
+      // client's message and working state.
+      ensureReady: () => this.ensureStarted(),
     });
   }
 
@@ -459,9 +464,22 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     // A batch that drives no model turn — the mount probe, or commands only —
     // is served entirely by this process (reconcile, record/transcript restore,
     // and the adapter's own replies), so it must not pay for a harness child:
-    // `/status` answers even where the harness could not start at all.
+    // `/status` answers even where the harness could not start at all. A batch
+    // that DOES drive a turn KICKS the child off in the background instead of
+    // holding the run behind it: the first frames (reconcile, the user's own
+    // row, the running status) acknowledge the client and need none of it, and
+    // a COLD start — spawning `dsh --profile sdk` plus the `initialize`
+    // handshake, a couple of seconds of wall time — must not delay the message
+    // or the working state. The turn itself waits for the SAME memoized start
+    // before its prompt reaches the wire (the behavior's `ensureReady`, and the
+    // SDK's own `session(...).run` handshake), and a failed start surfaces on
+    // the run stream as the turn's error instead of pre-empting the frames.
     if (commands.some((c) => c.type === "add-message" && !isCommandText(c.message.content))) {
-      await this.ensureStarted();
+      void this.ensureStarted().catch(() => {
+        // The dispatch path re-awaits this and reports the failure on the run
+        // stream; this only keeps the fire-and-forget rejection quiet (the
+        // failure itself is already logged inside `ensureStarted`).
+      });
     }
     yield* this.runtimeFor(session.sessionId).run(session, commands);
   }

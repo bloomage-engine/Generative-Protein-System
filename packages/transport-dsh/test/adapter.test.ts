@@ -261,6 +261,72 @@ test("a request that beats the background init waits for it instead of failing",
   }
 });
 
+test(
+  "a cold start does not hold the first frame: the user row and running status stream while the child still boots, and the prompt waits for it",
+  { timeout: 20_000 },
+  async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-cold-first-frame-"));
+  const store = new FakeRecordStore();
+  // A harness child whose start() hangs until the test releases it: the cold
+  // spawn. The FIRST frame (reconcile, the user's own row, the running status)
+  // must reach the client WITHOUT it, and the prompt may only go out after.
+  let releaseStart: (() => void) | undefined;
+  const startPending = new Promise<void>((resolve) => {
+    releaseStart = resolve;
+  });
+  const order: string[] = [];
+  const client: DshTurnClient = {
+    start: async () => {
+      await startPending;
+      order.push("ready");
+    },
+    close: async () => {},
+    runTurn: async (_sid, _text, onEvent) => {
+      order.push("prompt");
+      for (const event of completedReply("am1", "Hello from dsh.")) onEvent(event);
+    },
+  };
+  const adapter = new DshRuntimeAdapter({ createClient: () => client, transcriptDir: dir });
+  try {
+    await adapter.init({ binding: { runtime: "dsh", config: {} }, recordStore: store });
+
+    const run = adapter.run(session(), [
+      { type: "add-message", message: { id: "u1", role: "user", content: "hi" } },
+    ]);
+    const deltas: StateDelta[] = [];
+    const drain = (async () => {
+      for await (const delta of run) deltas.push(delta);
+    })();
+    // The first THREE deltas must be deliverable while the child is still
+    // booting: the protocol-level acknowledgment of the client's send.
+    const deadline = Date.now() + 5_000;
+    while (deltas.length < 3 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(deltas[0]?.type, "reconcile", "the run opens with the reconcile snapshot");
+    assert.equal(deltas[1]?.type, "add-message", "the user's own row is acked without the child");
+    assert.equal((deltas[1] as { message?: { role: string } })?.message?.role, "user");
+    assert.equal(deltas[2]?.type, "session-status", "the running status starts without the child");
+    assert.equal((deltas[2] as { status?: string })?.status, "running");
+    assert.equal(order.length, 0, "the prompt must NOT go out while the child is still starting");
+
+    // Release the cold start: the turn now proceeds and settles.
+    releaseStart?.();
+    await drain;
+    assert.deepEqual(order, ["ready", "prompt"], "the prompt goes out only once the child is ready");
+    assert.ok(
+      deltas.some((d) => d.type === "session-status" && (d as { status?: string }).status === "idle"),
+      "the turn settles after the prompt",
+    );
+    assert.equal(store.runs.length, 1);
+    assert.equal(store.runs[0]!.status, "completed");
+  } finally {
+    releaseStart?.();
+    await adapter.abort();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a fresh adapter instance cold-starts from the record and reconciles history", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-cold-"));
   const store = new FakeRecordStore();

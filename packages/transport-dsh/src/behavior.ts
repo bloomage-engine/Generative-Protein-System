@@ -87,6 +87,14 @@ export interface DshBehaviorDeps {
   harnessCommands: DshHarnessCommands;
   /** The merged catalog — exactly what `listCommands()` publishes, for command replies. */
   commandCatalog: () => Promise<CommandDescriptor[]>;
+  /**
+   * Wait for the runtime child's readiness (a memoized start). A cold start —
+   * spawning the harness plus its handshake — is a cost of the PROMPT, not of
+   * acknowledging the client's message: `run()` kicks the start off before the
+   * first frames stream, and the turn awaits this here. A rejection (a child
+   * that could not start) settles the turn with an error on the run stream.
+   */
+  ensureReady?: () => Promise<void>;
   onError?: (message: string, error: unknown) => void;
 }
 
@@ -101,7 +109,7 @@ export interface DshBehavior extends SessionBehavior<SessionEvent> {
 }
 
 export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
-  const { client, recordStore, harnessSessions, profile, provider, model, cwd, workspace, harnessCommands, commandCatalog } = deps;
+  const { client, recordStore, harnessSessions, profile, provider, model, cwd, workspace, harnessCommands, commandCatalog, ensureReady } = deps;
   const log = deps.onError ?? ((message: string, error: unknown) => console.warn(`[dsh] ${message}`, error));
   /**
    * THIS child's harness id space (one generation per harness child — this
@@ -370,6 +378,7 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
     };
     coldCommands.set(sessionKey, pending);
     try {
+      if (ensureReady) await ensureReady();
       await driveTurn(sessionKey, line, run);
       run.settle();
     } catch (err) {
@@ -629,6 +638,12 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
       activeRuns.set(request.sessionKey, run);
       void (async () => {
         try {
+          // The cold start (harness spawn + handshake) is a cost of this PROMPT,
+          // not of the run's first frames, which acknowledged the client before
+          // the adapter kicked the start off — a failed start settles the turn
+          // as an error on the run stream. Conditionally awaited so a behavior
+          // with no gate (tests) stays synchronous up to the harness-id mint.
+          if (ensureReady) await ensureReady();
           await driveTurn(request.sessionKey, prompt, run);
           run.settle();
         } catch (err) {
