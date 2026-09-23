@@ -375,10 +375,12 @@ test(
   async (t) => {
     /**
      * A Session carries a `worktreeId` in the create POST's JSON BODY
-     * (docs/adr/0025), not its query. The harness used to read only the query,
-     * so it always minted `main` and could not observe this scope at all; this
-     * drives the panel's "New session" affordance under the expanded `exp-a`
-     * checkout and pins both the request and the committed scope.
+     * (docs/adr/0025), not its query. This drives the panel's "New session"
+     * affordance under the expanded `exp-a` checkout and pins that the APP sends
+     * that worktree in the body and commits the new Session under it — an
+     * app-side guard. It does not exercise the harness's own body parsing; the
+     * mocked record surface would mint `main` regardless and the assertion
+     * would still pass.
      */
     const executablePath = findChromium();
     if (!executablePath) {

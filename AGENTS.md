@@ -597,7 +597,8 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   future renderer holds) across a tab switch, and why each tab fetches its file
   once instead of on every switch. Scope: same Session only — a Session switch
   remounts the shell (`StudioHost` keys `SessionView` by
-  `projectId/sessionId`), and a Project switch clears `tabs`. The regression
+  `projectId/worktreeId/sessionId`), and a Project or Worktree switch clears
+  `tabs`. The regression
   guard is `apps/web/test/tab-state.test.mjs`. **A renderer inside a tab must
   never assert its own `visibility`** (e.g. an `<img>` flipping
   `hidden → visible` on load) — in CSS a child's `visibility:visible`

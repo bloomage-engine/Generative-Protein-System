@@ -14,6 +14,7 @@ export {
   CRON_DIR,
   cronLogPath,
   cronTaskPath,
+  isCronLogPath,
   isCronTaskPath,
   isValidTaskId,
   parseTaskDoc,

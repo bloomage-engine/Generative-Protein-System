@@ -4,6 +4,7 @@ import {
   CRON_DIR,
   cronLogPath,
   cronTaskPath,
+  isCronLogPath,
   isCronTaskPath,
   parseTaskDoc,
   serializeTaskDoc,
@@ -37,6 +38,16 @@ test("paths are recognized and the log file is never a task", () => {
   assert.equal(isCronTaskPath(cronLogPath("x1")), false);
   assert.equal(isCronTaskPath("notes.md"), false);
   assert.equal(taskIdFromPath(".science-studio/cron/sub/x.md"), null);
+});
+
+test("a run log is recognized only with a valid id and no nesting", () => {
+  assert.equal(isCronLogPath(cronLogPath("x1")), true);
+  assert.equal(isCronLogPath(".science-studio/cron/daily-digest.log.md"), true);
+  assert.equal(isCronLogPath(cronLogPath("bad id!")), false);
+  assert.equal(isCronLogPath(".science-studio/cron/sub/x.log.md"), false);
+  assert.equal(isCronLogPath(cronTaskPath("x1")), false, "a task document is not a log");
+  assert.equal(isCronLogPath(".science-studio/cron/x1.log"), false);
+  assert.equal(isCronLogPath("notes.log.md"), false);
 });
 
 test("parse rejects malformed documents with a reason", () => {

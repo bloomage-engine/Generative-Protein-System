@@ -5,6 +5,7 @@ import type * as React from "react";
 import dynamic from "next/dynamic";
 import { Code, Download, FileX, Loader2, Save, X } from "lucide-react";
 import {
+  DEFAULT_WORKTREE_ID,
   isCronTaskPath,
   useSubagentTranscript,
   useTransportApi,
@@ -13,6 +14,7 @@ import {
   uploadWorkspaceFile,
   workspaceFileUrl,
 } from "@science-studio/transport-client";
+import { isCronLogPath } from "@science-studio/cron";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isHpcJobTab, isSubagentTab, isTextEditable, kindFor, languageFor, subagentTabChildId } from "./file-utils";
@@ -171,8 +173,12 @@ function Preview({ path, name }: { path: string; name: string }) {
   const { api, project, worktree } = useWorkspaceApi();
   const closeTab = useStudioStore((s) => s.closeTab);
   const kind = kindFor(name);
-  const downloadUrl = workspaceFileUrl(api, path, { download: true, project, worktree });
-  const fileUrl = workspaceFileUrl(api, path, { project, worktree });
+  // Cron is Project-`main`-only, so a run log opened as a normal file tab must
+  // read the Project root, not the ACTIVE checkout (docs/adr/0025). Every other
+  // file keeps the active worktree.
+  const effectiveWorktree = isCronLogPath(path) ? DEFAULT_WORKTREE_ID : worktree;
+  const downloadUrl = workspaceFileUrl(api, path, { download: true, project, worktree: effectiveWorktree });
+  const fileUrl = workspaceFileUrl(api, path, { project, worktree: effectiveWorktree });
 
   const [sourceView, setSourceView] = useState(false);
   const [editedText, setEditedText] = useState<string | null>(null);
@@ -185,12 +191,12 @@ function Preview({ path, name }: { path: string; name: string }) {
     if (editedText == null) return;
     setSaving(true);
     try {
-      await uploadWorkspaceFile(api, path, new Blob([editedText]), project, worktree);
+      await uploadWorkspaceFile(api, path, new Blob([editedText]), project, effectiveWorktree);
       setDirty(false);
     } finally {
       setSaving(false);
     }
-  }, [api, editedText, path, project, worktree]);
+  }, [api, editedText, path, project, effectiveWorktree]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -264,6 +270,7 @@ function Preview({ path, name }: { path: string; name: string }) {
           <TextPreview
             path={path}
             name={name}
+            worktree={effectiveWorktree}
             sourceView={sourceView}
             onEditedTextChange={setEditedText}
             onDirtyChange={setDirty}
@@ -278,17 +285,19 @@ function Preview({ path, name }: { path: string; name: string }) {
 function TextPreview({
   path,
   name,
+  worktree,
   sourceView,
   onEditedTextChange,
   onDirtyChange,
 }: {
   path: string;
   name: string;
+  worktree?: string | null;
   sourceView: boolean;
   onEditedTextChange: (text: string | null) => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
-  const { text, mime, isLoading, error } = useWorkspaceFile(path);
+  const { text, mime, isLoading, error } = useWorkspaceFile(path, { worktree });
   const kind = kindFor(name, mime);
   const language = kind === "code" ? languageFor(name, kind) : undefined;
 

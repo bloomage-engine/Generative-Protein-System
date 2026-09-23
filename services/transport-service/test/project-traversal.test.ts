@@ -1,8 +1,5 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { createInMemoryRecordStore, type RecordStore } from "@science-studio/record";
 import {
   LocalEnvironmentProvider,
@@ -82,22 +79,20 @@ test("the transport route rejects an unsafe project claim with 400 and mints not
 test("an unsafe named project is rejected before any file access (400, never a 500)", async () => {
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
-  const root = await mkdtemp(join(tmpdir(), "ss-traversal-"));
-  try {
-    await withServer(records, async ({ base }) => {
-      // Delete reaches the Project workspace through `acquireProject`; even
-      // though the record has no such Project row, the error must be the
-      // caller's 400 (validation precedes the record read) — and nothing may be
-      // created on disk.
-      const res = await fetch(`${base}/api/projects/${encodeURIComponent(UNSAFE)}/delete`, {
-        method: "POST",
-      });
-      assert.equal(res.status, 400);
-      await assert.rejects(() => stat(join(root, "..", "etc")), "nothing escaped the root");
+  await withServer(records, async ({ base, acquired }) => {
+    // Delete reaches the Project workspace through `acquireProject`; even
+    // though the record has no such Project row, the error must be the
+    // caller's 400 (validation precedes the record read). The proof is the
+    // status plus the untouched environment/record — a disk assertion would be
+    // vacuous here because the fake provider returns a NullWorkspace and never
+    // touches PROJECT_ROOT.
+    const res = await fetch(`${base}/api/projects/${encodeURIComponent(UNSAFE)}/delete`, {
+      method: "POST",
     });
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+    assert.equal(res.status, 400);
+    assert.deepEqual(acquired, [], "an unsafe claim must not reach the environment");
+    assert.equal(await records.getProject(UNSAFE), null, "no Project row was minted for the traversal id");
+  });
 });
 
 test("acquireProject rejects an unsafe project id with a WorkspacePathError", async () => {

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Play, Trash2 } from "lucide-react";
 import {
   DEFAULT_CRON_API,
+  DEFAULT_WORKTREE_ID,
   SCHEDULE_PRESETS,
   cronLogPath,
   deleteCronTask,
@@ -32,17 +33,13 @@ const STATUS_CLASS: Record<CronRunStatus, string> = {
 
 /**
  * Cron is Project-`main`-only: the service scheduler and the `/api/cron*`
- * routes read `.science-studio/cron/` from the Project root, never a linked
- * checkout. This mirrors the reserved `DEFAULT_WORKTREE_ID` in the record /
- * transport-client packages, declared here on purpose so this renderer's read
- * decision is self-evident (the same browser-safe duplication lives in
- * `apps/web/lib/scope-memory.ts`). The run-log read below therefore pins `main`
+ * routes read `.science-studio/cron/` from the Project root, not a linked
+ * checkout. Those routes honour a `worktreeId` claim and default to `main`; the
+ * web client sends none. The run-log read below therefore pins `main`
  * explicitly: the workspace provider would otherwise fall back to the ACTIVE
  * worktree, so opening a `main` cron task while scoped to a linked worktree
  * showed an empty/404 log (docs/adr/0025).
  */
-const DEFAULT_WORKTREE_ID = "main";
-
 export function CronTaskRenderer({ path }: { path: string }) {
   const id = taskIdFromPath(path) ?? "";
   const projectId = useStudioStore((s) => s.projectId);

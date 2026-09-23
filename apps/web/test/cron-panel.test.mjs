@@ -201,6 +201,28 @@ test(
         "main",
         "the Cron run log must be read from the Project's main worktree, not the active checkout",
       );
+
+      // "Open log" opens the log as a PLAIN file tab, whose generic preview
+      // reads with the ACTIVE worktree unless the path is pinned. Assert the
+      // tab's own read also names `main`: register the waiter before the click
+      // so it can only match the request the click causes.
+      const openedLogRequest = page.waitForRequest(
+        (request) => {
+          const url = new URL(request.url());
+          return (
+            url.pathname.endsWith("/api/workspace/file") &&
+            url.searchParams.get("path") === ".science-studio/cron/daily-digest.log.md"
+          );
+        },
+        { timeout: 10_000 },
+      );
+      await page.getByRole("button", { name: "Open log" }).click();
+      const openedLog = await openedLogRequest;
+      assert.equal(
+        new URL(openedLog.url()).searchParams.get("worktreeId"),
+        "main",
+        "the log opened as a file tab must also read the Project's main worktree",
+      );
     } catch (error) {
       throw new Error(`${error.message}\n--- web server log ---\n${server.log().slice(-2000)}`);
     } finally {

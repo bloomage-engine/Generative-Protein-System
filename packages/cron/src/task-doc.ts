@@ -45,6 +45,20 @@ export function isCronTaskPath(path: string): boolean {
   return taskIdFromPath(path) !== null;
 }
 
+/**
+ * True for a cron run-log path (`.science-studio/cron/<id>.log.md`) with a valid
+ * task id. Mirrors `taskIdFromPath`'s safety: a nested path is not a log, and a
+ * task document (`<id>.md`) is never one either.
+ */
+export function isCronLogPath(path: string): boolean {
+  const prefix = `${CRON_DIR}/`;
+  if (!path.startsWith(prefix)) return false;
+  const rest = path.slice(prefix.length);
+  if (rest.includes("/")) return false;
+  if (!rest.endsWith(LOG_SUFFIX)) return false;
+  return isValidTaskId(rest.slice(0, -LOG_SUFFIX.length));
+}
+
 function unquote(raw: string): string {
   const trimmed = raw.trim();
   if (trimmed.startsWith('"')) {

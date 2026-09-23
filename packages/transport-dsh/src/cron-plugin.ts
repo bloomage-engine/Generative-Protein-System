@@ -268,7 +268,7 @@ export function apply(ctx: CronHost, config: CronPluginConfig | undefined): void
       "本项目支持定时任务：到点后由服务向目标会话发送一条 prompt 并执行一次，结果记录在会话中，同时写入任务日志文件。",
       `任务文件位于工作区 \`${CRON_DIR}/<id>.md\`（frontmatter 含 name/schedule/enabled/sessionId，正文是 prompt）。`,
       "用 schedule_create 创建、schedule_list 查看、schedule_delete 删除、schedule_set_enabled 启停；也可以用 /cron 查看。",
-      "schedule 是 5 字段 cron（分 时 日 月 周），如 `0 9 * * *`（每天 09:00）、`0 * * * *`（每小时）；省略 sessionId 时默认使用本项目最近活跃的会话。",
+      "schedule 是 5 字段 cron（分 时 日 月 周），如 `0 9 * * *`（每天 09:00）、`0 * * * *`（每小时）；省略 sessionId 时默认使用本项目 main 工作树最近活跃的会话（定时任务只在 main 工作树运行，指向其它工作树的会话会被拒绝）。",
       "只应在用户明确要求定期执行某事时创建任务，不要主动安排。",
     ].join("\n"),
   };
