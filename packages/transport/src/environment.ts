@@ -25,31 +25,43 @@ export interface Environment {
   readonly workspace: Workspace;
   /** The Project whose workspace and adapter this environment serves. */
   readonly projectId: Id;
+  /**
+   * The Worktree of that Project this environment serves (docs/adr/0025). One
+   * adapter (and, for dsh, one harness child) per LIVE worktree, because an
+   * adapter's workspace-derived launch surface is fixed at `init`.
+   */
+  readonly worktreeId: Id;
 }
 
 export interface EnvironmentProvider {
   /**
-   * Get or lazily build the environment for a Project. The caller has already
-   * resolved the Session (threadId → sessionKey → Session record), because the
-   * Session's `projectId` decides which environment to build.
+   * Get or lazily build the environment for a Project's Worktree. The caller has
+   * already resolved the Session (threadId → sessionKey → Session record),
+   * because the Session's `projectId`/`worktreeId` decide which environment to
+   * build.
    */
-  acquire(principal: Principal, projectId: Id): Promise<Environment>;
+  acquire(principal: Principal, projectId: Id, worktreeId: Id): Promise<Environment>;
   /**
-   * Drop one Project's cached environment (its adapter and workspace) — e.g.
-   * after the Project is deleted (docs/adr/0014), so its runtime (for dsh, a
-   * harness child whose cwd was just recycled) is torn down. Optional: a
-   * deployment that does not cache per Project can omit it. `dispose` remains
-   * the whole-principal teardown.
+   * Drop cached environment(s) — an adapter and workspace — e.g. after the
+   * Project is deleted (docs/adr/0014) or one of its Worktrees is removed
+   * (docs/adr/0025), so the runtime (for dsh, a harness child whose cwd was just
+   * recycled) is torn down. With a `worktreeId` only that worktree's child is
+   * dropped; omitted, every child of the Project is. Optional: a deployment that
+   * does not cache per worktree can omit it. `dispose` remains the
+   * whole-principal teardown.
    */
-  release?(principal: Principal, projectId: Id): Promise<void>;
+  release?(principal: Principal, projectId: Id, worktreeId?: Id): Promise<void>;
   /** Tear down (logout, tenant deletion, deployment shutdown). */
   dispose(principal: Principal): Promise<void>;
 }
 
-/** How a single-user deployment builds one Project's adapter + workspace. */
+/** How a single-user deployment builds one worktree's adapter + workspace. */
 export interface LocalEnvironmentOptions {
-  /** Lazily build a Project's adapter and workspace (called at most once per Project). */
-  environmentFor(projectId: Id): Promise<{ adapter: RuntimeAdapter; workspace: Workspace }>;
+  /** Lazily build a worktree's adapter and workspace (called at most once per worktree). */
+  environmentFor(
+    projectId: Id,
+    worktreeId: Id,
+  ): Promise<{ adapter: RuntimeAdapter; workspace: Workspace }>;
 }
 
 /**
@@ -58,38 +70,51 @@ export interface LocalEnvironmentOptions {
  * is that Project's workspace). Deliberately no auth — single-user is login-free.
  */
 export class LocalEnvironmentProvider implements EnvironmentProvider {
-  private readonly environments = new Map<Id, Environment>();
-  /** De-duplicate concurrent first uses of the same Project. */
-  private readonly inflight = new Map<Id, Promise<Environment>>();
+  private readonly environments = new Map<string, Environment>();
+  /** De-duplicate concurrent first uses of the same worktree. */
+  private readonly inflight = new Map<string, Promise<Environment>>();
 
   constructor(private readonly local: LocalEnvironmentOptions) {}
 
-  async acquire(_principal: Principal, projectId: Id): Promise<Environment> {
-    const cached = this.environments.get(projectId);
+  private static key(projectId: Id, worktreeId: Id): string {
+    return `${projectId}\u0000${worktreeId}`;
+  }
+
+  async acquire(_principal: Principal, projectId: Id, worktreeId: Id): Promise<Environment> {
+    const key = LocalEnvironmentProvider.key(projectId, worktreeId);
+    const cached = this.environments.get(key);
     if (cached) return cached;
 
-    let pending = this.inflight.get(projectId);
+    let pending = this.inflight.get(key);
     if (!pending) {
       pending = this.local
-        .environmentFor(projectId)
+        .environmentFor(projectId, worktreeId)
         .then((built) => {
-          const environment: Environment = { ...built, projectId };
-          this.environments.set(projectId, environment);
+          const environment: Environment = { ...built, projectId, worktreeId };
+          this.environments.set(key, environment);
           return environment;
         })
-        .finally(() => this.inflight.delete(projectId));
-      this.inflight.set(projectId, pending);
+        .finally(() => this.inflight.delete(key));
+      this.inflight.set(key, pending);
     }
     return pending;
   }
 
-  async release(_principal: Principal, projectId: Id): Promise<void> {
-    this.environments.delete(projectId);
-    // A build already in flight would otherwise re-cache after the drop.
-    const pending = this.inflight.get(projectId);
-    if (pending) {
-      await pending.catch(() => {});
-      this.environments.delete(projectId);
+  async release(_principal: Principal, projectId: Id, worktreeId?: Id): Promise<void> {
+    const prefix = `${projectId}\u0000`;
+    const keys = [...this.environments.keys()].filter((key) =>
+      worktreeId === undefined
+        ? key.startsWith(prefix)
+        : key === LocalEnvironmentProvider.key(projectId, worktreeId),
+    );
+    for (const key of keys) {
+      this.environments.delete(key);
+      // A build already in flight would otherwise re-cache after the drop.
+      const pending = this.inflight.get(key);
+      if (pending) {
+        await pending.catch(() => {});
+        this.environments.delete(key);
+      }
     }
   }
 
