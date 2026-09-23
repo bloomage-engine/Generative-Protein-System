@@ -6,6 +6,7 @@ import {
   deleteWorktree,
   fetchWorktrees,
 } from "../src/worktrees.js";
+import { createSession, fetchProjectSessions } from "../src/projects.js";
 
 function stubFetch(handler: (url: string, init?: RequestInit) => { status: number; json: unknown }) {
   const calls: { url: string; init?: RequestInit }[] = [];
@@ -46,6 +47,33 @@ test("deleteWorktree POSTs the delete action", async () => {
   try {
     await deleteWorktree("/api/worktrees", "p1", "exp-a");
     assert.ok(stub.calls[0]?.url.includes("/api/worktrees/exp-a/delete?projectId=p1"));
+  } finally {
+    stub.restore();
+  }
+});
+
+test("fetchProjectSessions scopes the listing to a worktree", async () => {
+  const stub = stubFetch(() => ({ status: 200, json: { sessions: [] } }));
+  try {
+    await fetchProjectSessions("/api/projects", "p1", { worktreeId: "exp-a" });
+    assert.ok(stub.calls[0]?.url.includes("/api/projects/p1/sessions?worktreeId=exp-a"));
+
+    await fetchProjectSessions("/api/projects", "p1", { includeArchived: true, worktreeId: "exp-a" });
+    assert.ok(
+      stub.calls[1]?.url.includes("/api/projects/p1/sessions?includeArchived=1&worktreeId=exp-a"),
+    );
+  } finally {
+    stub.restore();
+  }
+});
+
+test("createSession POSTs the worktree the Session belongs to", async () => {
+  const stub = stubFetch(() => ({ status: 201, json: { session: { id: "s1" } } }));
+  try {
+    const session = await createSession("/api/projects", "p1", { worktreeId: "exp-a" });
+    assert.equal(session.id, "s1");
+    assert.equal(stub.calls[0]?.init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(stub.calls[0]?.init?.body)), { worktreeId: "exp-a" });
   } finally {
     stub.restore();
   }

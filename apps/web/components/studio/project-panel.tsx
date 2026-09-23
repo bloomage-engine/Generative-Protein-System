@@ -130,6 +130,23 @@ export function ProjectPanel() {
   const renamingRef = React.useRef<Renaming>(null);
   renamingRef.current = renaming;
 
+  /**
+   * The Worktree a target Project's Sessions are listed/created under. While
+   * the pane is expanded on the ACTIVE Project that is its active worktree; a
+   * Project the pane merely browses has no active worktree of its own, so
+   * `main` — a Worktree is only unique within a Project. Task 7 replaces the
+   * "active worktree" half with a real per-worktree expansion, but the
+   * session-scoping contract is already here: a Session belongs to the worktree
+   * it is created under, never to `main` behind the active worktree's back.
+   */
+  const worktreeFor = React.useCallback((targetProjectId: string | null): string => {
+    if (targetProjectId === null) return DEFAULT_WORKTREE_ID;
+    const store = useStudioStore.getState();
+    return targetProjectId === store.projectId
+      ? (store.activeWorktreeId ?? DEFAULT_WORKTREE_ID)
+      : DEFAULT_WORKTREE_ID;
+  }, []);
+
   const loadProjects = React.useCallback(async () => {
     setBusy(true);
     setError(null);
@@ -146,12 +163,17 @@ export function ProjectPanel() {
   }, []);
 
   // List a Project's Sessions for the PANE. Expanding is browsing, not
-  // switching: the scope moves only when a Session is double-clicked.
+  // switching: the scope moves only when a Session is double-clicked. The list
+  // is scoped to the worktree the pane's Sessions belong to (`worktreeFor`), so
+  // the pane and the active scope never disagree about which checkout's
+  // Sessions are on screen.
   const loadSessions = React.useCallback(async (projectId: string) => {
     setBusy(true);
     setError(null);
     try {
-      const list = await fetchProjectSessions(PROJECTS_API, projectId);
+      const list = await fetchProjectSessions(PROJECTS_API, projectId, {
+        worktreeId: worktreeFor(projectId),
+      });
       const store = useStudioStore.getState();
       if (store.panelProjectId !== projectId) return;
       store.setPanelSessions(list);
@@ -161,19 +183,21 @@ export function ProjectPanel() {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [worktreeFor]);
 
   /** Refresh a Project's active Sessions wherever it is currently shown. */
   const refreshSessions = React.useCallback(async (projectId: string) => {
     try {
-      const list = await fetchProjectSessions(PROJECTS_API, projectId);
+      const list = await fetchProjectSessions(PROJECTS_API, projectId, {
+        worktreeId: worktreeFor(projectId),
+      });
       const store = useStudioStore.getState();
       if (store.panelProjectId === projectId) store.setPanelSessions(list);
       if (store.projectId === projectId) store.setSessions(list);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, []);
+  }, [worktreeFor]);
 
   const loadArchive = React.useCallback(async () => {
     setBusy(true);
@@ -208,19 +232,6 @@ export function ProjectPanel() {
     const expanding = store.panelProjectId !== project.id;
     store.setPanelProject(expanding ? project.id : null);
   };
-
-  /**
-   * The Worktree to commit alongside a target Project: the ACTIVE worktree when
-   * the Project is unchanged, else `main` (a switch to another Project has no
-   * active worktree of its own). Task 7 replaces this with a real picker.
-   */
-  const worktreeFor = React.useCallback((targetProjectId: string | null): string => {
-    if (targetProjectId === null) return DEFAULT_WORKTREE_ID;
-    const store = useStudioStore.getState();
-    return targetProjectId === store.projectId
-      ? (store.activeWorktreeId ?? DEFAULT_WORKTREE_ID)
-      : DEFAULT_WORKTREE_ID;
-  }, []);
 
   /** Double-clicking a Session is what commits the scope. */
   const switchSession = (sessionId: string) => {
@@ -260,7 +271,9 @@ export function ProjectPanel() {
     setBusy(true);
     setError(null);
     try {
-      const session = await createSession(PROJECTS_API, panelProjectId);
+      const session = await createSession(PROJECTS_API, panelProjectId, {
+        worktreeId: worktreeFor(panelProjectId),
+      });
       const store = useStudioStore.getState();
       if (store.panelProjectId !== panelProjectId) return;
       store.setPanelSessions([...store.panelSessions, session]);
@@ -327,11 +340,12 @@ export function ProjectPanel() {
       return;
     }
     try {
-      const list = await fetchProjectSessions(PROJECTS_API, nextId);
+      const worktreeId = worktreeFor(nextId);
+      const list = await fetchProjectSessions(PROJECTS_API, nextId, { worktreeId });
       const s = useStudioStore.getState();
       s.setScope({
         projectId: nextId,
-        worktreeId: worktreeFor(nextId),
+        worktreeId,
         sessionId: fallbackSession(nextId, list),
       });
       s.setSessions(list);

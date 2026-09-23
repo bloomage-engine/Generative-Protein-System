@@ -114,24 +114,36 @@ export async function deleteProject(api: string, projectId: string): Promise<voi
   });
 }
 
-/** A Project's Sessions, in creation order. Archived sessions excluded by default. */
+/**
+ * A Project's Sessions, in creation order. Archived sessions excluded by
+ * default. `worktreeId` filters to one Worktree's Sessions (docs/adr/0025): a
+ * Session belongs to the checkout it was created under, so the workbench lists
+ * them per worktree rather than Project-wide.
+ */
 export async function fetchProjectSessions(
   api: string,
   projectId: string,
-  opts: { includeArchived?: boolean } = {},
+  opts: { includeArchived?: boolean; worktreeId?: string } = {},
 ): Promise<Session[]> {
-  const query = opts.includeArchived ? "?includeArchived=1" : "";
+  const params = new URLSearchParams();
+  if (opts.includeArchived) params.set("includeArchived", "1");
+  if (opts.worktreeId) params.set("worktreeId", opts.worktreeId);
+  const query = params.toString();
   const body = await request<{ sessions: Session[] }>(
-    `${base(api)}/${encodeURIComponent(projectId)}/sessions${query}`,
+    `${base(api)}/${encodeURIComponent(projectId)}/sessions${query ? `?${query}` : ""}`,
   );
   return body.sessions;
 }
 
-/** Create a Session under a Project and return it (its id is the threadId). */
+/**
+ * Create a Session under a Project (optionally under one of its Worktrees) and
+ * return it (its id is the threadId). The service validates a `worktreeId`
+ * against the record, so an unknown one is a 404 — never a fabricated row.
+ */
 export async function createSession(
   api: string,
   projectId: string,
-  opts: { agentId?: string; title?: string } = {},
+  opts: { agentId?: string; title?: string; worktreeId?: string } = {},
 ): Promise<Session> {
   const body = await request<{ session: Session }>(
     `${base(api)}/${encodeURIComponent(projectId)}/sessions`,
