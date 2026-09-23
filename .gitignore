@@ -12,3 +12,6 @@ apps/desktop/release/
 # the skill copy synced from packages/skills/molql
 packages/plugins/*/lib/
 packages/plugins/*/skill/
+
+# Linked git worktrees (dev isolation)
+.worktrees/
