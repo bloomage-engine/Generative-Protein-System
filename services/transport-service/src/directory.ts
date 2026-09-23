@@ -11,7 +11,8 @@
  * Project ids are filesystem-safe slugs because a Project's id names its
  * workspace directory (`<PROJECT_ROOT>/<projectId>/`, docs/adr/0006).
  */
-import type { Id, Project, RecordStore, Run, Session } from "@science-studio/record";
+import type { Id, Project, RecordStore, Run, Session, Worktree } from "@science-studio/record";
+import { DEFAULT_WORKTREE_ID, MAIN_BRANCH } from "@science-studio/record";
 
 export interface RecordDefaults {
   projectId: Id;
@@ -24,6 +25,17 @@ export const DEFAULT_RECORD_DEFAULTS: RecordDefaults = {
   projectName: "Default project",
   agentId: "main",
 };
+
+/** Thrown when a Project has no Worktree with the given id. */
+export class WorktreeNotFoundError extends Error {
+  constructor(
+    readonly projectId: Id,
+    readonly worktreeId: Id,
+  ) {
+    super(`worktree not found: ${worktreeId}`);
+    this.name = "WorktreeNotFoundError";
+  }
+}
 
 export interface RecordDirectory {
   /** Create a Project; its id is a slug of `name` (unique-suffixed). */
@@ -39,7 +51,31 @@ export interface RecordDirectory {
    * caller recycles the Project Workspace separately, before or after this.
    */
   deleteProject(id: Id): Promise<void>;
-  createSession(projectId: Id, opts?: { agentId?: Id; title?: string }): Promise<Session>;
+
+  /**
+   * Ensure a Project's reserved `main` Worktree row (id/name/branch `main`).
+   * Idempotent: the Project root IS the `main` worktree (docs/adr/0025).
+   */
+  ensureWorktree(projectId: Id): Promise<Worktree>;
+  findWorktree(projectId: Id, id: Id): Promise<Worktree | null>;
+  /** Like `findWorktree`, but throws `WorktreeNotFoundError` instead of null. */
+  requireWorktree(projectId: Id, id: Id): Promise<Worktree>;
+  /** Mint a filesystem-safe, Project-unique Worktree id from a display name. */
+  mintWorktreeId(projectId: Id, name: string): Promise<Id>;
+  addWorktree(projectId: Id, input: { id: Id; name: string; branch: string }): Promise<Worktree>;
+  listWorktrees(projectId: Id, opts?: { includeArchived?: boolean }): Promise<Worktree[]>;
+  /** Rename a Worktree (its id and branch are immutable). */
+  renameWorktree(projectId: Id, id: Id, name: string): Promise<Worktree>;
+  archiveWorktree(projectId: Id, id: Id): Promise<Worktree>;
+  /** Clear a Worktree's archived flag. */
+  unarchiveWorktree(projectId: Id, id: Id): Promise<Worktree>;
+  /** Remove a Worktree's record (cascading its Sessions and their Runs). */
+  deleteWorktree(projectId: Id, id: Id): Promise<void>;
+
+  createSession(
+    projectId: Id,
+    opts?: { agentId?: Id; title?: string; worktreeId?: Id },
+  ): Promise<Session>;
   listSessions(projectId: Id, opts?: { includeArchived?: boolean }): Promise<Session[]>;
   /** Rename a Session (its `title`). */
   renameSession(id: Id, title: string): Promise<Session>;
@@ -56,7 +92,7 @@ export interface RecordDirectory {
    * docs/design/implementation-plan.md), so the transport route resolves through
    * here rather than refusing an unknown key.
    */
-  resolveOrCreateSession(projectId: Id, sessionKey: Id): Promise<Session>;
+  resolveOrCreateSession(projectId: Id, sessionKey: Id, worktreeId?: Id): Promise<Session>;
   listRuns(projectId: Id): Promise<Run[]>;
 }
 
@@ -80,6 +116,16 @@ export function createRecordDirectory(opts: RecordDirectoryOptions): RecordDirec
     await opts.store.createProject({ id: projectId, name: projectId, createdAt: now() });
   };
 
+  const mintWorktreeId = async (projectId: Id, name: string): Promise<Id> => {
+    const base = slug(name) || "worktree";
+    for (let i = 1; i < 1000; i += 1) {
+      const candidate = i === 1 ? base : `${base}-${i}`;
+      if (candidate === DEFAULT_WORKTREE_ID) continue;
+      if (!(await opts.store.getWorktree(projectId, candidate))) return candidate;
+    }
+    throw new Error("could not mint a unique worktree id");
+  };
+
   return {
     async createProject(name: string): Promise<Project> {
       const project: Project = { id: newId(slug(name) || "project"), name, createdAt: now() };
@@ -98,7 +144,53 @@ export function createRecordDirectory(opts: RecordDirectoryOptions): RecordDirec
     async deleteProject(id: Id): Promise<void> {
       await opts.store.deleteProject(id);
     },
-    async createSession(projectId: Id, o: { agentId?: Id; title?: string } = {}): Promise<Session> {
+    async ensureWorktree(projectId: Id): Promise<Worktree> {
+      const existing = await opts.store.getWorktree(projectId, DEFAULT_WORKTREE_ID);
+      if (existing) return existing;
+      return opts.store.addWorktree({
+        id: DEFAULT_WORKTREE_ID,
+        projectId,
+        name: DEFAULT_WORKTREE_ID,
+        branch: MAIN_BRANCH,
+        createdAt: now(),
+      });
+    },
+    findWorktree: (projectId, id) => opts.store.getWorktree(projectId, id),
+    async requireWorktree(projectId: Id, id: Id): Promise<Worktree> {
+      const worktree = await opts.store.getWorktree(projectId, id);
+      if (!worktree) throw new WorktreeNotFoundError(projectId, id);
+      return worktree;
+    },
+    mintWorktreeId,
+    async addWorktree(
+      projectId: Id,
+      input: { id: Id; name: string; branch: string },
+    ): Promise<Worktree> {
+      return opts.store.addWorktree({
+        id: input.id,
+        projectId,
+        name: input.name,
+        branch: input.branch,
+        createdAt: now(),
+      });
+    },
+    listWorktrees: (projectId, o) => opts.store.listWorktrees(projectId, o),
+    async renameWorktree(projectId: Id, id: Id, name: string): Promise<Worktree> {
+      return opts.store.updateWorktree(projectId, id, { name });
+    },
+    async archiveWorktree(projectId: Id, id: Id): Promise<Worktree> {
+      return opts.store.archiveWorktree(projectId, id, now());
+    },
+    async unarchiveWorktree(projectId: Id, id: Id): Promise<Worktree> {
+      return opts.store.unarchiveWorktree(projectId, id);
+    },
+    async deleteWorktree(projectId: Id, id: Id): Promise<void> {
+      await opts.store.deleteWorktree(projectId, id);
+    },
+    async createSession(
+      projectId: Id,
+      o: { agentId?: Id; title?: string; worktreeId?: Id } = {},
+    ): Promise<Session> {
       const project = await opts.store.getProject(projectId);
       if (!project) throw new Error(`project not found: ${projectId}`);
       const timestamp = now();
@@ -106,6 +198,7 @@ export function createRecordDirectory(opts: RecordDirectoryOptions): RecordDirec
         id: newId("sess"),
         projectId,
         agentId: o.agentId ?? defaults.agentId,
+        ...(o.worktreeId ? { worktreeId: o.worktreeId } : {}),
         ...(o.title ? { title: o.title } : {}),
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -125,7 +218,11 @@ export function createRecordDirectory(opts: RecordDirectoryOptions): RecordDirec
       await opts.store.deleteSession(id);
     },
     resolveSession: (sessionKey) => opts.store.getSession(sessionKey),
-    async resolveOrCreateSession(projectId: Id, sessionKey: Id): Promise<Session> {
+    async resolveOrCreateSession(
+      projectId: Id,
+      sessionKey: Id,
+      worktreeId?: Id,
+    ): Promise<Session> {
       const existing = await opts.store.getSession(sessionKey);
       if (existing) return existing;
 
@@ -138,6 +235,7 @@ export function createRecordDirectory(opts: RecordDirectoryOptions): RecordDirec
             id: sessionKey,
             projectId,
             agentId: defaults.agentId,
+            worktreeId: worktreeId ?? DEFAULT_WORKTREE_ID,
             createdAt: timestamp,
             updatedAt: timestamp,
           });
