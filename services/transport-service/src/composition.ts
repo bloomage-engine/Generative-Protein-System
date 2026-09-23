@@ -33,6 +33,7 @@ import {
   type WorkspaceLimits,
 } from "@science-studio/transport";
 import { DEFAULT_RECORD_DEFAULTS, type RecordDefaults } from "./directory.js";
+import { WORKTREES_DIR, worktreeRelPath } from "./worktree/paths.js";
 import { applySettingsToEnv, loadSettings, resolveSettingsPath } from "./settings.js";
 
 export interface CorsConfig {
@@ -125,20 +126,23 @@ export async function loadRuntimePlugins(specifiers: readonly string[]): Promise
 }
 
 /**
- * The single-user workspace for ONE Project: an `FsWorkspace` rooted at
- * `<PROJECT_ROOT>/<projectId>/` (agent side `<PROJECT_AGENT_ROOT>/<projectId>/`),
- * or a `NullWorkspace` when no `PROJECT_ROOT` is configured. Callers see one seam
- * either way, which is what lets the multi-user module swap in a cell's
- * bind-mount without touching them.
+ * The single-user workspace for ONE Project's Worktree: an `FsWorkspace` rooted
+ * at `<PROJECT_ROOT>/<projectId>/` for `main` (the Project root) or
+ * `<PROJECT_ROOT>/<projectId>/.worktrees/<worktreeId>/` for a linked worktree
+ * (agent side likewise under `PROJECT_AGENT_ROOT`), or a `NullWorkspace` when no
+ * `PROJECT_ROOT` is configured. Callers see one seam either way, which is what
+ * lets the multi-user module swap in a cell's bind-mount without touching them.
  */
-export function localWorkspace(env: NodeJS.ProcessEnv, projectId: Id): Workspace {
+export function localWorkspace(env: NodeJS.ProcessEnv, projectId: Id, worktreeId: Id): Workspace {
   const root = env.PROJECT_ROOT;
   if (!root) return new NullWorkspace();
   const agentRoot = env.PROJECT_AGENT_ROOT ?? root;
   const maxInlineRaw = env.WORKSPACE_MAX_INLINE_BYTES;
   const maxInlineBytes = maxInlineRaw && /^\d+$/.test(maxInlineRaw) ? Number(maxInlineRaw) : undefined;
-  return new FsWorkspace(join(root, projectId), {
-    agentRoot: join(agentRoot, projectId),
+  const rel = worktreeRelPath(worktreeId);
+  return new FsWorkspace(join(root, projectId, rel), {
+    agentRoot: join(agentRoot, projectId, rel),
+    hiddenEntries: [".git", WORKTREES_DIR],
     ...(maxInlineBytes !== undefined ? { maxInlineBytes } : {}),
   });
 }
@@ -225,23 +229,29 @@ async function localBackend(
     });
   }
 
-  // One environment per Project, built lazily by the provider below: an
-  // adapter's workspace-derived launch surface is fixed at `init` (for dsh the
-  // harness child's cwd IS `workspace.toAgentPath("")`, and both runtimes map a
-  // workspace attachment through the same object), so a shared adapter could
-  // only ever serve ONE Project's directory — the default Project's — and every
-  // other Project would run in the wrong place. A Project's Sessions share the
-  // adapter built for it (and, for dsh, one harness child with that cwd).
+  // One environment per Project WORKTREE, built lazily by the provider below:
+  // an adapter's workspace-derived launch surface is fixed at `init` (for dsh
+  // the harness child's cwd IS `workspace.toAgentPath("")`, and both runtimes map
+  // a workspace attachment through the same object), so a shared adapter could
+  // only ever serve ONE directory — the default Project's main worktree — and
+  // every other worktree would run in the wrong place (docs/adr/0008, 0025). A
+  // worktree's Sessions share the adapter built for it (and, for dsh, one
+  // harness child with that cwd).
   const recordStore = toRecordStoreLike(records);
   const environments = new LocalEnvironmentProvider({
-    environmentFor: async (projectId) => {
-      const workspace = localWorkspace(env, projectId);
+    environmentFor: async (projectId, worktreeId) => {
+      const workspace = localWorkspace(env, projectId, worktreeId);
       const adapter = plugin.factory.create(binding);
       // The record owns Project identity; the adapter gets a read-only copy so a
       // dsh child can render it into the Project Brief (docs/adr/0012). A
       // Project with no row (an arbitrary session key's first use) simply has
       // none. This lookup is cheap; the runtime launch below is not.
       const project = await records.getProject(projectId).catch(() => null);
+      // The record likewise owns the Worktree identity; the adapter renders it
+      // into the worktree plugin's system prompt (docs/adr/0025). An environment
+      // is only acquired for a worktree the record validated, but a store
+      // without the row (or a NullWorkspace test double) still initializes.
+      const worktree = await records.getWorktree(projectId, worktreeId).catch(() => null);
       // Init runs in the BACKGROUND, exactly like the pre-seam service: a slow
       // or unreachable runtime must not delay the request that first names the
       // Project. Every adapter's own entry points WAIT for it (openclaw on its
@@ -259,10 +269,20 @@ async function localBackend(
           ...(project === null
             ? {}
             : { project: { id: project.id, name: project.name, createdAt: project.createdAt } }),
+          ...(worktree === null
+            ? {}
+            : {
+                worktree: {
+                  id: worktree.id,
+                  name: worktree.name,
+                  branch: worktree.branch,
+                  root: workspace.toAgentPath(""),
+                },
+              }),
         })
         .catch((err) =>
           console.error(
-            `[transport-service] adapter init failed for project "${projectId}"`,
+            `[transport-service] adapter init failed for project "${projectId}" worktree "${worktreeId}"`,
             err,
           ),
         );
