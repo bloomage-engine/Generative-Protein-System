@@ -78,10 +78,18 @@ async function launchedPatches(project: { id: string; name: string; createdAt: s
 
 test("the adapter mounts the project plugin when it serves a Project", async () => {
   const patches = await launchedPatches(META);
-  assert.equal(patches.length, 5, "the bridge, subagent-reporting, project, cron and hpc patches");
+  assert.equal(
+    patches.length,
+    6,
+    "the bridge, subagent-reporting, project, cron, hpc and worktree patches",
+  );
   assert.ok(patches.some((text) => text.includes("drought-screen")), "the project identity rides the launch");
   assert.ok(patches.some((text) => text.includes("science-studio-cron")), "the cron plugin is mounted");
   assert.ok(patches.some((text) => text.includes("science-studio-hpc")), "the hpc plugin is mounted (docs/adr/0024)");
+  assert.ok(
+    patches.some((text) => text.includes("science-studio-worktree")),
+    "the worktree plugin is mounted (docs/adr/0025)",
+  );
 });
 
 test("the adapter mounts no project plugin without a Project", async () => {
@@ -91,5 +99,6 @@ test("the adapter mounts no project plugin without a Project", async () => {
     assert.doesNotMatch(patch, /science-studio-project/);
     assert.doesNotMatch(patch, /science-studio-cron/);
     assert.doesNotMatch(patch, /science-studio-hpc/);
+    assert.doesNotMatch(patch, /science-studio-worktree/);
   }
 });

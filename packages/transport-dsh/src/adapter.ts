@@ -40,6 +40,7 @@ import {
   writeHpcPatch,
   writeProjectPatch,
   writeSubagentPatch,
+  writeWorktreePatch,
   type DshCommandBridge,
 } from "./bridge.js";
 import { createDshBehavior, type DshBehavior } from "./behavior.js";
@@ -118,6 +119,12 @@ export interface DshRuntimeAdapterOptions {
    * (docs/adr/0024). Defaults to this package's own build output.
    */
   hpcPluginPath?: string;
+  /**
+   * The child-side worktree plugin this adapter's launch patch mounts — the
+   * `worktree_*` tools, `/worktree` and the prompt section (docs/adr/0025).
+   * Defaults to this package's own build output.
+   */
+  worktreePluginPath?: string;
   /** Where the socket and its launch patch live (default under the temp dir). */
   bridgeDir?: string;
   /** Test seam: inject the bridge client (defaults to the real socket client). */
@@ -180,6 +187,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private readonly cronPluginPath: string;
   private readonly subagentPluginPath: string;
   private readonly hpcPluginPath: string;
+  private readonly worktreePluginPath: string;
   private readonly bridgeDir: string;
   private readonly createBridge: (endpoint: string) => DshCommandBridge;
   /** This child generation's command bridge, or `null` when it could not be set up. */
@@ -217,6 +225,8 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       options.subagentPluginPath ?? fileURLToPath(new URL("./subagent-plugin.js", import.meta.url));
     this.hpcPluginPath =
       options.hpcPluginPath ?? fileURLToPath(new URL("./hpc-plugin.js", import.meta.url));
+    this.worktreePluginPath =
+      options.worktreePluginPath ?? fileURLToPath(new URL("./worktree-plugin.js", import.meta.url));
     this.bridgeDir = options.bridgeDir ?? join(tmpdir(), "science-studio", "dsh-bridge");
     this.createBridge = options.createBridge ?? createCommandBridge;
     this.subagentRegistry = new SubagentRegistry(
@@ -372,6 +382,30 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
         );
       } catch (err) {
         console.warn("[dsh] hpc plugin unavailable", err);
+      }
+    }
+    // The worktree plugin rides a FIFTH launch patch (docs/adr/0025): the
+    // `worktree_*` tools, `/worktree` and a prompt section naming the worktree.
+    // A thin channel to the service's `/api/worktrees*` (the service owns git),
+    // so its config carries the Project identity, the worktree context the
+    // service passed in, and the service base URL when the launch env declared
+    // one.
+    if (opts.project) {
+      try {
+        const service = process.env.SCIENCE_STUDIO_SERVICE_URL;
+        patches.push(
+          await writeWorktreePatch({
+            dir: this.bridgeDir,
+            pluginPath: this.worktreePluginPath,
+            config: {
+              project: opts.project,
+              ...(opts.worktree ? { worktree: opts.worktree } : {}),
+              ...(service ? { service } : {}),
+            },
+          }),
+        );
+      } catch (err) {
+        console.warn("[dsh] worktree plugin unavailable", err);
       }
     }
 
