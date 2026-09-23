@@ -79,6 +79,17 @@ export {
   type Session,
 } from "./projects.js";
 export {
+  DEFAULT_WORKTREES_API,
+  DEFAULT_WORKTREE_ID,
+  fetchWorktrees,
+  createWorktree,
+  renameWorktree,
+  archiveWorktree,
+  unarchiveWorktree,
+  deleteWorktree,
+  type Worktree,
+} from "./worktrees.js";
+export {
   formatTokens,
   promptTokens,
   runTotal,
