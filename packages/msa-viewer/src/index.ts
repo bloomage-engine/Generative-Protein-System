@@ -49,3 +49,7 @@ export {
   type RowWindow,
   type Span,
 } from "./grid.js";
+
+export { MsaGrid, type MsaGridProps } from "./react/MsaGrid.js";
+export { MsaResultTable, type MsaResultTableProps } from "./react/MsaResultTable.js";
+export { UnalignedList, type UnalignedListProps } from "./react/UnalignedList.js";
