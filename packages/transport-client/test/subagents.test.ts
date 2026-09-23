@@ -45,3 +45,61 @@ test("fetchSubagentTranscript throws on a 404 (a missing record)", async () => {
     globalThis.fetch = original;
   }
 });
+
+test("fetchSubagents carries the Worktree claim only when one is scoped", async () => {
+  const original = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+    calls.push(String(input));
+    return new Response(JSON.stringify({ subagents: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    await fetchSubagents("/api/transport", {
+      projectId: "p1",
+      threadId: "s-exp",
+      worktreeId: "exp-a",
+    });
+    assert.match(calls[0]!, /\/api\/transport\/subagents\?projectId=p1&threadId=s-exp&worktreeId=exp-a/);
+
+    await fetchSubagents("/api/transport", { projectId: "p1", threadId: "s1" });
+    assert.doesNotMatch(calls[1]!, /worktreeId=/, "an unscoped poll must not claim a Worktree");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("fetchSubagentTranscript carries the Worktree claim only when one is scoped", async () => {
+  const transcript = { id: "child-1", parentId: "s-exp", messages: [] };
+  const original = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+    calls.push(String(input));
+    return new Response(JSON.stringify({ transcript }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    const got = await fetchSubagentTranscript(
+      "/api/transport",
+      "p1",
+      "child-1",
+      "s-exp",
+      undefined,
+      "exp-a",
+    );
+    assert.deepEqual(got, transcript);
+    assert.match(
+      calls[0]!,
+      /\/api\/transport\/subagents\/child-1\/transcript\?projectId=p1&threadId=s-exp&worktreeId=exp-a/,
+    );
+
+    await fetchSubagentTranscript("/api/transport", "p1", "child-1", "s1");
+    assert.doesNotMatch(calls[1]!, /worktreeId=/, "an unscoped read must not claim a Worktree");
+  } finally {
+    globalThis.fetch = original;
+  }
+});

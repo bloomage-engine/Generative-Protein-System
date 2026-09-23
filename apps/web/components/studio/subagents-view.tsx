@@ -85,13 +85,22 @@ export function SubagentsView() {
   const toggleRightSection = useStudioStore((s) => s.toggleRightSection);
   const height = useStudioStore((s) => s.rightHeights.subagents);
   const projectId = useStudioStore((s) => s.projectId);
+  const activeWorktreeId = useStudioStore((s) => s.activeWorktreeId);
   const activeSessionId = useStudioStore((s) => s.activeSessionId);
   const showHistory = useStudioStore((s) => s.subagentsShowHistory);
   const setShowHistory = useStudioStore((s) => s.setSubagentsShowHistory);
   const openSubagent = useStudioStore((s) => s.openSubagent);
 
   const enabled = open && projectId !== null && activeSessionId !== null;
-  const { subagents } = useSubagents({ projectId, threadId: activeSessionId, enabled });
+  // The ledger lives under the Session's OWN checkout, so the poll must carry
+  // the active Worktree or a linked-worktree Session reads `main`'s empty list
+  // (docs/adr/0025).
+  const { subagents } = useSubagents({
+    projectId,
+    worktreeId: activeWorktreeId,
+    threadId: activeSessionId,
+    enabled,
+  });
   // Gated on the module being open so a collapsed view never hits /api/settings.
   const { windowHours } = useSubagentsWindow({ enabled: open });
 

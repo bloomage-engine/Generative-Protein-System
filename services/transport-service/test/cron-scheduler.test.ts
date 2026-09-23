@@ -319,6 +319,68 @@ test("POST /api/cron/task/run on an unknown id reports an error", async () => {
   });
 });
 
+test("a named session in a linked worktree is refused (cron is main-only)", async () => {
+  await fixture(async ({ base, records, app, prompts }) => {
+    await records.addSession({
+      id: "linked",
+      projectId: "project-default",
+      agentId: "main",
+      worktreeId: "exp-a",
+      createdAt: "2026-09-18T00:00:00.000Z",
+      updatedAt: "2026-09-18T00:00:00.000Z",
+    });
+    await addTask(base, { name: "Linked", schedule: "0 9 * * *", prompt: PROMPT, sessionId: "linked" });
+    const { status } = await app.cronScheduler.fire("project-default", "linked");
+    assert.equal(status, "error");
+    assert.deepEqual(prompts, [], "a linked-worktree session must not be driven");
+    const listing = (await (await fetch(`${base}/api/cron?projectId=project-default`)).json()) as {
+      tasks: { lastRun?: { status: string; message?: string } }[];
+    };
+    assert.equal(listing.tasks[0]?.lastRun?.status, "error");
+    assert.match(
+      listing.tasks[0]?.lastRun?.message ?? "",
+      /not in the main worktree/,
+      "the refusal names the reason in the run log",
+    );
+  });
+});
+
+test("with no named session, cron targets the newest MAIN-worktree session", async () => {
+  await fixture(async ({ base, records, app, prompts }) => {
+    await records.addSession({
+      id: "main-old",
+      projectId: "project-default",
+      agentId: "main",
+      createdAt: "2026-09-17T00:00:00.000Z",
+      updatedAt: "2026-09-17T00:00:00.000Z",
+    });
+    await records.addSession({
+      id: "main-new",
+      projectId: "project-default",
+      agentId: "main",
+      createdAt: "2026-09-19T00:00:00.000Z",
+      updatedAt: "2026-09-19T00:00:00.000Z",
+    });
+    // Newer than every main session, but ineligible: cron never leaves `main`.
+    await records.addSession({
+      id: "linked",
+      projectId: "project-default",
+      agentId: "main",
+      worktreeId: "exp-a",
+      createdAt: "2026-09-20T00:00:00.000Z",
+      updatedAt: "2026-09-20T00:00:00.000Z",
+    });
+    await addTask(base, { name: "Auto", schedule: "0 9 * * *", prompt: PROMPT });
+    const { status } = await app.cronScheduler.fire("project-default", "auto");
+    assert.equal(status, "success");
+    assert.deepEqual(prompts, [PROMPT]);
+    const listing = (await (await fetch(`${base}/api/cron?projectId=project-default`)).json()) as {
+      tasks: { lastRun?: { sessionId?: string } }[];
+    };
+    assert.equal(listing.tasks[0]?.lastRun?.sessionId, "main-new");
+  });
+});
+
 test("a named session in another project is an error and logs nothing to the transcript", async () => {
   await fixture(async ({ base, records, app, prompts }) => {
     await records.addSession({

@@ -189,8 +189,9 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 
 ## Transport wire contract (frontend ↔ service)
 
-- **Every transport request is Project-scoped.** The client carries `projectId`
-  and the Session (as `threadId`); the service reads them from the **query string
+- **Every transport request is `(projectId, worktreeId)`-scoped.** The client
+  carries `projectId`, the Worktree its scope names (`worktreeId`) and the Session
+  (as `threadId`); the service reads them from the **query string
   first, then the body**. The query wins because assistant-ui builds its own send
   body and always puts a per-page local `__LOCALID_*` threadId there — a
   body-first read would shadow the URL's Session, resolve the send to the
@@ -206,10 +207,9 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   the watch additionally takes `threadId`. The command catalog follows the same
   claim (the client carries it from `TransportApiProvider`, and the web's
   `/api/transport/commands` hop relays the query), so it is the Project's own
-  adapter's catalog. The same routes now also take a `worktreeId` claim
-  (default `main`; an unknown id is a 404, never auto-created), so a request
-  scopes to `(projectId, worktreeId)` — the full client-side claim lands in the
-  workbench plan.
+  adapter's catalog. The `worktreeId` claim defaults to `main` and an unknown id
+  is a 404, never auto-created, so a request scopes to `(projectId, worktreeId)`
+  — the full client-side claim lands in the workbench plan.
 - **JSON bodies are capped at 16 MiB** (`TRANSPORT_MAX_BODY_BYTES` overrides,
   service env). The transport POST carries the client's WHOLE claimed
   transcript in `state` (assistant-ui round-trips `agentStateRef.current` on
@@ -277,12 +277,12 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   adapter spawns a LOCAL harness (`dsh --profile sdk` via
   `@deepseek-ai/dsh-sdk-client@0.1.5-alpha.1`, pinned exactly) instead of
   connecting to a gateway — and the agent's working directory is the ACTIVE
-  PROJECT's workspace, derived at init from the workspace seam
+  WORKTREE's workspace, derived at init from the workspace seam
   (`Workspace.toAgentPath("")`, i.e. the same directory the Files panel lists).
   That holds because the service provisions one adapter — and so one harness
-  child — per Project, each initialized with its own Project's workspace
-  (docs/adr/0008); one shared adapter could only ever serve the default
-  Project. Only a `NullWorkspace` deployment (no `PROJECT_ROOT`) falls back to
+  child — per `(Project, Worktree)`, each initialized with its own worktree's
+  workspace (docs/adr/0008, 0025); one shared adapter could only ever serve the
+  default Project. Only a `NullWorkspace` deployment (no `PROJECT_ROOT`) falls back to
   `DSH_WORKSPACE`/`process.cwd()`, because its empty answer is not a
   launchable cwd. Reading the raw `DSH_WORKSPACE` env var here is a foot-gun:
   the dev script points it at the Project PARENT, so the agent worked beside
@@ -538,22 +538,26 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   claimed key under the request's Project (optional `projectId`; omitted → the
   auto-ensured `project-default`) — building `SessionState`
   (`sessionId`/`projectId`/`agentId`) from the record, never from fabricated
-  constants. The **workspace is project-scoped and so is the runtime**: the
-  service acquires the Project's `Environment` — one workspace AND one adapter per
-  Project, the adapter initialized with that Project's workspace (docs/adr/0008),
-  which is what makes the dsh child's cwd the Project's own directory — and only
-  then maps the claimed `threadId` through the
+  constants. The **workspace and the runtime are `(projectId, worktreeId)`-scoped**:
+  the service acquires that scope's `Environment` — one workspace AND one adapter
+  per `(Project, Worktree)`, each initialized with that worktree's workspace
+  (docs/adr/0008, 0025), which is what makes the dsh child's cwd the worktree
+  directory — and only then maps the claimed `threadId` through the
   adapter's `resolveSessionKey`. The adapter persists `Run`s through a narrowed
   view of the SAME `RecordStore` the service reads identity from (`records` on
   `Backend`; both `localBackend` and the `{ adapters }` compat path share one
   instance).
 - **The remembered scope is chrome state, and it is only trusted after the record
   confirms it** (docs/adr/0009). `apps/web/lib/scope-memory.ts` keeps
-  `{lastProjectId, sessions}` per browser in one versioned `localStorage` blob;
-  `setScope` on `studio-store.ts` is the ONLY way the scope changes, moving the
-  store, the memory and the URL together. Resolution prefers the URL's claim when
-  the record lists it, else the remembered Project, else the first Project, and a
-  Session from that Project's list (else its newest). It runs BEFORE the shell
+  `{version, lastProjectId, worktrees, sessions}` per browser in one versioned
+  `localStorage` blob (`worktrees` keyed per Project; `sessions` per
+  `(projectId, worktreeId)`); `setScope` on `studio-store.ts` is the ONLY way the
+  scope changes, moving the store, the memory and the URL together. Resolution is
+  three levels — Project, then Worktree, then Session: the URL's claim when the
+  record lists it, else the remembered Project, else the first Project; the URL's
+  Worktree when that Project's list holds it, else the remembered one, else
+  `main`; then a Session from that `(Project, Worktree)` pair's list (else its
+  newest). It runs BEFORE the shell
   renders: an unvalidated Session must never mount, because the mount probe
   (`resolveOrCreateSession`) MINTS the Project and Session rows for an unknown key
   rather than refusing it. Only an authoritative "no" prunes — a fetch failure

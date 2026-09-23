@@ -24,13 +24,18 @@ import {
   branchDelete,
   ensureRepo,
   GitError,
+  GitUnavailableError,
   isRepo,
   listWorktrees,
   worktreeAdd,
   worktreeRemove,
   type GitRunner,
 } from "./git.js";
-import { worktreeRelPath } from "./paths.js";
+import { isSafeProjectId, worktreeRelPath } from "./paths.js";
+
+// Kept exported here for callers that learned the predicate from this module;
+// the implementation now lives with the path vocabulary (`./paths.js`).
+export { isSafeProjectId };
 
 export interface WorktreeRouteDeps {
   scope: ProjectScopes;
@@ -200,13 +205,17 @@ export function registerWorktreeRoutes(app: FastifyInstance, deps: WorktreeRoute
     const path = worktreeDir(claim.projectId, id);
     if (dir && path) {
       // Deregister the linked checkout; if git refuses (or there was never a
-      // repo) the directory move below still removes it by hand.
+      // repo) the directory move below still removes it by hand. A missing git
+      // binary is the ONE failure that is not best-effort: the deployment cannot
+      // clean up a checkout at all, so the route answers 503 (docs/adr/0025).
       await worktreeRemove(git, { repoDir: dir, path, force: true }).catch((err) => {
+        if (err instanceof GitUnavailableError) throw err;
         console.error(`[transport-service] git worktree remove failed for "${id}"`, err);
       });
       // `worktree remove` leaves the branch ref behind, which would make the
       // same worktree name un-creatable forever (mint → same id → `-b` fails).
       await branchDelete(git, { repoDir: dir, branch: row.branch }).catch((err) => {
+        if (err instanceof GitUnavailableError) throw err;
         console.error(`[transport-service] git branch delete failed for "${row.branch}"`, err);
       });
       if (await pathExists(path)) {
@@ -225,17 +234,6 @@ export function registerWorktreeRoutes(app: FastifyInstance, deps: WorktreeRoute
 async function branchMap(git: GitRunner, repoDir: string): Promise<Map<string, string | null>> {
   const entries = await listWorktrees(git, repoDir);
   return new Map(entries.map((entry) => [entry.path, entry.branch]));
-}
-
-/**
- * A Project id that is safe to join onto the workspace root as ONE path
- * segment. The claim is client-supplied, so `../..` must never reach `mkdir`,
- * `git init` or `git worktree` as a path segment — and the `records.getProject`
- * gate cannot stop it, because a probe first-use records the claimed id. Project
- * ids are minted as slugs (docs/adr/0006), so this only rejects nonsense.
- */
-export function isSafeProjectId(id: string): boolean {
-  return id !== ".." && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id);
 }
 
 /** `stat` that reports a missing path as `false` instead of throwing. */

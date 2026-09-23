@@ -7,6 +7,7 @@ import { createInMemoryRecordStore } from "@science-studio/record";
 import { LocalEnvironmentProvider, LocalPrincipalResolver, NullWorkspace, type RuntimeAdapter } from "@science-studio/transport";
 import { createTransportService } from "../src/index.js";
 import type { Backend } from "../src/composition.js";
+import type { GitRunner } from "../src/worktree/git.js";
 
 const adapter = (): RuntimeAdapter =>
   ({ runtime: "fake", init: async () => {}, run: async function* () {}, abort: () => {} }) as RuntimeAdapter;
@@ -194,6 +195,54 @@ test("a session is created under a claimed worktree and listed by it", async () 
     const listed = await fetch(`${base}/api/projects/project-default/sessions?worktreeId=experiment-a`);
     const body = (await listed.json()) as { sessions: { worktreeId?: string }[] };
     assert.equal(body.sessions.length, 1);
+  } finally {
+    await app.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("worktree routes answer 503 when git is unavailable", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const records = await createInMemoryRecordStore();
+  await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
+  await records.addWorktree({ id: "main", projectId: "project-default", name: "main", branch: "main", createdAt: "2026-01-01T00:00:00.000Z" });
+  await records.addWorktree({ id: "exp-a", projectId: "project-default", name: "A", branch: "exp-a", createdAt: "2026-01-01T00:00:00.000Z" });
+  // The exact `{code:-1, stderr}` shape a spawn of a missing `git` yields.
+  const git: GitRunner = { run: async () => ({ code: -1, stdout: "", stderr: "spawn git ENOENT" }) };
+  const backend: Backend = {
+    principal: new LocalPrincipalResolver(),
+    environments: new LocalEnvironmentProvider({
+      environmentFor: async () => ({ adapter: adapter(), workspace: new NullWorkspace() }),
+    }),
+    cors: { origin: true },
+    records,
+    recordDefaults: { projectId: "project-default", projectName: "D", agentId: "main" },
+    projectRoot,
+    git,
+  };
+  const app = await createTransportService({ backend });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const base = `http://127.0.0.1:${(app.server.address() as { port: number }).port}`;
+  try {
+    const created = await fetch(`${base}/api/worktrees`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "project-default", name: "Experiment A" }),
+    });
+    assert.equal(created.status, 503);
+
+    const list = await fetch(`${base}/api/worktrees?projectId=project-default`);
+    assert.equal(list.status, 503);
+
+    const deleted = await fetch(`${base}/api/worktrees/exp-a/delete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "project-default" }),
+    });
+    assert.equal(deleted.status, 503);
+    // A 503 means "git could not run", not "the worktree was deleted": the
+    // record row survives so a retry on a healthy host can finish the job.
+    assert.ok(await records.getWorktree("project-default", "exp-a"));
   } finally {
     await app.close();
     await rm(projectRoot, { recursive: true, force: true });

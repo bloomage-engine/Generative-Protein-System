@@ -302,6 +302,12 @@ test(
       await mockWorkbenchSurfaces(page);
       await mockRecordSurface(page);
 
+      // Observe the tree's directory fetch: it must name THIS checkout.
+      const entriesRequests = [];
+      page.on("request", (request) => {
+        if (request.url().includes("/api/workspace/entries")) entriesRequests.push(request.url());
+      });
+
       // Boot straight into the non-default Worktree `exp-a` of Alpha.
       await page.goto(`http://localhost:${port}/projects/p1/worktrees/exp-a/sessions/s-exp`, {
         waitUntil: "domcontentloaded",
@@ -311,6 +317,12 @@ test(
       // Open a file of THIS checkout.
       const tree = page.getByRole("tree");
       await tree.waitFor({ timeout: 30_000 });
+      assert.ok(
+        entriesRequests.some(
+          (url) => new URL(url).searchParams.get("worktreeId") === "exp-a",
+        ),
+        `the file tree must list exp-a's checkout, saw: ${entriesRequests.join(", ")}`,
+      );
       await tree.getByRole("treeitem", { name: "notes.txt" }).click();
       await page.getByText("/notes.txt", { exact: true }).waitFor({ timeout: 15_000 });
       assert.equal(await page.getByRole("tab").count(), 1, "the file must open as a tab");
@@ -347,6 +359,84 @@ test(
         await page.getByText("Open a file from the tree to show tabs").count(),
         1,
         "the strip must be back to its empty state",
+      );
+    } catch (error) {
+      throw new Error(`${error.message}\n--- web server log ---\n${server.log().slice(-2000)}`);
+    } finally {
+      await browser?.close();
+      killTree(server.child, port);
+    }
+  },
+);
+
+test(
+  "creating a Session under a linked worktree files it under that worktree",
+  { timeout: 240_000 },
+  async (t) => {
+    /**
+     * A Session carries a `worktreeId` in the create POST's JSON BODY
+     * (docs/adr/0025), not its query. The harness used to read only the query,
+     * so it always minted `main` and could not observe this scope at all; this
+     * drives the panel's "New session" affordance under the expanded `exp-a`
+     * checkout and pins both the request and the committed scope.
+     */
+    const executablePath = findChromium();
+    if (!executablePath) {
+      t.skip(
+        "no Chromium found — set PLAYWRIGHT_CHROMIUM_EXECUTABLE or install one (e.g. `npx playwright install chromium`)",
+      );
+      return;
+    }
+
+    const port = await freePort();
+    const server = startWebServer(port);
+    let browser;
+    try {
+      await waitForServer(`http://localhost:${port}`, 120_000);
+      await warmWorkbench(`http://localhost:${port}`);
+
+      const { chromium } = await import("playwright-core");
+      browser = await chromium.launch({ executablePath });
+      const page = await newWorkbenchPage(browser);
+
+      await mockWorkbenchSurfaces(page);
+      await mockRecordSurface(page);
+
+      const sessionPosts = [];
+      page.on("request", (request) => {
+        const url = new URL(request.url());
+        if (
+          request.method() === "POST" &&
+          url.pathname === "/api/projects/p1/sessions"
+        ) {
+          sessionPosts.push(request.postData() ?? "");
+        }
+      });
+
+      // Boot scoped to the linked `exp-a` checkout.
+      await page.goto(`http://localhost:${port}/projects/p1/worktrees/exp-a/sessions/s-exp`, {
+        waitUntil: "domcontentloaded",
+      });
+      await page.getByText(HISTORY_MARKER).waitFor({ timeout: 30_000 });
+
+      // The active Project is expanded on its active worktree, so the `exp-a`
+      // SessionList carries the "New session" affordance.
+      await page.getByRole("button", { name: "Projects", exact: true }).click();
+      const pane = page.getByRole("complementary", { name: "Projects and sessions" });
+      await pane.getByText("Experiment session").waitFor({ timeout: 15_000 });
+      await pane.getByRole("button", { name: "New session" }).click();
+
+      // The new Session commits under `exp-a`...
+      await page.waitForFunction(
+        () => location.pathname === "/projects/p1/worktrees/exp-a/sessions/s-new",
+        { timeout: 15_000 },
+      );
+      // ... and the create POST itself named that worktree in its body.
+      assert.equal(sessionPosts.length, 1, "exactly one create-session POST");
+      assert.equal(
+        JSON.parse(sessionPosts[0]).worktreeId,
+        "exp-a",
+        "the create-session POST must carry the active linked worktree",
       );
     } catch (error) {
       throw new Error(`${error.message}\n--- web server log ---\n${server.log().slice(-2000)}`);

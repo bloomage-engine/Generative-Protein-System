@@ -9,6 +9,12 @@ export const DEFAULT_TRANSPORT_API = "/api/transport";
 export interface SubagentScope {
   projectId: string | null;
   threadId: string | null;
+  /**
+   * The Worktree whose checkout holds this session's ledger (docs/adr/0025).
+   * Optional so a caller that scopes nothing falls back to the service's `main`;
+   * omitting it for a linked-worktree session would query the wrong checkout.
+   */
+  worktreeId?: string | null;
 }
 
 /** The Project adapter's live subagent list. Throws on a non-2xx response. */
@@ -20,6 +26,7 @@ export async function fetchSubagents(
   const query = new URLSearchParams();
   if (scope.projectId) query.set("projectId", scope.projectId);
   if (scope.threadId) query.set("threadId", scope.threadId);
+  if (scope.worktreeId) query.set("worktreeId", scope.worktreeId);
   const res = await fetch(`${api}/subagents?${query.toString()}`, {
     headers: { accept: "application/json" },
     ...(signal ? { signal } : {}),
@@ -34,6 +41,8 @@ export interface UseSubagentsOptions {
   api?: string;
   projectId: string | null;
   threadId: string | null;
+  /** The Session's Worktree (docs/adr/0025); omitted → the service's `main`. */
+  worktreeId?: string | null;
   /** False makes NO request (module collapsed, or no active session). */
   enabled: boolean;
   /** Poll cadence in ms (default 1500). */
@@ -46,7 +55,14 @@ export interface UseSubagentsOptions {
  * unmount or a scope change so a stale response cannot overwrite a newer scope.
  */
 export function useSubagents(options: UseSubagentsOptions): { subagents: SubagentRun[] } {
-  const { api = DEFAULT_TRANSPORT_API, projectId, threadId, enabled, intervalMs = 1500 } = options;
+  const {
+    api = DEFAULT_TRANSPORT_API,
+    projectId,
+    threadId,
+    worktreeId = null,
+    enabled,
+    intervalMs = 1500,
+  } = options;
   const [subagents, setSubagents] = useState<SubagentRun[]>([]);
 
   useEffect(() => {
@@ -55,7 +71,11 @@ export function useSubagents(options: UseSubagentsOptions): { subagents: Subagen
     const controller = new AbortController();
     const tick = async () => {
       try {
-        const next = await fetchSubagents(api, { projectId, threadId }, controller.signal);
+        const next = await fetchSubagents(
+          api,
+          { projectId, threadId, worktreeId },
+          controller.signal,
+        );
         if (active) setSubagents(next);
       } catch {
         // Transient failure (or abort): keep the previous list.
@@ -68,7 +88,7 @@ export function useSubagents(options: UseSubagentsOptions): { subagents: Subagen
       controller.abort();
       clearInterval(timer);
     };
-  }, [api, projectId, threadId, enabled, intervalMs]);
+  }, [api, projectId, threadId, worktreeId, enabled, intervalMs]);
 
   return { subagents };
 }
@@ -84,10 +104,17 @@ export async function fetchSubagentTranscript(
   childId: string,
   threadId?: string | null,
   signal?: AbortSignal,
+  /**
+   * The Worktree whose checkout holds the child's record (docs/adr/0025).
+   * Trailing and optional so existing positional callers (including one that
+   * passes `signal` fifth) still compile; omitted → the service's `main`.
+   */
+  worktreeId?: string | null,
 ): Promise<SubagentTranscript> {
   const query = new URLSearchParams();
   if (project) query.set("projectId", project);
   if (threadId) query.set("threadId", threadId);
+  if (worktreeId) query.set("worktreeId", worktreeId);
   const res = await fetch(`${api}/subagents/${encodeURIComponent(childId)}/transcript?${query.toString()}`, {
     headers: { accept: "application/json" },
     ...(signal ? { signal } : {}),
@@ -103,6 +130,8 @@ export interface UseSubagentTranscriptOptions {
   api?: string;
   project: string | null;
   threadId?: string | null;
+  /** The Session's Worktree (docs/adr/0025); omitted → the service's `main`. */
+  worktreeId?: string | null;
   childId: string;
   /** False (or no project) makes NO request. */
   enabled: boolean;
@@ -118,7 +147,14 @@ export function useSubagentTranscript(options: UseSubagentTranscriptOptions): {
   isLoading: boolean;
   error: string | null;
 } {
-  const { api = DEFAULT_TRANSPORT_API, project, threadId, childId, enabled } = options;
+  const {
+    api = DEFAULT_TRANSPORT_API,
+    project,
+    threadId,
+    worktreeId = null,
+    childId,
+    enabled,
+  } = options;
   const [transcript, setTranscript] = useState<SubagentTranscript | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -128,7 +164,7 @@ export function useSubagentTranscript(options: UseSubagentTranscriptOptions): {
     let active = true;
     const controller = new AbortController();
     setIsLoading(true);
-    fetchSubagentTranscript(api, project, childId, threadId, controller.signal)
+    fetchSubagentTranscript(api, project, childId, threadId, controller.signal, worktreeId)
       .then((next) => {
         if (active) {
           setTranscript(next);
@@ -148,7 +184,7 @@ export function useSubagentTranscript(options: UseSubagentTranscriptOptions): {
       active = false;
       controller.abort();
     };
-  }, [api, project, threadId, childId, enabled]);
+  }, [api, project, threadId, worktreeId, childId, enabled]);
 
   return { transcript, isLoading, error };
 }

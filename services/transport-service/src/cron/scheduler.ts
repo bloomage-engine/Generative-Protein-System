@@ -1,4 +1,10 @@
-import { DEFAULT_WORKTREE_ID, type Id, type RecordStore } from "@science-studio/record";
+import {
+  DEFAULT_WORKTREE_ID,
+  sessionWorktreeId,
+  type Id,
+  type RecordStore,
+  type Session,
+} from "@science-studio/record";
 import { matchesSchedule, type CronRunStatus, type CronTask } from "@science-studio/cron";
 import type {
   Environment,
@@ -74,14 +80,35 @@ export function createCronScheduler(deps: CronSchedulerDeps): CronScheduler {
     }
   };
 
-  const resolveTarget = async (projectId: Id, task: CronTask) => {
+  /**
+   * Scheduled runs are MAIN-only (docs/adr/0025): the scheduler always acquires
+   * the Project's `main` environment (the Project root), so a Session that lives
+   * in a linked worktree must never be targeted — its prompt would execute in
+   * the wrong checkout and append a turn to the wrong transcript. `found` is the
+   * only fireable result; `linked` is an explicit `sessionId` naming such a
+   * Session (refused with a reason), `missing` is no eligible target at all.
+   */
+  const resolveTarget = async (
+    projectId: Id,
+    task: CronTask,
+  ): Promise<
+    | { kind: "found"; session: Session }
+    | { kind: "missing" }
+    | { kind: "linked" }
+  > => {
     if (task.sessionId) {
       const named = await records.getSession(task.sessionId);
-      return named && named.projectId === projectId ? named : null;
+      if (!named || named.projectId !== projectId) return { kind: "missing" };
+      if (sessionWorktreeId(named) !== DEFAULT_WORKTREE_ID) return { kind: "linked" };
+      return { kind: "found", session: named };
     }
-    const sessions = await directory.listSessions(projectId);
-    const newest = [...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-    return newest ?? null;
+    // No explicit target: the newest MAIN-worktree Session only. A linked
+    // worktree's Sessions are invisible to cron.
+    const sessions = (await directory.listSessions(projectId)).filter(
+      (session) => sessionWorktreeId(session) === DEFAULT_WORKTREE_ID,
+    );
+    const newest = sessions.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    return newest ? { kind: "found", session: newest } : { kind: "missing" };
   };
 
   const fireWith = async (
@@ -91,26 +118,38 @@ export function createCronScheduler(deps: CronSchedulerDeps): CronScheduler {
   ): Promise<CronRunStatus> => {
     const at = now().toISOString();
     const target = await resolveTarget(projectId, task);
-    if (target === null) {
-      await append(environment, task.id, { at, status: "error", message: "target session not found" });
+    if (target.kind !== "found") {
+      const message =
+        target.kind === "linked"
+          ? "target session is not in the main worktree"
+          : "target session not found";
+      if (target.kind === "linked") {
+        // Cron is main-only: surface WHY an explicit target was refused instead
+        // of silently dropping the run (docs/adr/0025).
+        console.warn(
+          `[transport-service] cron task "${task.id}" names session "${task.sessionId}" in a linked worktree; scheduled runs are main-only`,
+        );
+      }
+      await append(environment, task.id, { at, status: "error", message });
       return "error";
     }
-    const runKey = `${principal!.tenant}:${target.id}`;
+    const session: Session = target.session;
+    const runKey = `${principal!.tenant}:${session.id}`;
     if (activeRuns.has(runKey)) {
-      await append(environment, task.id, { at, status: "skipped-busy", sessionId: target.id });
+      await append(environment, task.id, { at, status: "skipped-busy", sessionId: session.id });
       return "skipped-busy";
     }
     activeRuns.add(runKey);
-    const session: SessionState = {
-      sessionId: target.id,
+    const runSession: SessionState = {
+      sessionId: session.id,
       projectId,
-      agentId: target.agentId,
+      agentId: session.agentId,
       status: "idle",
       messages: [],
     };
     try {
       let text = "";
-      for await (const delta of environment.adapter.run(session, [
+      for await (const delta of environment.adapter.run(runSession, [
         { type: "add-message", message: { id: `cron-${at}-${task.id}`, role: "user", content: task.prompt } },
       ])) {
         if (delta.type === "reconcile") {
@@ -123,7 +162,7 @@ export function createCronScheduler(deps: CronSchedulerDeps): CronScheduler {
       await append(environment, task.id, {
         at,
         status: "success",
-        sessionId: target.id,
+        sessionId: session.id,
         ...(text ? { message: text.slice(0, maxChars) } : {}),
       });
       return "success";
@@ -131,7 +170,7 @@ export function createCronScheduler(deps: CronSchedulerDeps): CronScheduler {
       await append(environment, task.id, {
         at,
         status: "error",
-        sessionId: target.id,
+        sessionId: session.id,
         message: err instanceof Error ? err.message : String(err),
       });
       return "error";

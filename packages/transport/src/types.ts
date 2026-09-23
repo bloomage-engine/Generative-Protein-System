@@ -353,6 +353,14 @@ export interface RuntimeInitOptions {
    */
   worktree?: WorktreeContext;
   /**
+   * The Project's `main` worktree root as the AGENT sees it, when the
+   * deployment has one. Used by surfaces that are Project- (not worktree-)
+   * scoped: scheduled tasks are MAIN-only (docs/adr/0025), so the dsh child
+   * points its cron plugin at this root and a task authored from any worktree
+   * lands where the SERVICE reads it, instead of under the linked checkout.
+   */
+  projectRoot?: string;
+  /**
    * Optional deployment env slice, generic to every runtime. A FALLBACK only —
    * a runtime's launch surface belongs in its binding, not here.
    */

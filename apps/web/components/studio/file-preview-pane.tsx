@@ -99,13 +99,17 @@ export function FilePreviewPane() {
  * to the live Session only for a tab that records none.
  */
 function SubagentPreview({ path, name, session }: { path: string; name: string; session?: string }) {
-  const { api, project } = useTransportApi();
+  const { api, project, worktree } = useTransportApi();
   const activeSessionId = useStudioStore((s) => s.activeSessionId);
   const closeTab = useStudioStore((s) => s.closeTab);
   const childId = subagentTabChildId(path);
+  // The child's record lives under the checkout the tab belongs to; the live
+  // Worktree context is safe because a Worktree switch clears the tabs (a
+  // different checkout cannot keep this tab open — docs/adr/0025).
   const { transcript, isLoading, error } = useSubagentTranscript({
     api,
     project,
+    worktreeId: worktree,
     threadId: session ?? activeSessionId,
     childId,
     enabled: project !== null,

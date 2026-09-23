@@ -35,6 +35,7 @@ import {
   type RuntimeAdapter,
 } from "@science-studio/transport";
 import type { RecordDirectory } from "./directory.js";
+import { isSafeProjectId } from "./worktree/paths.js";
 
 /** The Project claim's keys, canonical first; both are read from query and body. */
 const PROJECT_CLAIM_KEYS = ["projectId", "project"] as const;
@@ -131,11 +132,26 @@ export function createProjectScopes(opts: ProjectScopeOptions): ProjectScopes {
     return null;
   };
 
+  /**
+   * Reject a Project id that is unsafe as ONE path segment (traversal, empty,
+   * absolute) BEFORE any route joins it onto the workspace root or the record.
+   * Thrown as a `WorkspacePathError` so it maps to 400 everywhere: the workspace
+   * routes through `sendWorkspaceError`, the transport/other acquiring routes
+   * through the server's error handler. A client-supplied `project=../../etc`
+   * would otherwise escape `PROJECT_ROOT` (docs/adr/0025).
+   */
+  const requireSafeProjectId = (projectId: Id): Id => {
+    if (!isSafeProjectId(projectId)) {
+      throw new WorkspacePathError(`unsafe project id: ${projectId}`);
+    }
+    return projectId;
+  };
+
   const resolveClaim = (request: FastifyRequest): ProjectClaim => {
     const principal = request.principal!;
     return {
       principal,
-      projectId: claim(request, PROJECT_CLAIM_KEYS) ?? defaultProjectId,
+      projectId: requireSafeProjectId(claim(request, PROJECT_CLAIM_KEYS) ?? defaultProjectId),
       worktreeId: claim(request, WORKTREE_CLAIM_KEYS) ?? DEFAULT_WORKTREE_ID,
       threadId: claim(request, SESSION_CLAIM_KEYS),
     };
@@ -165,6 +181,9 @@ export function createProjectScopes(opts: ProjectScopeOptions): ProjectScopes {
     claim: async (request) => resolveClaim(request),
 
     async acquireProject(principal, projectId) {
+      // A NAMED Project in the request path is client-supplied too, and the
+      // project path routes (delete) reach the workspace root through here.
+      requireSafeProjectId(projectId);
       const worktreeId = DEFAULT_WORKTREE_ID;
       await directory.ensureWorktree(projectId);
       await directory.requireWorktree(projectId, worktreeId);

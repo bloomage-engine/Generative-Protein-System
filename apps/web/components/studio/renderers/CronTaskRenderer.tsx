@@ -30,6 +30,19 @@ const STATUS_CLASS: Record<CronRunStatus, string> = {
   error: "bg-destructive/15 text-destructive",
 };
 
+/**
+ * Cron is Project-`main`-only: the service scheduler and the `/api/cron*`
+ * routes read `.science-studio/cron/` from the Project root, never a linked
+ * checkout. This mirrors the reserved `DEFAULT_WORKTREE_ID` in the record /
+ * transport-client packages, declared here on purpose so this renderer's read
+ * decision is self-evident (the same browser-safe duplication lives in
+ * `apps/web/lib/scope-memory.ts`). The run-log read below therefore pins `main`
+ * explicitly: the workspace provider would otherwise fall back to the ACTIVE
+ * worktree, so opening a `main` cron task while scoped to a linked worktree
+ * showed an empty/404 log (docs/adr/0025).
+ */
+const DEFAULT_WORKTREE_ID = "main";
+
 export function CronTaskRenderer({ path }: { path: string }) {
   const id = taskIdFromPath(path) ?? "";
   const projectId = useStudioStore((s) => s.projectId);
@@ -44,7 +57,10 @@ export function CronTaskRenderer({ path }: { path: string }) {
   const [status, setStatus] = useState<string | null>(null);
   const [preset, setPreset] = useState<SchedulePreset | "custom">("custom");
 
-  const log = useWorkspaceFile(id === "" ? null : cronLogPath(id), { project: projectId });
+  const log = useWorkspaceFile(id === "" ? null : cronLogPath(id), {
+    project: projectId,
+    worktree: DEFAULT_WORKTREE_ID,
+  });
   const runs = log.text ? parseLogEntries(log.text) : [];
 
   useEffect(() => {

@@ -19,6 +19,35 @@ export class GitError extends Error {
   }
 }
 
+/**
+ * The system `git` binary could not be spawned (missing from PATH, or not
+ * executable). Distinct from {@link GitError} — git ran and failed — because the
+ * deployment cannot do git AT ALL: the worktree routes answer 503 rather than a
+ * 500 (docs/adr/0025).
+ */
+export class GitUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GitUnavailableError";
+  }
+}
+
+/** The runner's `{code:-1, stderr}` contract for a spawn failure (not a git exit). */
+function spawnFailed(result: GitResult): boolean {
+  return (
+    result.code === -1 &&
+    /ENOENT|EACCES|not found|no such file|not recognized|cannot find|permission denied/i.test(
+      result.stderr,
+    )
+  );
+}
+
+function gitUnavailable(result: GitResult): GitUnavailableError {
+  return new GitUnavailableError(
+    `git is not available: ${result.stderr.trim() || "the system git binary could not be spawned"}`,
+  );
+}
+
 const DEFAULT_TIMEOUT_MS = 30_000;
 export const GITIGNORE_ENTRIES = [".worktrees/", ".science-studio/"] as const;
 const COMMITTER = ["-c", "user.name=Science Studio", "-c", "user.email=science-studio@localhost"];
@@ -59,9 +88,14 @@ export function createGitRunner(opts: { gitBin?: string } = {}): GitRunner {
   };
 }
 
-/** True when `dir` is inside a git work tree (false for a missing binary). */
+/**
+ * True when `dir` is inside a git work tree. A missing/unspawnable binary is NOT
+ * "not a repo" — it raises {@link GitUnavailableError} so a caller cannot mistake
+ * an unavailable git for an ordinary no-repo answer.
+ */
 export async function isRepo(git: GitRunner, dir: string): Promise<boolean> {
   const result = await git.run(["rev-parse", "--is-inside-work-tree"], { cwd: dir });
+  if (spawnFailed(result)) throw gitUnavailable(result);
   return result.code === 0 && result.stdout.trim() === "true";
 }
 
@@ -82,6 +116,7 @@ async function ensureGitignore(dir: string): Promise<void> {
 
 async function must(git: GitRunner, args: string[], cwd: string): Promise<string> {
   const result = await git.run(args, { cwd });
+  if (spawnFailed(result)) throw gitUnavailable(result);
   if (result.code !== 0) {
     throw new GitError(`git ${args.join(" ")} failed`, result.stderr.trim(), result.code);
   }
@@ -131,6 +166,7 @@ export async function branchDelete(
   opts: { repoDir: string; branch: string },
 ): Promise<void> {
   const result = await git.run(["branch", "-D", opts.branch], { cwd: opts.repoDir });
+  if (spawnFailed(result)) throw gitUnavailable(result);
   if (result.code !== 0 && !/not found/i.test(result.stderr)) {
     throw new GitError("git branch -D failed", result.stderr.trim(), result.code);
   }

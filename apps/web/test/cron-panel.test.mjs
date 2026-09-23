@@ -112,3 +112,100 @@ test(
     }
   },
 );
+
+test(
+  "the Cron run log is read from the Project's main worktree, not the active checkout",
+  { timeout: 240_000 },
+  async (t) => {
+    /**
+     * Cron is Project-`main`-only: the service scheduler and the `/api/cron*`
+     * routes read `.science-studio/cron/` from the Project root. The renderer's
+     * run-log read must therefore pin `main` explicitly — the workspace provider
+     * would otherwise fall back to the ACTIVE worktree (docs/adr/0025), so a
+     * `main` cron task opened while scoped to a linked checkout showed an
+     * empty/404 log.
+     */
+    const executablePath = findChromium();
+    if (!executablePath) {
+      t.skip("no Chromium found");
+      return;
+    }
+    const port = await freePort();
+    const server = startWebServer(port);
+    let browser;
+    try {
+      await waitForServer(`http://localhost:${port}`, 120_000);
+      await warmWorkbench(`http://localhost:${port}`);
+      const { chromium } = await import("playwright-core");
+      browser = await chromium.launch({ executablePath });
+      const page = await newWorkbenchPage(browser);
+      await mockWorkbenchSurfaces(page);
+      await mockRecordSurface(page);
+
+      // Observe the exact run-log request the renderer issues.
+      const logRequests = [];
+      page.on("request", (request) => {
+        const url = new URL(request.url());
+        if (
+          url.pathname.endsWith("/api/workspace/file") &&
+          url.searchParams.get("path") === ".science-studio/cron/daily-digest.log.md"
+        ) {
+          logRequests.push(url);
+        }
+      });
+      await page.route("**/api/workspace/file*", (route) => {
+        const url = new URL(route.request().url());
+        if (url.searchParams.get("path") === ".science-studio/cron/daily-digest.log.md") {
+          return route.fulfill({
+            status: 200,
+            headers: { "content-type": "text/plain" },
+            body: "## 2026-09-18T09:00:00.000Z · success\n- session: s1\n- run: run-1\n\nDigest complete.\n",
+          });
+        }
+        return route.fallback();
+      });
+      const isCronRequest = (url) =>
+        url.pathname === "/api/cron" || url.pathname.startsWith("/api/cron/");
+      await page.route(isCronRequest, (route) => {
+        if (route.request().url().includes("/task?")) {
+          return route.fulfill({
+            status: 200,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ task: TASKS.tasks[0] }),
+          });
+        }
+        return route.fulfill({
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(TASKS),
+        });
+      });
+
+      // Boot scoped to a LINKED worktree (`exp-a`), not `main`.
+      await page.goto(`http://localhost:${port}/projects/p1/worktrees/exp-a/sessions/s-exp`, {
+        waitUntil: "domcontentloaded",
+      });
+      await page.getByText(HISTORY_MARKER).waitFor({ timeout: 30_000 });
+
+      const cron = page.locator('[data-section="cron"]');
+      await cron.getByRole("button", { name: "Cron" }).click();
+      const row = cron.getByText("Daily digest");
+      await row.waitFor({ timeout: 10_000 });
+      await row.dblclick();
+      await page.getByText("Recent runs").waitFor({ timeout: 10_000 });
+      await page.getByText("Digest complete.").waitFor({ timeout: 10_000 });
+
+      assert.ok(logRequests.length >= 1, "the run-log file must be read");
+      assert.equal(
+        logRequests[0].searchParams.get("worktreeId"),
+        "main",
+        "the Cron run log must be read from the Project's main worktree, not the active checkout",
+      );
+    } catch (error) {
+      throw new Error(`${error.message}\n--- web server log ---\n${server.log().slice(-2000)}`);
+    } finally {
+      await browser?.close();
+      killTree(server.child, port);
+    }
+  },
+);

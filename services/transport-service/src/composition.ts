@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import {
   createInMemoryRecordStore,
   createJsonlRecordStore,
+  DEFAULT_WORKTREE_ID,
   type Id,
   type RecordStore,
 } from "@science-studio/record";
@@ -23,6 +24,7 @@ import {
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
   NullWorkspace,
+  WorkspacePathError,
   type EnvironmentProvider,
   type PrincipalResolver,
   type QuotaPolicy,
@@ -33,7 +35,7 @@ import {
   type WorkspaceLimits,
 } from "@science-studio/transport";
 import { DEFAULT_RECORD_DEFAULTS, type RecordDefaults } from "./directory.js";
-import { WORKTREES_DIR, worktreeRelPath } from "./worktree/paths.js";
+import { isSafeProjectId, WORKTREES_DIR, worktreeRelPath } from "./worktree/paths.js";
 import { applySettingsToEnv, loadSettings, resolveSettingsPath } from "./settings.js";
 
 export interface CorsConfig {
@@ -138,6 +140,12 @@ export async function loadRuntimePlugins(specifiers: readonly string[]): Promise
  * lets the multi-user module swap in a cell's bind-mount without touching them.
  */
 export function localWorkspace(env: NodeJS.ProcessEnv, projectId: Id, worktreeId: Id): Workspace {
+  // Belt-and-braces: `project-scope` already rejects an unsafe claim with a 400,
+  // but this is the ONE place that joins the id into a filesystem path, so a
+  // future caller that bypasses the scope can never read/write outside the root.
+  if (!isSafeProjectId(projectId)) {
+    throw new WorkspacePathError(`unsafe project id: ${projectId}`);
+  }
   const root = env.PROJECT_ROOT;
   if (!root) return new NullWorkspace();
   const agentRoot = env.PROJECT_AGENT_ROOT ?? root;
@@ -256,6 +264,12 @@ async function localBackend(
       // is only acquired for a worktree the record validated, but a store
       // without the row (or a NullWorkspace test double) still initializes.
       const worktree = await records.getWorktree(projectId, worktreeId).catch(() => null);
+      // The Project's `main` root, as the agent sees it. Scheduled runs are
+      // MAIN-only (docs/adr/0025), so the dsh child's cron plugin is pointed here
+      // regardless of which worktree the child runs in; an empty answer (a
+      // NullWorkspace deployment) is not a path, so it is omitted and the
+      // adapter falls back to its own cwd.
+      const projectRoot = localWorkspace(env, projectId, DEFAULT_WORKTREE_ID).toAgentPath("");
       // Init runs in the BACKGROUND, exactly like the pre-seam service: a slow
       // or unreachable runtime must not delay the request that first names the
       // Project. Every adapter's own entry points WAIT for it (openclaw on its
@@ -283,6 +297,7 @@ async function localBackend(
                   root: workspace.toAgentPath(""),
                 },
               }),
+          ...(projectRoot ? { projectRoot } : {}),
         })
         .catch((err) =>
           console.error(

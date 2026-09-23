@@ -270,8 +270,8 @@ only fetches the service, and never touches git itself.
 - **Store** (`studio-store.ts`): add `worktrees` (the active Project's list) and
   `activeWorktreeId`. `setScope(projectId, worktreeId, sessionId)` is the only
   way the scope changes and moves store, memory, and URL together. A worktree
-  switch clears `tabs` (like a Project switch). The status bar shows the
-  current branch.
+  switch clears `tabs` (like a Project switch). (The status bar does not yet show
+  the current branch — a branch/worktree readout there is a follow-up.)
 - **URL**: `/projects/[projectId]/worktrees/[worktreeId]/sessions/[sessionId]`;
   home `/` resolves the remembered scope. `StudioHost` keys `SessionView` by
   `projectId/worktreeId/sessionId`, so any scope change remounts the runtime.

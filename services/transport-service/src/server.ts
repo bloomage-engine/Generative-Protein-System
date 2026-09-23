@@ -28,6 +28,7 @@ import type {
 } from "@science-studio/transport";
 import {
   DEFAULT_MAX_UPLOAD_BYTES,
+  WorkspacePathError,
   attachmentsFromMentions,
   parseWorkspaceMentions,
 } from "@science-studio/transport";
@@ -39,7 +40,8 @@ import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS, WorktreeNotFoundError }
 import { registerHpcRoutes } from "./hpc/routes.js";
 import { createHpcPoller } from "./hpc/poller.js";
 import { createSshRunner } from "./hpc/ssh.js";
-import { createGitRunner } from "./worktree/git.js";
+import { createGitRunner, GitUnavailableError } from "./worktree/git.js";
+import { isSafeProjectId } from "./worktree/paths.js";
 import { registerWorktreeRoutes } from "./worktree/routes.js";
 import { canonicalSessionKey, createProjectScopes } from "./project-scope.js";
 import {
@@ -94,12 +96,23 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     request.principal = principal;
   });
 
-  // A worktree that the record does not know is a 404, not a 500 (the deferred
-  // mapping the `/api/worktrees` routes rely on). Everything else keeps
-  // Fastify's own status (e.g. a 413 body-limit rejection).
+  // Central mappings every acquiring route inherits:
+  //  - an unsafe Project claim is a 400 (never a 500 with a stack), because it
+  //    is the caller's mistake, not a server fault — `project-scope` throws it
+  //    before any path is joined (docs/adr/0025);
+  //  - a worktree the record does not know is a 404;
+  //  - a missing/unspawnable system `git` is a 503 — the deployment cannot do
+  //    git at all, which the worktree surface promises as "unavailable".
+  // Everything else keeps Fastify's own status (e.g. a 413 body-limit rejection).
   app.setErrorHandler((err, _request, reply) => {
+    if (err instanceof WorkspacePathError) {
+      return reply.code(400).send({ error: err.message });
+    }
     if (err instanceof WorktreeNotFoundError) {
       return reply.code(404).send({ error: err.message });
+    }
+    if (err instanceof GitUnavailableError) {
+      return reply.code(503).send({ error: err.message });
     }
     const statusCode = (err as { statusCode?: unknown }).statusCode;
     if (typeof statusCode === "number" && statusCode >= 400) {
@@ -220,6 +233,11 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
   // BEFORE dropping the record so a failed move leaves the Project intact.
   app.post("/api/projects/:id/delete", async (request, reply) => {
     const { id } = request.params as { id: string };
+    // An unsafe path id is the caller's 400 — checked before the record read so
+    // it can never be mislabelled a missing project or a recycle failure.
+    if (!isSafeProjectId(id)) {
+      return reply.code(400).send({ error: `unsafe project id: ${id}` });
+    }
     if (isDefaultProject(id)) {
       return reply.code(403).send({ error: DEFAULT_PROJECT_IMMUTABLE });
     }
@@ -231,6 +249,9 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       const { environment } = await scope.acquireProject(principal, id);
       await environment.workspace.recycle?.();
     } catch (err) {
+      // `acquireProject` validates the id too; a validation failure is not a
+      // recycle failure, so let the central handler answer 400 instead of 500.
+      if (err instanceof WorkspacePathError) throw err;
       console.error(`[transport-service] recycling project "${id}" failed`, err);
       return reply.code(500).send({ error: "failed to recycle the project workspace" });
     }

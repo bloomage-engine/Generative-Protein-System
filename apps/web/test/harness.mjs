@@ -391,15 +391,24 @@ export async function mockRecordSurface(page, opts = {}) {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname.replace(/^.*\/api\/projects/, "");
-    const worktreeId = url.searchParams.get("worktreeId") ?? "main";
 
     if (request.method() === "POST") {
-      return path === ""
-        ? route.fulfill({ json: { project: { id: "p3", name: request.postDataJSON().name } } })
-        : route.fulfill({
-            json: { session: { id: "s-new", projectId: "p3", worktreeId, title: "Fresh session" } },
-          });
+      const body = request.postDataJSON();
+      // `createSession` carries `worktreeId` in the JSON BODY (docs/adr/0025),
+      // not the query — reading only the query would always mint `main`.
+      const worktreeId = body?.worktreeId ?? "main";
+      if (path === "") {
+        return route.fulfill({ json: { project: { id: "p3", name: body.name } } });
+      }
+      // The Session lands under the Project the POST names (`/p1/sessions`),
+      // not a hardcoded one, so a linked-worktree create is filed correctly.
+      const projectId = path.split("/").filter(Boolean)[0] ?? "p3";
+      return route.fulfill({
+        json: { session: { id: "s-new", projectId, worktreeId, title: "Fresh session" } },
+      });
     }
+
+    const worktreeId = url.searchParams.get("worktreeId") ?? "main";
     if (path === "" || path === "/") {
       return route.fulfill({
         json: {

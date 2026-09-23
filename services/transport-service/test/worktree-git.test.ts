@@ -9,10 +9,12 @@ import {
   currentBranch,
   ensureRepo,
   GitError,
+  GitUnavailableError,
   isRepo,
   listWorktrees,
   worktreeAdd,
   worktreeRemove,
+  type GitRunner,
 } from "../src/worktree/git.js";
 
 const git = createGitRunner();
@@ -65,6 +67,26 @@ test("worktreeAdd on a branch already checked out throws GitError with stderr", 
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("a missing git binary raises GitUnavailableError, not 'not a repo'", async () => {
+  // The runner's `{code:-1, stderr}` contract for a spawn failure is what the
+  // real spawner yields when `git` is not on PATH.
+  const unavailable: GitRunner = {
+    run: async () => ({ code: -1, stdout: "", stderr: "spawn git ENOENT" }),
+  };
+  await assert.rejects(
+    () => isRepo(unavailable, "/tmp/does-not-matter"),
+    (err: unknown) => err instanceof GitUnavailableError,
+  );
+  await assert.rejects(
+    () => ensureRepo(unavailable, "/tmp/does-not-matter"),
+    (err: unknown) => err instanceof GitUnavailableError,
+  );
+  await assert.rejects(
+    () => listWorktrees(unavailable, "/tmp/does-not-matter"),
+    (err: unknown) => err instanceof GitUnavailableError,
+  );
 });
 
 test("branchDelete lets the same branch be created again", async () => {

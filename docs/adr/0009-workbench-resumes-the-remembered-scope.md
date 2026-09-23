@@ -42,6 +42,21 @@ Projects pane, since only a Session is conversable). Only an AUTHORITATIVE "no"
 prunes: an id absent from a list the record returned is dropped from the memory,
 while an unreachable record drops nothing.
 
+> **Amended by ADR-0025 (Worktree).** The blob grew a Worktree dimension:
+> `{ version: 1, lastProjectId, worktrees: { <projectId>: <worktreeId> },
+> sessions: { "<projectId>\u0000<worktreeId>": <sessionId> } }`. A session key is
+> the `(projectId, worktreeId)` pair joined by NUL — a Worktree id is unique only
+> within its Project, so the Project has to be part of the key — and `worktrees`
+> is keyed per Project for the same reason. Resolution is now three levels —
+> Project, then Worktree, then Session: the URL's Project when the record lists
+> it, else the remembered Project, else the first Project; the URL's Worktree when
+> THAT Project's worktree list holds it, else the Project's remembered one, else
+> `main`; then the Session from that `(Project, Worktree)` pair's own list, else
+> its newest, else none. The rationale above is unchanged: a claim neither the
+> record nor a list confirms is never opened, the URL is still mirrored with
+> `history.replaceState`, and only an authoritative "no" prunes. A deep-link now
+> also pays the Project's Worktree list before the Sessions it already fetched.
+
 - **Status**: accepted
 - **Considered options**:
   - *A `lastOpenedAt` on the record, or "most recent Session" as a record query* —

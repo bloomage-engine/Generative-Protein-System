@@ -348,14 +348,19 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       }
     }
     // The cron plugin rides a THIRD launch patch, best-effort like the others:
-    // it adds the scheduled-task tools and `/cron` for this Project's workspace.
+    // it adds the scheduled-task tools and `/cron`. Scheduled runs are MAIN-only
+    // (docs/adr/0025), and the service always reads/writes tasks under the
+    // Project's `main` root, so the plugin is pinned there — `cwd` is the ACTIVE
+    // worktree, and a task authored from a linked checkout would otherwise land
+    // in `.worktrees/<id>/.science-studio/cron/` where the service never looks.
     if (opts.project) {
+      const cronRoot = opts.projectRoot ?? cwd;
       try {
         patches.push(
           await writeCronPatch({
             dir: this.bridgeDir,
             pluginPath: this.cronPluginPath,
-            config: { project: opts.project, root: cwd },
+            config: { project: opts.project, root: cronRoot },
           }),
         );
       } catch (err) {
