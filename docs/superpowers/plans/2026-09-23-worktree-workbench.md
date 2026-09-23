@@ -144,7 +144,7 @@ git commit -m "feat(client): worktree record API"
 - Consumes: `Worktree` (Task 1).
 - Produces:
   - `Scope { projectId; worktreeId; sessionId }`
-  - `ScopeMemory { version: 1; lastProjectId; lastWorktreeId: string | null; sessions: Record<string, string> }` where the session key is `${projectId}\u0000${worktreeId}`.
+  - `ScopeMemory { version: 1; lastProjectId; worktrees: Record<string, string>; sessions: Record<string, string> }` — `worktrees` is keyed by projectId, `sessions` by `${projectId}\u0000${worktreeId}`.
   - `resolveWorktree(input: { projectId; claimedWorktreeId; memory; worktrees }): { worktreeId; memory }` — claim if listed, else remembered-for-project if listed, else `main`.
   - `scopePath(scope)` → `/projects/<projectId>/worktrees/<worktreeId>/sessions/<sessionId>`.
 
