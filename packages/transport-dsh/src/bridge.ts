@@ -418,3 +418,41 @@ export async function writeHpcPatch(opts: {
   await writeFile(file, document, "utf8");
   return file;
 }
+
+/**
+ * The config the child-side worktree plugin (`worktree-plugin.ts`) reads: the
+ * Project identity (the tools' scope), the worktree context the service passed
+ * in, and the service base URL its tools fetch. The plugin never touches git
+ * itself — the service owns worktree lifecycle (docs/adr/0025) — and it is
+ * inert without the Project.
+ */
+export interface WorktreePluginLaunchConfig {
+  project: { id: string; name: string; createdAt: string };
+  worktree?: { id: string; name: string; branch: string; root: string };
+  service?: string;
+}
+
+/**
+ * Write the launch patch that inserts the WORKTREE plugin into the child's
+ * profile, and return its path (for `--patch`). Same shape as the
+ * bridge/project/cron/hpc patches: a `file:` URL name and one JSON config node,
+ * with a distinct random-suffixed filename.
+ */
+export async function writeWorktreePatch(opts: {
+  dir: string;
+  pluginPath: string;
+  config: WorktreePluginLaunchConfig;
+}): Promise<string> {
+  const { dir, pluginPath, config } = opts;
+  await mkdir(dir, { recursive: true });
+  const file = join(dir, `worktree-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
+  const document = [
+    "- insert:",
+    "    - id: science-studio-worktree",
+    `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
+    `      config: ${JSON.stringify(config)}`,
+    "",
+  ].join("\n");
+  await writeFile(file, document, "utf8");
+  return file;
+}
