@@ -499,9 +499,9 @@ git commit -m "feat(record): durable Worktree rows and legacy session normalizat
   - `mintWorktreeId(projectId: Id, name: string): Promise<Id>`
   - `addWorktree(projectId: Id, input: { id: Id; name: string; branch: string }): Promise<Worktree>`
   - `listWorktrees(projectId: Id, opts?): Promise<Worktree[]>`
-  - `renameWorktree(id: Id, name: string): Promise<Worktree>`
-  - `archiveWorktree(id: Id): Promise<Worktree>` / `unarchiveWorktree(id: Id): Promise<Worktree>`
-  - `deleteWorktree(id: Id): Promise<void>`
+  - `renameWorktree(projectId: Id, id: Id, name: string): Promise<Worktree>`
+  - `archiveWorktree(projectId: Id, id: Id): Promise<Worktree>` / `unarchiveWorktree(projectId: Id, id: Id): Promise<Worktree>`
+  - `deleteWorktree(projectId: Id, id: Id): Promise<void>`
   - `class WorktreeNotFoundError extends Error` (name `WorktreeNotFoundError`)
   - `createSession(projectId, { agentId?, title?, worktreeId? })` and
     `resolveOrCreateSession(projectId, sessionKey, worktreeId?)`
@@ -1572,9 +1572,9 @@ Implement `registerWorktreeRoutes(app, deps)`:
 - Resolve `projectDir(projectId)` = `projectRoot ? join(projectRoot, projectId) : null`; `worktreeDir(projectId, id)` = `projectDir ? join(projectDir, worktreeRelPath(id)) : null`.
 - `GET /api/worktrees`: `const claim = await scope.claim(request)`; `await directory.ensureWorktree(claim.projectId)`; list with `includeArchived`; decorate each row with on-disk info when `projectDir` exists and `isRepo` is true (parse `listWorktrees(git, projectDir)` into a path→branch map; `exists` = the worktree dir stat succeeds). Return `{ worktrees, defaultWorktreeId: DEFAULT_WORKTREE_ID }`.
 - `POST /api/worktrees`: validate `name` non-empty → 400; 404 when `records.getProject(projectId)` is null; 503 when `projectDir` is null; `await ensureRepo(git, projectDir)`; `id = await directory.mintWorktreeId(...)`; `branch = body.branch?.trim() || id`; `base = body.base?.trim() || "main"`; `path = worktreeDir(...)!`; wrap `worktreeAdd` — on `GitError`, map `/already checked out|already exists|is already used/i.test(err.stderr)` to 409 else 502, returning `{ error: err.stderr || err.message }`; then `directory.addWorktree(projectId, { id, name, branch })` in a try/catch whose catch best-effort `worktreeRemove(..., force: true)` and rethrows; return 201 `{ worktree }`.
-- `POST /api/worktrees/:id/rename`: 403 for `main`; 400 empty name; 404 when `getWorktree` misses or `projectId` differs; return `{ worktree: await directory.renameWorktree(id, name) }`.
-- `POST /api/worktrees/:id/archive` / `unarchive`: 403 for `main`; 404 when missing; for archive call `environments.release?.(claim.principal, claim.projectId, id)` (best-effort, log on failure); return `{ worktree }`.
-- `POST /api/worktrees/:id/delete`: 403 for `main`; 404 when missing; `await environments.release?.(...)`; if `projectDir` and `worktreeDir` exist: `await worktreeRemove(git, { repoDir: projectDir, path, force: true }).catch(log)`; if the dir still exists after, move it to a sibling `.recycle/<basename>-<ts>` with `mkdir`+`rename` (copy `moveToRecycle`'s shape from `fs-workspace.ts`); `await directory.deleteWorktree(id)`; return `{ ok: true }`.
+- `POST /api/worktrees/:id/rename`: 403 for `main`; 400 empty name; 404 when `directory.getWorktree(claim.projectId, id)` misses; return `{ worktree: await directory.renameWorktree(claim.projectId, id, name) }`.
+- `POST /api/worktrees/:id/archive` / `unarchive`: 403 for `main`; 404 when missing; for archive call `environments.release?.(claim.principal, claim.projectId, id)` (best-effort, log on failure); return `{ worktree: await directory.archiveWorktree(claim.projectId, id) }` (or `unarchiveWorktree`).
+- `POST /api/worktrees/:id/delete`: 403 for `main`; 404 when `directory.getWorktree(claim.projectId, id)` misses; `await environments.release?.(...)`; if `projectDir` and `worktreeDir` exist: `await worktreeRemove(git, { repoDir: projectDir, path, force: true }).catch(log)`; if the dir still exists after, move it to a sibling `.recycle/<basename>-<ts>` with `mkdir`+`rename` (copy `moveToRecycle`'s shape from `fs-workspace.ts`); `await directory.deleteWorktree(claim.projectId, id)`; return `{ ok: true }`.
 - Map a thrown `WorktreeNotFoundError` via the server error handler (next step), or catch it in each route; prefer the handler.
 
 - [ ] **Step 5: Register the routes and add the error handler**
