@@ -1,5 +1,6 @@
 import type { BundledLanguage } from "shiki";
 import { isStructureFile } from "@science-studio/molql-viewer/formats";
+import { isMsaFile } from "@science-studio/msa-viewer/formats";
 
 /**
  * Infer a renderer + code language from a file name / mime (the workspace API
@@ -11,9 +12,10 @@ import { isStructureFile } from "@science-studio/molql-viewer/formats";
  * `.pdb` from any other binary. The structure formats themselves are owned by
  * `@science-studio/molql-viewer/formats`.
  */
-export type FileKind = "markdown" | "json" | "code" | "text" | "pdf" | "structure" | "image";
+export type FileKind = "markdown" | "json" | "code" | "text" | "pdf" | "structure" | "image" | "msa";
 
 export { isStructureFile } from "@science-studio/molql-viewer/formats";
+export { isMsaFile } from "@science-studio/msa-viewer/formats";
 
 export function isPdfFile(name: string): boolean {
   return name.toLowerCase().endsWith(".pdf");
@@ -29,6 +31,7 @@ export function isImageFile(name: string): boolean {
 export function kindFor(name: string, mime?: string | null): FileKind {
   if (isPdfFile(name)) return "pdf";
   if (isStructureFile(name)) return "structure";
+  if (isMsaFile(name)) return "msa";
   if (isImageFile(name)) return "image";
   const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
   if (mime?.startsWith("text/markdown") || ext === "md" || ext === "markdown" || ext === "mdx")
@@ -114,5 +117,5 @@ export function hpcTabJobId(path: string): string {
  */
 export function isTextEditable(name: string): boolean {
   const kind = kindFor(name);
-  return kind !== "pdf" && kind !== "structure" && kind !== "image";
+  return kind !== "pdf" && kind !== "structure" && kind !== "image" && kind !== "msa";
 }

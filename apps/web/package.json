@@ -18,6 +18,7 @@
     "@headless-tree/core": "1.7.0",
     "@headless-tree/react": "1.7.0",
     "@science-studio/molql-viewer": "*",
+    "@science-studio/msa-viewer": "*",
     "@science-studio/transport": "*",
     "@science-studio/transport-client": "*",
     "@tailwindcss/postcss": "4.3.3",

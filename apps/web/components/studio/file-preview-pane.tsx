@@ -42,6 +42,11 @@ const StructureRenderer = dynamic(
   { ssr: false, loading: () => <ViewerLoading /> },
 );
 
+const MsaRenderer = dynamic(
+  () => import("./renderers/MsaRenderer").then((m) => m.MsaRenderer),
+  { ssr: false, loading: () => <ViewerLoading /> },
+);
+
 function ViewerLoading() {
   return (
     <div className="flex h-full items-center justify-center">
@@ -249,6 +254,8 @@ function Preview({ path, name }: { path: string; name: string }) {
           <ImageRenderer url={fileUrl} alt={name} />
         ) : kind === "structure" ? (
           <StructureRenderer path={path} name={name} />
+        ) : kind === "msa" ? (
+          <MsaRenderer path={path} name={name} />
         ) : (
           <TextPreview
             path={path}

@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "dev": "concurrently -k -n service,web -c blue,green \"npm run dev:service\" \"npm run dev:web\"",
-    "build": "npm run build -w @science-studio/record && npm run build -w @science-studio/transport && npm run build -w @science-studio/workspace && npm run build -w @science-studio/cron && npm run build -w @science-studio/hpc && npm run build -w @science-studio/contract-tests && npm run build -w @science-studio/transport-client && npm run build -w @science-studio/molql-viewer && npm run build -w @science-studio/transport-openclaw && npm run build -w @science-studio/transport-dsh && npm run build -w @science-studio/transport-service && npm run typecheck:tests",
+    "build": "npm run build -w @science-studio/record && npm run build -w @science-studio/transport && npm run build -w @science-studio/workspace && npm run build -w @science-studio/cron && npm run build -w @science-studio/hpc && npm run build -w @science-studio/contract-tests && npm run build -w @science-studio/transport-client && npm run build -w @science-studio/molql-viewer && npm run build -w @science-studio/msa-viewer && npm run build -w @science-studio/transport-openclaw && npm run build -w @science-studio/transport-dsh && npm run build -w @science-studio/transport-service && npm run typecheck:tests",
     "typecheck:tests": "tsc -p tsconfig.tests.json",
     "build:web:standalone": "NEXT_OUTPUT=standalone npm run build -w @science-studio/web",
     "dev:web": "npm run dev -w @science-studio/web",

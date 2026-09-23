@@ -14,6 +14,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   isImageFile,
+  isMsaFile,
   isPdfFile,
   isStructureFile,
   isTextEditable,
@@ -114,4 +115,34 @@ test("only real suffixes count, not words that merely contain them", () => {
   assert.equal(isStructureFile("molecule.txt"), false);
   assert.equal(isPdfFile("pdf-report.txt"), false);
   assert.equal(kindFor("md.pdf.txt"), "code");
+});
+
+test("MSA alignment + mmseqs-result files map to the msa kind by name (mime-independent)", () => {
+  for (const name of [
+    "align.clustal",
+    "a.clustal.om",
+    "msa.sto",
+    "msa.stockholm",
+    "seqs.fasta",
+    "seqs.fa",
+    "seqs.faa",
+    "seqs.fna",
+    "align.aln",
+    "hits.result",
+    "mmseqs_output_result",
+    "sub/dir/hits_result",
+  ]) {
+    assert.equal(kindFor(name, "application/octet-stream"), "msa", name);
+    assert.equal(isMsaFile(name), true, name);
+  }
+  assert.equal(isMsaFile("notes.txt"), false);
+  assert.equal(isMsaFile("result-notes.txt"), false);
+  assert.equal(kindFor("notes.txt"), "code");
+});
+
+test("msa files are not text-editable (no source editor; the renderer owns the raw view)", () => {
+  assert.equal(isTextEditable("align.clustal"), false);
+  assert.equal(isTextEditable("seqs.fasta"), false);
+  assert.equal(isTextEditable("hits.result"), false);
+  assert.equal(isTextEditable("data.yaml"), true); // regression: text files still editable
 });
