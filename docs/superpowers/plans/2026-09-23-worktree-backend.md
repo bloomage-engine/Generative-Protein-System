@@ -1819,8 +1819,10 @@ Expected: FAIL — `worktreeId` is not threaded / the filter is ignored.
 - [ ] **Step 3: Implement**
 
 In `server.ts`'s `POST /api/projects/:id/sessions`:
-- Read `worktreeId` from the body; when present, `await directory.requireWorktree(id, worktreeId)` (catch → 404) and pass it to `directory.createSession(id, { ..., worktreeId })`.
+- Read `worktreeId` from the body; when present, `await directory.ensureWorktree(id)` FIRST (the `main` row may not exist yet on a fresh Project — this is the "any worktree-touching path ensures it" rule), then `await directory.requireWorktree(id, worktreeId)` (an unknown id surfaces `WorktreeNotFoundError` → 404), and pass it to `directory.createSession(id, { ..., worktreeId })`.
 - In `GET /api/projects/:id/sessions`, read `worktreeId` from the query and filter with `sessionWorktreeId(session) === worktreeId` when present. Import `sessionWorktreeId` from `@science-studio/record`.
+
+Add to the route test: creating a Session with `worktreeId: "main"` on a fresh Project succeeds (201) — `main` is auto-ensured.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -1890,7 +1892,7 @@ Follow the existing ADR shape (Status / Context / Decision / Consequences). Reco
 
 - [ ] **Step 3: Update `AGENTS.md` and `CONTEXT.md`**
 
-- `AGENTS.md`: in the "Project/Session lifecycle" bullet, add the worktree routes and the derived-path rule; in the workspace bullet, note `localWorkspace(env, projectId, worktreeId)` and `.worktrees/`; in the record-layer bullet, add `project-default`'s `main` worktree.
+- `AGENTS.md`: in the "Project/Session lifecycle" bullet, add the worktree routes and the derived-path rule; in the workspace bullet, note `localWorkspace(env, projectId, worktreeId)` and `.worktrees/`; in the record-layer bullet, add `project-default`'s `main` worktree; and in the "Transport wire contract" section's first bullet add one line that every transport/workspace request now also carries a `worktreeId` claim (default `main`), so that section no longer contradicts the `(Project, Worktree)` workspace bullet (the full client-side claim lands in the workbench plan).
 - `CONTEXT.md`: add a **Worktree** entry under the domain vocabulary (a git worktree of a Project on its own branch; `main` is the Project root).
 
 - [ ] **Step 4: Commit**
