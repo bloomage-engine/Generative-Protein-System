@@ -784,6 +784,27 @@ test("release with a worktree drops only that one", async () => {
   const rebuilt = await provider.acquire(principal, "p1", "exp-a");
   assert.notEqual(first, rebuilt);
 });
+
+test("release during an in-flight acquire prevents re-caching", async () => {
+  let resolveBuild!: () => void;
+  const gate = new Promise<void>((resolve) => { resolveBuild = resolve; });
+  let calls = 0;
+  const provider = new LocalEnvironmentProvider({
+    environmentFor: async () => {
+      calls += 1;
+      await gate;
+      return { adapter: adapter(), workspace: new NullWorkspace() };
+    },
+  });
+  const first = provider.acquire(principal, "p1", "main");
+  const released = provider.release?.(principal, "p1", "main");
+  resolveBuild();
+  await first;
+  await released;
+  const rebuilt = await provider.acquire(principal, "p1", "main");
+  assert.equal(calls, 2);
+  assert.notEqual(await first, rebuilt);
+});
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -827,10 +848,14 @@ In `packages/transport/src/environment.ts`:
 
   async release(_principal: Principal, projectId: Id, worktreeId?: Id): Promise<void> {
     const prefix = `${projectId}\u0000`;
-    const keys = [...this.environments.keys()].filter((key) =>
+    const matches = (key: string): boolean =>
       worktreeId === undefined
         ? key.startsWith(prefix)
-        : key === LocalEnvironmentProvider.key(projectId, worktreeId),
+        : key === LocalEnvironmentProvider.key(projectId, worktreeId);
+    // Both maps: a key that is still BUILDING lives only in `inflight`, and
+    // dropping only `environments` would let that build re-cache afterwards.
+    const keys = new Set<string>(
+      [...this.environments.keys(), ...this.inflight.keys()].filter(matches),
     );
     for (const key of keys) {
       this.environments.delete(key);
