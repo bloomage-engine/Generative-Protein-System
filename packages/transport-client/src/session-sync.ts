@@ -40,6 +40,7 @@ export async function fetchSessionSnapshot(
   claimed: RuntimeState,
   threadId: string | null,
   projectId?: string | null,
+  worktreeId?: string | null,
   signal?: AbortSignal,
 ): Promise<RuntimeState | null> {
   try {
@@ -51,6 +52,7 @@ export async function fetchSessionSnapshot(
         state: claimed,
         threadId,
         ...(projectId ? { projectId } : {}),
+        ...(worktreeId ? { worktreeId } : {}),
       }),
       ...(signal ? { signal } : {}),
     });

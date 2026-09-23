@@ -15,12 +15,14 @@ import { useStudioStore } from "@/store/studio-store";
  */
 export function StudioHost() {
   const projectId = useStudioStore((s) => s.projectId);
+  const worktreeId = useStudioStore((s) => s.activeWorktreeId);
   const sessionId = useStudioStore((s) => s.activeSessionId);
 
   return (
     <SessionView
-      key={`${projectId}/${sessionId}`}
+      key={`${projectId}/${worktreeId}/${sessionId}`}
       projectId={projectId}
+      worktreeId={worktreeId}
       sessionId={sessionId}
     />
   );

@@ -16,9 +16,10 @@ export async function GET(request: Request): Promise<NextResponse> {
   const params = new URL(request.url).searchParams;
   const query = new URLSearchParams();
   // `projectId` is the scope `useTransport` appends; keep `project` too so an
-  // older caller is not silently unscoped. Only these three reach the upstream —
-  // the watch is the one hop whose query is whitelisted rather than relayed.
-  for (const key of ["projectId", "project", "threadId"]) {
+  // older caller is not silently unscoped. `worktreeId` picks the checkout
+  // (docs/adr/0025). Only these reach the upstream — the watch is the one hop
+  // whose query is whitelisted rather than relayed.
+  for (const key of ["projectId", "project", "worktreeId", "threadId"]) {
     const value = params.get(key);
     if (value) query.set(key, value);
   }

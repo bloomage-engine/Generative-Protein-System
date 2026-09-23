@@ -24,39 +24,53 @@ import { DEFAULT_API } from "./use-transport.js";
 
 /**
  * What the transport client is scoped to: the API base plus the Project whose
- * adapter serves it (`null` → the service's default Project). The Project rides
- * in context because the catalog is fetched deep in the registry composer,
- * where no prop reaches — the workspace provider has the same shape. It is not
- * decoration: the service provisions ONE adapter per Project (docs/adr/0008),
- * and those adapters can differ (route, workspace, catalog), so a catalog
- * fetched without the Project would describe another Project's runtime.
+ * adapter serves it (`null` → the service's default Project) and the Worktree
+ * that selects which of its Environments (docs/adr/0025). The scope rides in
+ * context because the catalog is fetched deep in the registry composer, where
+ * no prop reaches — the workspace provider has the same shape. It is not
+ * decoration: the service provisions ONE adapter per (Project, Worktree)
+ * (docs/adr/0008/0025), and those adapters can differ (route, workspace,
+ * catalog), so a catalog fetched without the scope would describe another
+ * Project's runtime.
  */
 export interface TransportScope {
   api: string;
   project: string | null;
+  worktree: string | null;
 }
 
-const TransportApiContext = createContext<TransportScope>({ api: DEFAULT_API, project: null });
+const TransportApiContext = createContext<TransportScope>({
+  api: DEFAULT_API,
+  project: null,
+  worktree: null,
+});
 
-/** Provide the transport base URL (`/api/transport` by default) and Project. */
+/** Provide the transport base URL (`/api/transport` by default) and Project/Worktree. */
 export const TransportApiProvider: FC<
-  PropsWithChildren<{ api: string; project?: string | null }>
-> = ({ api, project = null, children }) => {
-  const value = useMemo<TransportScope>(() => ({ api, project }), [api, project]);
+  PropsWithChildren<{ api: string; project?: string | null; worktree?: string | null }>
+> = ({ api, project = null, worktree = null, children }) => {
+  const value = useMemo<TransportScope>(
+    () => ({ api, project, worktree }),
+    [api, project, worktree],
+  );
   return <TransportApiContext.Provider value={value}>{children}</TransportApiContext.Provider>;
 };
 
-/** The transport scope (API base + Project) from the nearest provider. */
+/** The transport scope (API base + Project + Worktree) from the nearest provider. */
 export function useTransportApi(): TransportScope {
   return useContext(TransportApiContext);
 }
 
-/** Fetch the runtime command catalog for one Project. Throws on HTTP failure. */
+/** Fetch the runtime command catalog for one (Project, Worktree). Throws on HTTP failure. */
 export async function fetchCommandCatalog(
   api: string,
   project: string | null = null,
+  worktree: string | null = null,
 ): Promise<CommandDescriptor[]> {
-  const query = project ? `?projectId=${encodeURIComponent(project)}` : "";
+  const params: string[] = [];
+  if (project) params.push(`projectId=${encodeURIComponent(project)}`);
+  if (worktree) params.push(`worktreeId=${encodeURIComponent(worktree)}`);
+  const query = params.length ? `?${params.join("&")}` : "";
   const url = `${api.replace(/\/+$/, "")}/commands${query}`;
   const res = await fetch(url, { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(`command catalog request failed: ${res.status}`);
@@ -84,16 +98,16 @@ export async function fetchCommandCatalog(
  * without an assistant-ui runtime provider.
  */
 export function useRuntimeCommands(refreshToken?: unknown): CommandDescriptor[] | null {
-  const { api, project } = useTransportApi();
+  const { api, project, worktree } = useTransportApi();
   const [commands, setCommands] = useState<CommandDescriptor[] | null>(null);
 
   useEffect(() => {
     setCommands(null);
-  }, [api, project]);
+  }, [api, project, worktree]);
 
   useEffect(() => {
     let cancelled = false;
-    fetchCommandCatalog(api, project)
+    fetchCommandCatalog(api, project, worktree)
       .then((list) => {
         if (!cancelled) setCommands(list);
       })
@@ -104,7 +118,7 @@ export function useRuntimeCommands(refreshToken?: unknown): CommandDescriptor[] 
     return () => {
       cancelled = true;
     };
-  }, [api, project, refreshToken]);
+  }, [api, project, worktree, refreshToken]);
 
   return commands;
 }

@@ -17,8 +17,8 @@ import { useStudioStore } from "@/store/studio-store";
 /**
  * One Project's Session: the conversation over the assistant-transport runtime
  * inside the Studio 3-pane workbench (files / tab / panel state all in
- * `useStudioStore`). `projectId`/`sessionId` scope every request — they come
- * from the SPA store (home) or the route (deep-link).
+ * `useStudioStore`). `projectId`/`worktreeId`/`sessionId` scope every request —
+ * they come from the SPA store (home) or the route (deep-link).
  *
  * The scope may be EMPTY (a fresh install, or a Project with no Session yet):
  * the workbench chrome still renders and only the runtime is skipped, because
@@ -26,18 +26,19 @@ import { useStudioStore } from "@/store/studio-store";
  * — a chrome-less "nothing is open" page would take away the one control that
  * can fix it.
  */
-export const SessionView: FC<{ projectId: string | null; sessionId: string | null }> = ({
-  projectId,
-  sessionId,
-}) => {
+export const SessionView: FC<{
+  projectId: string | null;
+  worktreeId: string | null;
+  sessionId: string | null;
+}> = ({ projectId, worktreeId, sessionId }) => {
   const api = process.env.NEXT_PUBLIC_TRANSPORT_URL ?? "/api/transport";
   const workspaceApi = process.env.NEXT_PUBLIC_WORKSPACE_URL ?? "/api/workspace";
 
   return (
-    <TransportApiProvider api={api} project={projectId}>
-      <WorkspaceApiProvider api={workspaceApi} project={projectId}>
+    <TransportApiProvider api={api} project={projectId} worktree={worktreeId}>
+      <WorkspaceApiProvider api={workspaceApi} project={projectId} worktree={worktreeId}>
         {projectId && sessionId ? (
-          <Session projectId={projectId} sessionId={sessionId} />
+          <Session projectId={projectId} worktreeId={worktreeId} sessionId={sessionId} />
         ) : (
           <StudioShell projectId={projectId} />
         )}
@@ -57,15 +58,18 @@ export const SessionView: FC<{ projectId: string | null; sessionId: string | nul
  */
 const Session = memo(function Session({
   projectId,
+  worktreeId,
   sessionId,
 }: {
   projectId: string;
+  worktreeId: string | null;
   sessionId: string;
 }) {
   const { api } = useTransportApi();
   const runtime = useTransport({
     api,
     projectId,
+    worktreeId,
     threadId: sessionId,
     // The status bar's metrics come from the record; a finished run is the
     // signal to refetch. Read the store imperatively so this component — which

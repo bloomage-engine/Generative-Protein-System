@@ -26,9 +26,14 @@ test("the catalog request carries the Project, because the adapter it describes 
     async () => {
       assert.deepEqual(await fetchCommandCatalog("/api/transport/", "proj a"), []);
       assert.deepEqual(await fetchCommandCatalog("/api/transport", null), []);
+      assert.deepEqual(await fetchCommandCatalog("/api/transport", "p1", "exp-a"), []);
     },
   );
-  assert.deepEqual(seen, ["/api/transport/commands?projectId=proj%20a", "/api/transport/commands"]);
+  assert.deepEqual(seen, [
+    "/api/transport/commands?projectId=proj%20a",
+    "/api/transport/commands",
+    "/api/transport/commands?projectId=p1&worktreeId=exp-a",
+  ]);
 });
 
 test("a failed catalog fetch is an error the caller degrades from, not a silent empty menu", async () => {
