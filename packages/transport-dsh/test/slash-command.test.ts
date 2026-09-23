@@ -80,6 +80,8 @@ test("the catalog is served before the harness child has ever started", async ()
         ["project", "/project"],
         // This package's own cron plugin, curated for the same reason.
         ["cron", "/cron"],
+        // This package's own worktree plugin, curated for the same reason.
+        ["worktree", "/worktree"],
       ],
     );
     assert.equal(client.started, false, "the menu must not need a spawned harness");

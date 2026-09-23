@@ -164,6 +164,15 @@ export const DSH_HARNESS_FALLBACK_DESCRIPTORS: readonly CommandDescriptor[] = [
     description: "列出本项目的定时任务",
     invocationText: "/cron",
   },
+  // This package's own worktree plugin registers `/worktree` in the harness
+  // registry (like `/project` and `/cron`), listed here for the same cold-menu
+  // reason: a cold child cannot be asked for it.
+  {
+    id: "worktree",
+    label: "/worktree",
+    description: "列出本项目的 worktree 分支",
+    invocationText: "/worktree",
+  },
 ];
 
 /** The dsh command catalog, in menu order. */

@@ -46,6 +46,7 @@ test("the cold harness fallback mirrors the pinned profile's own commands", () =
       ["plan", "/plan"],
       ["project", "/project"],
       ["cron", "/cron"],
+      ["worktree", "/worktree"],
     ],
   );
   for (const descriptor of DSH_HARNESS_FALLBACK_DESCRIPTORS) {
@@ -57,7 +58,7 @@ test("the cold harness fallback mirrors the pinned profile's own commands", () =
 test("the menu is the local pair first, then the harness layer without its names", () => {
   assert.deepEqual(
     mergeCommandDescriptors(DSH_HARNESS_FALLBACK_DESCRIPTORS, DSH_COMMAND_DESCRIPTORS).map((d) => d.id),
-    ["status", "new", "compact", "feedback", "goal", "permission", "plan", "project", "cron"],
+    ["status", "new", "compact", "feedback", "goal", "permission", "plan", "project", "cron", "worktree"],
   );
   // A harness command claiming a local name is dropped, never duplicated: the
   // local one is what must work with no harness at all.
@@ -111,4 +112,9 @@ test("v1 commands take no arguments: extra words answer with usage", () => {
     assert.match(reply, /Usage: `\/\w+` \(no arguments\)/);
     assert.equal(resetConversation, undefined, "a usage error must not reset anything");
   }
+});
+
+test("the cold fallback catalog carries the worktree command", () => {
+  const ids = DSH_HARNESS_FALLBACK_DESCRIPTORS.map((d) => d.id);
+  assert.ok(ids.includes("worktree"), "the cold menu should offer /worktree");
 });
