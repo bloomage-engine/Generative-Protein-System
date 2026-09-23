@@ -56,3 +56,24 @@ test("release with a worktree drops only that one", async () => {
   const rebuilt = await provider.acquire(principal, "p1", "exp-a");
   assert.notEqual(first, rebuilt);
 });
+
+test("release during an in-flight acquire prevents re-caching", async () => {
+  let resolveBuild!: () => void;
+  const gate = new Promise<void>((resolve) => { resolveBuild = resolve; });
+  let calls = 0;
+  const provider = new LocalEnvironmentProvider({
+    environmentFor: async () => {
+      calls += 1;
+      await gate;
+      return { adapter: adapter(), workspace: new NullWorkspace() };
+    },
+  });
+  const first = provider.acquire(principal, "p1", "main");
+  const released = provider.release?.(principal, "p1", "main");
+  resolveBuild();
+  await first;
+  await released;
+  const rebuilt = await provider.acquire(principal, "p1", "main");
+  assert.equal(calls, 2);
+  assert.notEqual(await first, rebuilt);
+});

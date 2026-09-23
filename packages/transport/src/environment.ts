@@ -105,14 +105,17 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
 
   async release(_principal: Principal, projectId: Id, worktreeId?: Id): Promise<void> {
     const prefix = `${projectId}\u0000`;
-    const keys = [...this.environments.keys()].filter((key) =>
+    const matches = (key: string): boolean =>
       worktreeId === undefined
         ? key.startsWith(prefix)
-        : key === LocalEnvironmentProvider.key(projectId, worktreeId),
+        : key === LocalEnvironmentProvider.key(projectId, worktreeId);
+    // Both maps: a key that is still BUILDING lives only in `inflight`, and
+    // dropping only `environments` would let that build re-cache afterwards.
+    const keys = new Set<string>(
+      [...this.environments.keys(), ...this.inflight.keys()].filter(matches),
     );
     for (const key of keys) {
       this.environments.delete(key);
-      // A build already in flight would otherwise re-cache after the drop.
       const pending = this.inflight.get(key);
       if (pending) {
         await pending.catch(() => {});
