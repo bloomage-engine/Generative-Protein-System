@@ -206,7 +206,10 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   the watch additionally takes `threadId`. The command catalog follows the same
   claim (the client carries it from `TransportApiProvider`, and the web's
   `/api/transport/commands` hop relays the query), so it is the Project's own
-  adapter's catalog.
+  adapter's catalog. The same routes now also take a `worktreeId` claim
+  (default `main`; an unknown id is a 404, never auto-created), so a request
+  scopes to `(projectId, worktreeId)` — the full client-side claim lands in the
+  workbench plan.
 - **JSON bodies are capped at 16 MiB** (`TRANSPORT_MAX_BODY_BYTES` overrides,
   service env). The transport POST carries the client's WHOLE claimed
   transcript in `state` (assistant-ui round-trips `agentStateRef.current` on
