@@ -25,10 +25,35 @@ export interface Project {
   archivedAt?: string;
 }
 
+/**
+ * A git worktree of a Project's repository: an isolated checkout on its own
+ * branch. The Project root IS the `main` worktree; linked worktrees are nested
+ * under `.worktrees/` (docs/adr/0025). `id` is a stable slug unique within the
+ * Project and `main` is reserved; `name` is the only mutable field. The on-disk
+ * path is DERIVED from the id, never stored.
+ */
+export interface Worktree {
+  id: Id;
+  projectId: Id;
+  /** Display name — the only mutable field. */
+  name: string;
+  /** The git branch this worktree checks out (stored: it cannot be derived from `id`). */
+  branch: string;
+  createdAt: string;
+  /** Set when the Worktree is archived — hidden from the default listing, never deleted. */
+  archivedAt?: string;
+}
+
 /** A conversation between a Researcher and an Agent under a Project. */
 export interface Session {
   id: Id;
   projectId: Id;
+  /**
+   * The Worktree this Session runs in. Absent means the `main` worktree — a
+   * legacy row written before worktrees existed (normalize with
+   * `sessionWorktreeId`).
+   */
+  worktreeId?: Id;
   /** The Agent identity active in this session (a flat id; `AgentBlueprint` is deferred). */
   agentId: Id;
   /** The display name a Researcher gave the Session (its only mutable field). */

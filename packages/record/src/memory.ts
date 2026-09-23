@@ -6,6 +6,7 @@ import type {
   Session,
   PersistedTranscript,
   Subagent,
+  Worktree,
 } from "./types.js";
 import type { RecordStore } from "./index.js";
 
@@ -21,6 +22,7 @@ export function createInMemoryRecordStore(): RecordStore {
   const transcripts = new Map<Id, PersistedTranscript>();
   const subagents = new Map<Id, Subagent>();
   const computeJobs = new Map<Id, ComputeJob>();
+  const worktrees = new Map<Id, Worktree>();
 
   const clone = <T>(v: T): T => structuredClone(v);
   const ordered = <T>(map: Map<Id, T>, matches: (v: T) => boolean): T[] =>
@@ -80,6 +82,64 @@ export function createInMemoryRecordStore(): RecordStore {
       // Project cascades the ROWS only — a delete never touches the cluster.
       for (const job of [...computeJobs.values()]) {
         if (job.projectId === id) computeJobs.delete(job.id);
+      }
+      for (const w of [...worktrees.values()]) {
+        if (w.projectId === id) worktrees.delete(w.id);
+      }
+    },
+    async addWorktree(worktree: Worktree): Promise<Worktree> {
+      worktrees.set(worktree.id, clone(worktree));
+      return clone(worktree);
+    },
+    async getWorktree(id: Id): Promise<Worktree | null> {
+      const w = worktrees.get(id);
+      return w ? clone(w) : null;
+    },
+    async listWorktrees(
+      projectId: Id,
+      opts: { includeArchived?: boolean } = {},
+    ): Promise<Worktree[]> {
+      return ordered(
+        worktrees,
+        (w) => w.projectId === projectId && (opts.includeArchived === true || w.archivedAt === undefined),
+      );
+    },
+    async updateWorktree(id: Id, patch: { name: string }): Promise<Worktree> {
+      const prev = worktrees.get(id);
+      if (!prev) throw new Error(`worktree not found: ${id}`);
+      const next = { ...prev, name: patch.name };
+      worktrees.set(id, clone(next));
+      return clone(next);
+    },
+    async archiveWorktree(id: Id, archivedAt: string): Promise<Worktree> {
+      const prev = worktrees.get(id);
+      if (!prev) throw new Error(`worktree not found: ${id}`);
+      const next = { ...prev, archivedAt };
+      worktrees.set(id, clone(next));
+      return clone(next);
+    },
+    async unarchiveWorktree(id: Id): Promise<Worktree> {
+      const prev = worktrees.get(id);
+      if (!prev) throw new Error(`worktree not found: ${id}`);
+      const { archivedAt: _dropped, ...rest } = prev;
+      worktrees.set(id, clone(rest));
+      return clone(rest);
+    },
+    async deleteWorktree(id: Id): Promise<void> {
+      worktrees.delete(id);
+      const removed = new Set<Id>();
+      for (const session of [...sessions.values()]) {
+        if (session.worktreeId === id) {
+          sessions.delete(session.id);
+          transcripts.delete(session.id);
+          removed.add(session.id);
+        }
+      }
+      for (const run of [...runs.values()]) {
+        if (removed.has(run.sessionId)) runs.delete(run.id);
+      }
+      for (const sub of [...subagents.values()]) {
+        if (removed.has(sub.parentSessionId)) subagents.delete(sub.id);
       }
     },
     async addSession(session: Session): Promise<Session> {

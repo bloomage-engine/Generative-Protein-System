@@ -6,6 +6,7 @@ import type {
   Session,
   PersistedTranscript,
   Subagent,
+  Worktree,
 } from "./types.js";
 
 // The domain vocabulary, listed explicitly so this file is the package surface.
@@ -20,10 +21,12 @@ export type {
   Session,
   PersistedTranscript,
   Subagent,
+  Worktree,
 } from "./types.js";
 
 export { createInMemoryRecordStore } from "./memory.js";
 export { createJsonlRecordStore } from "./jsonl.js";
+export { DEFAULT_WORKTREE_ID, MAIN_BRANCH, sessionWorktreeId } from "./worktree.js";
 
 /**
  * The authoritative storage boundary for the v1 research record
@@ -57,6 +60,19 @@ export interface RecordStore {
   unarchiveProject(id: Id): Promise<Project>;
   /** Remove a Project and every Session/Run (and Compute Job — docs/adr/0024) under it. */
   deleteProject(id: Id): Promise<void>;
+
+  addWorktree(worktree: Worktree): Promise<Worktree>;
+  getWorktree(id: Id): Promise<Worktree | null>;
+  /** A Project's Worktrees, insertion order. Archived worktrees excluded unless asked for. */
+  listWorktrees(projectId: Id, opts?: { includeArchived?: boolean }): Promise<Worktree[]>;
+  /** Rename a Worktree (its id and branch are immutable). Returns the updated row. */
+  updateWorktree(id: Id, patch: { name: string }): Promise<Worktree>;
+  /** Mark a Worktree archived; returns the updated row. */
+  archiveWorktree(id: Id, archivedAt: string): Promise<Worktree>;
+  /** Clear a Worktree's archived flag; returns the updated row. */
+  unarchiveWorktree(id: Id): Promise<Worktree>;
+  /** Remove a Worktree and every Session/Run under it. */
+  deleteWorktree(id: Id): Promise<void>;
 
   /**
    * Record a conversation. A Session's id IS its canonical runtime session key,
