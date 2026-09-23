@@ -34,3 +34,18 @@ export {
   type MsaTarget,
   type ParsedMsaMention,
 } from "./mention.js";
+
+export {
+  PLAIN_TEXT_CELL_LIMIT,
+  columnsToKeep,
+  conservationBandColor,
+  filterRowsByQuery,
+  groupSpans,
+  rowWindow,
+  rulerLabel,
+  rulerLine,
+  shouldUsePlainText,
+  type ColumnFilter,
+  type RowWindow,
+  type Span,
+} from "./grid.js";
