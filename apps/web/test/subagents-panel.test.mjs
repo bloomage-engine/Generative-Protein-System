@@ -172,8 +172,12 @@ test(
       }
       await secondSession.waitFor({ state: "visible", timeout: 15_000 });
       await secondSession.dblclick();
+      // The committed scope is the three-part worktree URL: a legacy two-part
+      // link resolves to the Project's `main` worktree and is mirrored to that
+      // route, so a Session switch inside `main` nests the worktree segment
+      // (docs/adr/0025).
       await page.waitForFunction(
-        () => location.pathname === `/projects/p1/sessions/s2`,
+        () => location.pathname === `/projects/p1/worktrees/main/sessions/s2`,
         { timeout: 15_000 },
       );
       await transcriptBody.waitFor({ timeout: 10_000 });

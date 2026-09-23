@@ -71,8 +71,10 @@ test(
       await mockRecordSurface(page);
 
       // The conversation lives at the session route; the URL scopes every
-      // request (the page itself fetches no project metadata).
-      await page.goto(`http://localhost:${port}/projects/p1/sessions/s1`, {
+      // request (the page itself fetches no project metadata). Boot at a
+      // NON-default Worktree so the invariant is proven with the `worktreeId`
+      // part of the scope in force (docs/adr/0025), not just Project/Session.
+      await page.goto(`http://localhost:${port}/projects/p1/worktrees/exp-a/sessions/s-exp`, {
         waitUntil: "domcontentloaded",
       });
       await page.getByText(HISTORY_MARKER).waitFor({ timeout: 30_000 });

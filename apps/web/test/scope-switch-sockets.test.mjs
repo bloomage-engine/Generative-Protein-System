@@ -1,6 +1,6 @@
 /**
- * Regression: a Project switch must not exhaust the browser's connection pool,
- * and it must drop the previous Project's open files.
+ * Regression: a Project (or Worktree) switch must not exhaust the browser's
+ * connection pool, and it must drop the previous checkout's open files.
  *
  * The standing watch is an NDJSON stream that never ends, and it belongs to the
  * runtime, which is remounted on every scope change (and, in dev, twice per
@@ -9,7 +9,9 @@
  * HTTP/1.1, after which NO request to this origin can start — the session list,
  * the file listing and the mount probe all queue forever and the workbench looks
  * frozen (docs/adr/0009). Hence the two assertions below: the UI drops tabs with
- * the Project, and the ORIGIN stays usable after repeated switching.
+ * the scope, and the ORIGIN stays usable after repeated switching. A Worktree
+ * switch is a scope change too (docs/adr/0025), so the socket test loops through
+ * one as well as Projects.
  *
  * The watch is deliberately NOT mocked in the browser here (an in-browser mock
  * occupies no socket, so it cannot reproduce this): `startWatchStub` serves it
@@ -102,7 +104,11 @@ test(
         1,
         "browsing another Project must not disturb the open files",
       );
-      assert.equal(new URL(page.url()).pathname, "/projects/p1/sessions/s1");
+      assert.equal(
+        new URL(page.url()).pathname,
+        "/projects/p1/worktrees/main/sessions/s1",
+        "browsing another Project must not move the scope",
+      );
       // The tree, the availability chip and the top-bar search all want the root
       // listing; they must share ONE request for it (three separate fetches used
       // to queue behind the per-origin connection pool).
@@ -136,7 +142,7 @@ test(
 );
 
 test(
-  "repeated Project switching keeps the origin reachable",
+  "repeated Project/Worktree switching keeps the origin reachable",
   { timeout: 300_000 },
   async (t) => {
     const stub = await startWatchStub();
@@ -180,24 +186,43 @@ test(
           }
         });
 
-      // Alternating Sessions of two Projects: each switch remounts the runtime
-      // (and so its watch), which is what used to orphan a connection per swap.
-      // A committed Session brings the conversation back, so the pane is
-      // reopened — when it is closed — each round (that button is a TOGGLE).
-      const sessionsByProject = { Alpha: "First session", Beta: "Beta session" };
+      // Alternating scopes: two Projects, plus a NON-default Worktree of Alpha.
+      // A Worktree switch remounts the runtime exactly like a Project switch
+      // (the shell is keyed by project/worktree/session), so it exercises the
+      // same abort-on-unmount contract that keeps the origin reachable. Each
+      // target names the project, the worktree (null = `main`) and the session
+      // to commit.
+      const targets = [
+        { project: "Alpha", worktree: null, session: "First session" },
+        { project: "Alpha", worktree: "Experimental", session: "Experiment session" },
+        { project: "Beta", worktree: null, session: "Beta session" },
+      ];
       for (let i = 1; i <= SWITCHES; i++) {
-        const project = i % 2 === 1 ? "Beta" : "Alpha";
+        const target = targets[(i - 1) % targets.length];
         if (!(await pane.isVisible())) {
           await page.getByRole("button", { name: "Projects", exact: true }).click();
         }
-        const row = pane.getByRole("button", { name: project, exact: true });
+        const row = pane.getByRole("button", { name: target.project, exact: true });
         await row.waitFor({ timeout: 15_000 });
-        await row.click(); // expand (browsing)
-        const session = pane.getByRole("button", { name: sessionsByProject[project], exact: true });
+        // Expand (browsing) — but only when it is not already expanded: the row
+        // is a TOGGLE, and the boot scope already has the first target's Project
+        // expanded, so an unconditional click would COLLAPSE it and hide the
+        // Sessions this iteration is about to commit.
+        if ((await row.getAttribute("aria-expanded")) !== "true") await row.click();
+        if (target.worktree) {
+          const worktree = pane.getByTitle(`Open worktree ${target.worktree}`);
+          await worktree.waitFor({ timeout: 15_000 });
+          await worktree.click(); // commit the worktree (no session yet)
+        }
+        const session = pane.getByRole("button", { name: target.session, exact: true });
         await session.waitFor({ timeout: 15_000 });
         await session.dblclick(); // commit
         await page.waitForTimeout(700);
-        probes.push({ switch: i, project, ...(await liveness()) });
+        probes.push({
+          switch: i,
+          scope: `${target.project}/${target.worktree ?? "main"}`,
+          ...(await liveness()),
+        });
       }
 
       const dead = probes.filter((probe) => !probe.ok);

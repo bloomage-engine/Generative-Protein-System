@@ -215,7 +215,9 @@ export async function newWorkbenchPage(browser) {
  * the headers arrive.
  */
 export async function warmWorkbench(base, opts = {}) {
-  for (const path of ["/", "/projects/p1/sessions/s1"]) {
+  // The worktree deep-link is its OWN route pattern, so the legacy two-part
+  // Session link does not compile it (docs/adr/0025).
+  for (const path of ["/", "/projects/p1/sessions/s1", "/projects/p1/worktrees/exp-a/sessions/s-exp"]) {
     const response = await fetch(`${base}${path}`);
     await response.text();
     if (!response.ok) throw new Error(`warming ${path} failed: ${response.status}`);
@@ -318,23 +320,85 @@ export async function mockWorkbenchSurfaces(page, opts = {}) {
 }
 
 /**
- * The record surface (`/api/projects*`) the Projects pane reads — the only
- * place a Project/Session is created now, so the POSTs mint "Gamma" and its
- * first Session.
+ * The Worktree surface (`/api/worktrees*`) the Projects pane and the boot scope
+ * resolve against (docs/adr/0025). `main` is always listed for a Project (the
+ * Project root is its main worktree); `p1` also carries an `exp-a` checkout, so
+ * the scope tests can switch to a non-default worktree.
+ *
+ * Returns the mutable `byProject` map and the request log. Mutating `byProject`
+ * simulates the record changing between loads (e.g. dropping `exp-a` to prove a
+ * remembered worktree falls back to `main`); the log lets a test assert a
+ * fabricated id was never asked for.
+ */
+export const DEFAULT_WORKTREES = {
+  p1: [
+    { id: "main", projectId: "p1", name: "main", branch: "main", createdAt: "2026-01-01T00:00:00.000Z" },
+    { id: "exp-a", projectId: "p1", name: "Experimental", branch: "exp-a", createdAt: "2026-01-02T00:00:00.000Z" },
+  ],
+  p2: [{ id: "main", projectId: "p2", name: "main", branch: "main", createdAt: "2026-01-01T00:00:00.000Z" }],
+  p3: [{ id: "main", projectId: "p3", name: "main", branch: "main", createdAt: "2026-01-01T00:00:00.000Z" }],
+};
+
+export async function mockWorktreeSurface(page, opts = {}) {
+  const byProject = {};
+  for (const [projectId, list] of Object.entries(opts.worktrees ?? DEFAULT_WORKTREES)) {
+    byProject[projectId] = list.map((worktree) => ({ ...worktree }));
+  }
+  const requests = [];
+  await page.route("**/api/worktrees*", (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    requests.push(`${url.pathname}${url.search}`);
+    const projectId = url.searchParams.get("projectId");
+    if (request.method() === "POST") {
+      const body = request.postDataJSON();
+      return route.fulfill({
+        json: {
+          worktree: {
+            id: "exp-new",
+            projectId,
+            name: body.name,
+            branch: body.branch ?? body.name,
+            createdAt: "2026-01-03T00:00:00.000Z",
+          },
+        },
+      });
+    }
+    const list = projectId ? byProject[projectId] : undefined;
+    if (!list) return route.fulfill({ status: 404, body: "" });
+    return route.fulfill({ json: { worktrees: list } });
+  });
+  return { byProject, requests };
+}
+
+/**
+ * The record surface (`/api/projects*` and `/api/worktrees*`) the Projects pane
+ * reads — the only place a Project/Session/Worktree is created now, so the POSTs
+ * mint "Gamma" and its first Session.
  *
  * Two patterns, because a Playwright glob's `*`/`**` never crosses `/`: the
  * bare list (`/api/projects`) and a Project's Sessions
- * (`/api/projects/<id>/sessions`) each need their own.
+ * (`/api/projects/<id>/sessions`) each need their own. A Project's Sessions are
+ * filtered by the `worktreeId` query (docs/adr/0025): `main` and `exp-a` hold
+ * DIFFERENT Sessions, so a test can tell a worktree switch from a Session
+ * switch. The Worktree surface rides along with a default list; a test that
+ * needs to control it keeps the returned `worktrees` handle.
  */
-export async function mockRecordSurface(page) {
+export async function mockRecordSurface(page, opts = {}) {
+  const worktrees = await mockWorktreeSurface(page, opts);
+
   const handle = (route) => {
     const request = route.request();
-    const path = new URL(request.url()).pathname.replace(/^.*\/api\/projects/, "");
+    const url = new URL(request.url());
+    const path = url.pathname.replace(/^.*\/api\/projects/, "");
+    const worktreeId = url.searchParams.get("worktreeId") ?? "main";
 
     if (request.method() === "POST") {
       return path === ""
         ? route.fulfill({ json: { project: { id: "p3", name: request.postDataJSON().name } } })
-        : route.fulfill({ json: { session: { id: "s-new", projectId: "p3", title: "Fresh session" } } });
+        : route.fulfill({
+            json: { session: { id: "s-new", projectId: "p3", worktreeId, title: "Fresh session" } },
+          });
     }
     if (path === "" || path === "/") {
       return route.fulfill({
@@ -347,10 +411,19 @@ export async function mockRecordSurface(page) {
       });
     }
     if (path === "/p1/sessions") {
-      return route.fulfill({ json: { sessions: [{ id: "s1", title: "First session" }] } });
+      const sessions =
+        worktreeId === "exp-a"
+          ? [
+              { id: "s-exp", projectId: "p1", worktreeId: "exp-a", title: "Experiment session" },
+              { id: "s-exp-2", projectId: "p1", worktreeId: "exp-a", title: "Experiment two" },
+            ]
+          : [{ id: "s1", projectId: "p1", worktreeId: "main", title: "First session" }];
+      return route.fulfill({ json: { sessions } });
     }
     if (path === "/p2/sessions") {
-      return route.fulfill({ json: { sessions: [{ id: "s9", title: "Beta session" }] } });
+      return route.fulfill({
+        json: { sessions: [{ id: "s9", projectId: "p2", worktreeId: "main", title: "Beta session" }] },
+      });
     }
     // The project the POST above mints is fresh: its Session list is EMPTY, not
     // a 404 (a created Project exists, it just has no Sessions yet). The create
@@ -364,4 +437,5 @@ export async function mockRecordSurface(page) {
 
   await page.route("**/api/projects", handle);
   await page.route("**/api/projects/**", handle);
+  return { worktrees };
 }

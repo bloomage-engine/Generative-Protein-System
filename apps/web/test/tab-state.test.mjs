@@ -10,6 +10,10 @@
  *
  * Prereq: `npm run build -w @science-studio/transport-client`.
  * Needs a Chromium; SKIPPED when none is found.
+ *
+ * The third test pins the scope half of the same contract: an open tab belongs
+ * to its checkout, so a Worktree switch (a new `worktreeId` scope, docs/adr/0025)
+ * clears the tabs while a same-worktree Session switch keeps them.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -256,6 +260,93 @@ test(
         await img.evaluate((el) => getComputedStyle(el).visibility),
         "hidden",
         "a loaded image in an inactive tab must stay hidden (no child visibility override)",
+      );
+    } catch (error) {
+      throw new Error(`${error.message}\n--- web server log ---\n${server.log().slice(-2000)}`);
+    } finally {
+      await browser?.close();
+      killTree(server.child, port);
+    }
+  },
+);
+
+test(
+  "a worktree switch clears the tabs; a same-worktree Session switch keeps them",
+  { timeout: 240_000 },
+  async (t) => {
+    /**
+     * The scope now has a Worktree part (docs/adr/0025). An open file belongs to
+     * the checkout it was opened under, so a Worktree switch must clear the tabs
+     * exactly like a Project switch — while moving between Sessions of the SAME
+     * checkout only changes the conversation and keeps them.
+     */
+    const executablePath = findChromium();
+    if (!executablePath) {
+      t.skip(
+        "no Chromium found — set PLAYWRIGHT_CHROMIUM_EXECUTABLE or install one (e.g. `npx playwright install chromium`)",
+      );
+      return;
+    }
+
+    const port = await freePort();
+    const server = startWebServer(port);
+    let browser;
+    try {
+      await waitForServer(`http://localhost:${port}`, 120_000);
+      await warmWorkbench(`http://localhost:${port}`);
+
+      const { chromium } = await import("playwright-core");
+      browser = await chromium.launch({ executablePath });
+      const page = await newWorkbenchPage(browser);
+
+      await mockWorkbenchSurfaces(page);
+      await mockRecordSurface(page);
+
+      // Boot straight into the non-default Worktree `exp-a` of Alpha.
+      await page.goto(`http://localhost:${port}/projects/p1/worktrees/exp-a/sessions/s-exp`, {
+        waitUntil: "domcontentloaded",
+      });
+      await page.getByText(HISTORY_MARKER).waitFor({ timeout: 30_000 });
+
+      // Open a file of THIS checkout.
+      const tree = page.getByRole("tree");
+      await tree.waitFor({ timeout: 30_000 });
+      await tree.getByRole("treeitem", { name: "notes.txt" }).click();
+      await page.getByText("/notes.txt", { exact: true }).waitFor({ timeout: 15_000 });
+      assert.equal(await page.getByRole("tab").count(), 1, "the file must open as a tab");
+
+      // Switching to another Session of the SAME Worktree moves only the
+      // conversation: the checkout (and so the tabs) stays put.
+      await page.getByRole("button", { name: "Projects", exact: true }).click();
+      const pane = page.getByRole("complementary", { name: "Projects and sessions" });
+      const second = pane.getByRole("button", { name: "Experiment two", exact: true });
+      await second.waitFor({ timeout: 15_000 });
+      await second.dblclick();
+      await page.waitForFunction(
+        () => location.pathname === "/projects/p1/worktrees/exp-a/sessions/s-exp-2",
+        { timeout: 15_000 },
+      );
+      assert.equal(
+        await page.getByRole("tab").count(),
+        1,
+        "a same-worktree Session switch must keep the open files",
+      );
+
+      // Selecting `main` swaps the workspace under the tabs, so they go.
+      await page.getByRole("button", { name: "Projects", exact: true }).click();
+      const main = pane.getByTitle("Open worktree main");
+      await main.waitFor({ timeout: 15_000 });
+      await main.click();
+      await page.waitForFunction(() => location.pathname === "/", { timeout: 15_000 });
+      assert.equal(
+        await page.getByRole("tab").count(),
+        0,
+        "a worktree switch must drop the previous checkout's tabs",
+      );
+      assert.equal(
+        await page.getByText("Open a file from the tree to show tabs").count(),
+        1,
+        "the strip must be back to its empty state",
       );
     } catch (error) {
       throw new Error(`${error.message}\n--- web server log ---\n${server.log().slice(-2000)}`);
