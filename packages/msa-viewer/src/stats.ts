@@ -73,11 +73,20 @@ export function isConservedCol(stat: ColumnStat, opts: ConservedOptions = DEFAUL
   return stat.identity >= opts.minIdentity && stat.gapFraction <= opts.maxGapFraction;
 }
 
-export function tableStats(result: MsaParseResult, opts: ConservedOptions = DEFAULT_CONSERVED): TableStat {
+/**
+ * The table summary. `stats` lets a caller that already computed the per-column
+ * statistics (the grid memoizes them for the band/filters) reuse them — on a
+ * 6M-cell alignment that halves a ~400 ms pass.
+ */
+export function tableStats(
+  result: MsaParseResult,
+  opts: ConservedOptions = DEFAULT_CONSERVED,
+  stats?: ColumnStat[],
+): TableStat {
   if (result.kind !== "aligned") {
     return { sequences: 0, columns: 0, averageIdentity: 0, conservedColumns: 0 };
   }
-  const cols = columnStats(result);
+  const cols = stats ?? columnStats(result);
   const averageIdentity = cols.length > 0 ? cols.reduce((a, c) => a + c.identity, 0) / cols.length : 0;
   return {
     sequences: result.sequences.length,

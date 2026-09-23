@@ -82,15 +82,36 @@ export function conservationBandColor(identity: number, gapFraction: number): st
   return "#cbd5e1";
 }
 
-export const PLAIN_TEXT_CELL_LIMIT = 250_000;
+/**
+ * The grid degrades to plain text on a COST model, not a cell count alone:
+ * rows are virtualized (only the visible window renders; same-class characters
+ * are grouped into runs, so a real row is tens of spans, not one per cell), so
+ * a big-but-narrow alignment like a ColabFold a3m (14 633 × 427 = 6.25M cells,
+ * measured: ~400 ms of one-time column statistics, ~2 ms for 30 visible rows)
+ * is a perfectly good grid. What does hurt:
+ *   - very many COLUMNS: per-row DOM/width cost, and the widest real
+ *     alignments are two orders of magnitude below this cap;
+ *   - a huge total CELL count: the one-time statistics pass is O(rows × columns)
+ *     and blocks the main thread.
+ */
+export const PLAIN_TEXT_COLUMN_LIMIT = 20_000;
+export const PLAIN_TEXT_CELL_LIMIT = 20_000_000;
 
-/** Above this many cells the grid auto-degrades to plain text (spec scale guard). */
+export interface PlainTextLimits {
+  columns?: number;
+  cells?: number;
+}
+
+/** True when the grid should auto-degrade to plain text (spec scale guard). */
 export function shouldUsePlainText(
   rowCount: number,
   columns: number,
-  limit: number = PLAIN_TEXT_CELL_LIMIT,
+  limits: PlainTextLimits = {},
 ): boolean {
-  return rowCount > 0 && columns > 0 && rowCount * columns > limit;
+  if (rowCount <= 0 || columns <= 0) return false;
+  const columnLimit = limits.columns ?? PLAIN_TEXT_COLUMN_LIMIT;
+  const cellLimit = limits.cells ?? PLAIN_TEXT_CELL_LIMIT;
+  return columns > columnLimit || rowCount * columns > cellLimit;
 }
 
 export function filterRowsByQuery(sequences: MsaSequence[], query: string): MsaSequence[] {

@@ -20,7 +20,7 @@ Researchers drop alignment and search output into a Project workspace: ClustalW/
 **In scope:**
 
 - New workspace package `packages/msa-viewer` (root `workspaces` + root build chain).
-- Parsers (pure, Node-testable): aligned multi-sequence FASTA, unaligned FASTA, ClustalW (with optional consensus line), Stockholm (sequence lines + `#=GC`/`#=PC` per-position annotation blocks), and the mmseqs2 whitespace-separated `.result` table (BLAST-tabular order, 11/12-field rows).
+- Parsers (pure, Node-testable): aligned multi-sequence FASTA, unaligned FASTA, **a3m** (ColabFold/AlphaFold MSA — lowercase insertion residues are stripped to recover the match-state alignment), ClustalW (with optional consensus line), Stockholm (sequence lines + `#=GC`/`#=PC` per-position annotation blocks), and the mmseqs2 whitespace-separated `.result` table (BLAST-tabular order, 11/12-field rows).
 - Column statistics (pure, Node-testable): per-column identity and gap fraction, per-sequence gap fraction and length, whole-table average identity, plus a "conserved column" predicate with documented defaults.
 - Mention codec (pure, Node-testable): `@<project>/<path>/<seqName>@<col>` and `@<project>/<path>/<seqName>@<start>-<end>`, formatted and parsed, compatible with a trailing ` #label` (stripped before parse, same convention as structure mentions).
 - React components (browser entry): `MsaGrid` (row-virtualized monospace grid, crosshair selection, conservation band, 10/100 column ruler, sequence-name column sticky on the left, sequence-name search, "conserved only" / gap filters, statistics readout, plain-text degradation for very large alignments), `MsaResultTable` (sortable columns, identity / E-value threshold filters), and a simple unaligned-rows list.
@@ -57,7 +57,8 @@ Build: `tsc -b` like its siblings; tests: `node --import tsx --test test/*.test.
 ```ts
 type MsaParseResult =
   | { kind: "aligned";   sequences: { name: string; seq: string }[];
-                            columns: number; annotations: { label: string; chars: string }[] }
+                            columns: number; annotations: { label: string; chars: string }[];
+                            insertionsStripped?: boolean }
   | { kind: "unaligned"; sequences: { name: string; seq: string }[] }
   | { kind: "mmseqs";    fields: string[]; rows: (string | number)[][] };
 ```
@@ -70,7 +71,7 @@ type MsaParseResult =
 
 - Content sniffing decides the parser first, the (declared) extension second: a `# STOCKHOLM 1.0` header or a line starting `#=GS`/`#=GC`/`#=PC` → Stockholm; a line matching `^CLUSTAL` → ClustalW; a `>` record header → FASTA; a whitespace row of ≥ 10 fields with numeric columns 3–10 → mmseqs. Unrecognized content is a typed parse error (the renderer catches it), never a crash.
 - ClustalW: name + wrapped sequence lines (re-wrapped to any width are re-joined); the line(s) following each sequence block, present for every block, are consensus annotations, with the block's name-field indent stripped (a space for an unmarked column survives) and the per-block fragments **merged per label**; sequences may be interleaved (multi-block).
-- FASTA: the sequence `name` is the first whitespace-delimited token of the `>` header (a description part in the header is dropped in v1); a repeated header is a typed error (interleaving is a Clustal/Stockholm concept — concatenating two records would corrupt the data).
+- FASTA: the sequence `name` is the first whitespace-delimited token of the `>` header (a description part in the header is dropped in v1); a repeated header is a typed error (interleaving is a Clustal/Stockholm concept — concatenating two records would corrupt the data). **a3m**: when the records are ragged and at least one carries lowercase letters, and removing those lowercase letters makes every record the same length, the result is that reduced alignment with `insertionsStripped: true`. An already-uniform file is left alone (its lowercase is not treated as insertion), and a ragged file without lowercase stays `unaligned`.
 - Stockholm: sequence lines `NAME  SEQ...`; `#=GS NAME VALUE` are kept as sequence metadata (name only in v1); `#=GC LABEL SEQ...` (the real per-column annotation tag: `#=GC RF`, `#=GC ss_cons`) and the legacy `#=PC LABEL SEQ...` become `annotations`; parsing runs until `//` **or end-of-file** (a missing terminator is tolerated, since some tools omit it).
 - mmseqs `.result`: split on runs of whitespace; a row needs **11 or 12** fields; fields 3–11 (`pident`…`evalue`) are numbers, and the optional 12th (`score`) is a number too — non-numeric where a number is required is a typed error, never `NaN` cells; > 12 fields is a typed error (a `convertalis` detail column is not supported).
 - BOM and CRLF are normalized; blank lines are skipped; parsers are pure (`text` in, value out) and total over the recognized set (recognized content never throws; it is either parsed or classified as unrecognized).
@@ -107,7 +108,7 @@ Common props: `{ project: string; path: string; data: MsaParseResult }` plus `on
   - In plain-text mode the pointer handlers are inert — the notice's promise ("selection … disabled at this size") is the actual behavior, and no mention is inserted from a size whose columns are not selectable.
   - Hover: full row + column light highlight and a tooltip (sequence name, 1-based column, that column's identity / gap fraction).
   - Filters: sequence-name search (rows), "conserved columns only" (columns, via `isConservedCol`), "hide gaps" (columns where every sequence is `-`).
-  - Scale guard: when `sequences × columns > 250 000`, the grid auto-degrades to a **plain-text mode** (virtualized raw text rows, no per-character spans) with a one-line notice and a search that still works — the same "friendly line, never a blank pane" rule the other renderers follow.
+  - Scale guard (cost model, see Amendment 2): the grid auto-degrades to a **plain-text mode** (virtualized raw text rows, no per-character spans, no statistics pass) with a one-line notice and a search that still works when the alignment has more than **20 000 columns** (per-row DOM/width cost) or more than **20 000 000 cells** (the one-time statistics pass). Real ColabFold/AlphaFold MSAs — tens of thousands of rows, a few hundred columns — stay a grid, because rows are virtualized and same-class characters are grouped into runs.
   - Like every renderer in a tab, it never asserts its own `visibility` (the open-file pane hides tabs with `visibility:hidden`, and a child's `visibility:visible` would resurrect it).
 - **`MsaResultTable`** (mmseqs): a table over `fields` (numeric right-aligned, sortable header), with two threshold inputs — identity ≥ (default 30, read from the real `pident` column) and E-value ≤ (default 1, read from the real `evalue` column) — and a row-count readout. There is no row expansion: the BLAST-tabular `.result` carries no alignment string (see the amendment below).
 - **`UnalignedList`** (unaligned FASTA): one row per sequence — name, length, and an "insert" affordance that calls `onMention({seqName, start: 1, end: length})`.
@@ -122,7 +123,7 @@ Common props: `{ project: string; path: string; data: MsaParseResult }` plus `on
 | `components/studio/renderers/MsaParser.tsx` | new; fetch → parse → route to `MsaGrid` / `UnalignedList` / `MsaResultTable` / fallback |
 | `test/file-kinds.test.mjs` | new `"msa"` cases + regression of the existing routing |
 
-- **Fetching, like the specialist viewers, is the renderer's own job** — `MsaParser` fetches `workspaceFileUrl(api, path, { project })`, reads it as a byte stream and decodes UTF-8, and classifies failures through the existing 503/404/413 helpers. This keeps the two text-mime lists that "must stay in sync" (`mimeFor` in `packages/workspace`, `looksTextual` in `transport-client`) untouched; an alignment arriving as `application/octet-stream` then still renders (the viewer does not depend on the server calling it text).
+- **Fetching, like the specialist viewers, is the renderer's own job** — `MsaRenderer` fetches `workspaceFileUrl(api, path, { project })`, reads it as a byte stream and decodes UTF-8, and classifies failures through the existing 503/404 helpers. **A 413 (the inline cap) is retried on the streaming `download=1` variant and only then refused (past a 64 MB viewer ceiling)**, because a real alignment easily passes the inline cap while the viewer legitimately wants the whole file; the request is aborted when the tab switches away. This keeps the two text-mime lists that "must stay in sync" (`mimeFor` in `packages/workspace`, `looksTextual` in `transport-client`) untouched; an alignment arriving as `application/octet-stream` then still renders (the viewer does not depend on the server calling it text).
 - **Routing on the parse result**: `aligned` → `MsaGrid`; `unaligned` → `UnalignedList`; `mmseqs` → `MsaResultTable`; a parse error or an empty file → a friendly error / hint block with an **"open as plain text"** action that renders the already-fetched bytes through the existing `PlainTextRenderer` (no second fetch).
 - **Mentions**: `MsaRenderer` consumes `useComposerInsert()` (the same context `StructureRenderer` uses); each target carries a key of `path|seqName|start|end`, and re-activating an already-inserted target (double-click or the "insert" affordance) **removes** that mention — the toggle is keyed exactly like structure mentions' `molqlTargetKey` — then the conversation pane is revealed via the store, as structure clicks do today.
 - Tabs, StrictMode double-mount, and the status bar need no changes: kind routing is the only entry point.
@@ -200,3 +201,33 @@ intent is visible.
 8. **Plain-text mode is inert (spec silence).** The notice promised that selection is
    disabled at the ≥ 250 000-cell size; the pointer handlers now honor that literally
    instead of inserting a mention at an unselectable column.
+
+### Amendment 2 — a3m and large alignments (2026-09-23)
+
+Found by opening a real research file: `data/fold_2025_06_27_18_45_paired_msa_chains_a.a3m`
+(8 469 973 bytes, 14 633 records). The viewer could not open it at all, for four
+independent reasons — all fixed:
+
+1. **`.a3m` was not a recognized name**, so the file never reached the MSA viewer: it fell
+   through to the generic text preview, whose inline-capped read produced the 413 the
+   researcher saw. `.a3m` (and `.A3M`) now map to the `"msa"` kind.
+2. **The renderer's own fetch was inline-only**, so routing alone would have hit the same
+   8 MiB cap. A 413 is now retried on the streaming `download=1` variant (which the
+   service already offers for exactly this), with a 64 MB viewer ceiling and an
+   `AbortController` so a switched-away tab does not leave the download running.
+3. **a3m is ragged until lowercase insertions are removed** (the file had 52 distinct raw
+   record lengths, 427–484; after stripping lowercase: exactly one length, 427). Stripping
+   is the format's own semantics — insertion residues are not part of the alignment — and
+   the parse reports `insertionsStripped` so the grid says so instead of silently showing
+   something other than the file (the "Raw text" toggle shows the file as written).
+4. **The 250 000-cell guard was measured wrong for this design.** It assumed the grid cost
+   scales with the total cell count, but rows are virtualized and same-class characters are
+   grouped into runs. Measured on that file (14 633 × 427 = 6.25M cells): ~400–500 ms for
+   the one-time column statistics, ~2 ms to render 30 visible rows (~18 spans per row),
+   ~3 ms for the band. The guard is now a cost model: plain text only above **20 000
+   columns** (per-row DOM/width) or **20 000 000 cells** (the statistics pass), and the
+   statistics are skipped entirely in plain mode; `tableStats` accepts already-computed
+   column statistics so the grid's pass is not repeated.
+
+Name detection learned `.a3m` in both `isMsaFile` and `kindFor`; the web regression suite
+covers it.

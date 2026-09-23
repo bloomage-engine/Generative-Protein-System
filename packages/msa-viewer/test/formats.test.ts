@@ -65,6 +65,10 @@ test("isMsaFile: recognized alignments and search results by name (case-insensit
   for (const name of ["notes.txt", "result-notes.txt", "icon.png", "molecule.pdb", "pdf-report.txt"]) {
     assert.equal(isMsaFile(name), false, name);
   }
+  // ColabFold / AlphaFold MSA
+  assert.equal(isMsaFile("fold_a.a3m"), true);
+  assert.equal(isMsaFile("MSA.A3M"), true);
+  assert.equal(isMsaFile("data/fold_2025_06_27_18_45_paired_msa_chains_a.a3m"), true);
 });
 
 test("sniffFormat recognizes each format from the first content line", () => {
@@ -171,6 +175,30 @@ test("FASTA: the name is the first header token; a description is dropped; an em
   // a repeated header is NOT block interleaving (that is a Clustal/Stockholm
   // concept) — concatenating would silently corrupt the record
   assert.throws(() => parseAlignment(">Seq1\nMAAVL\n>Seq1\nTTVLL\n"), MsaParseError);
+});
+
+test("a3m: lowercase insertions are not part of the alignment — the grid shows the gapless match states", () => {
+  // ragged raw lengths on purpose: the insertions differ per record
+  const text = [">query", "MKavltTTVLL", ">hit1", "MKqTTVLL", ">hit2", "MKTTVLL"].join("\n");
+  const r = parseAlignment(text);
+  assert.equal(r.kind, "aligned");
+  if (r.kind !== "aligned") return;
+  assert.equal(r.columns, 7);
+  assert.deepEqual(r.sequences.map((s) => s.seq), ["MKTTVLL", "MKTTVLL", "MKTTVLL"]);
+  assert.equal(r.insertionsStripped, true);
+});
+
+test("an equal-length FASTA keeps its lowercase (soft-masked residues are not insertions)", () => {
+  const r = parseAlignment(">a\nMKavlt\n>b\nMK--lt\n");
+  assert.equal(r.kind, "aligned");
+  if (r.kind !== "aligned") return;
+  assert.equal(r.sequences[0]!.seq, "MKavlt"); // untouched
+  assert.equal(r.insertionsStripped, undefined);
+});
+
+test("a ragged FASTA WITHOUT lowercase stays unaligned (the a3m reduction does not apply)", () => {
+  const r = parseAlignment(">a\nMKAVLTT\n>b\nMKTT\n");
+  assert.equal(r.kind, "unaligned");
 });
 
 test("Stockholm: a real Pfam-style #=GC per-column annotation is kept (alongside #=PC)", () => {

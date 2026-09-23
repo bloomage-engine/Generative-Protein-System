@@ -34,11 +34,41 @@ type FetchState =
   | { status: "ready"; text: string }
   | { status: "error"; message: string };
 
+/** The viewer reads the file into memory as one string; past this it points at the download. */
+const VIEWER_MAX_BYTES = 64 * 1024 * 1024;
+
 function friendlyError(status: number): string {
   if (status === 404) return "This file no longer exists in the workspace.";
-  if (status === 413) return "This file is over the inline size cap — use download to inspect it.";
   if (status === 503) return "The workspace is not available in this deployment.";
   return `The workspace answered HTTP ${status}; the alignment could not be loaded.`;
+}
+
+const TOO_BIG = `This alignment is larger than the ${Math.round(
+  VIEWER_MAX_BYTES / (1024 * 1024),
+)} MB the viewer reads into memory — use the download link above instead.`;
+
+/**
+ * Read the alignment text. The inline route caps its body (413) to protect the
+ * ordinary preview path, but an alignment viewer legitimately wants the whole
+ * file — a real ColabFold a3m easily passes the cap — so a 413 is retried on the
+ * streaming `download=1` variant, up to a viewer ceiling. Aborting (a tab switch,
+ * a StrictMode remount) cancels the request instead of leaving a large download
+ * running.
+ */
+async function fetchAlignmentText(
+  api: string,
+  path: string,
+  project: string | null,
+  signal: AbortSignal,
+): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+  const attempt = (download: boolean): Promise<Response> =>
+    fetch(workspaceFileUrl(api, path, download ? { download: true, project } : { project }), { signal });
+  let res = await attempt(false);
+  if (res.status === 413) res = await attempt(true); // over the inline cap: stream it
+  if (!res.ok) return { ok: false, message: friendlyError(res.status) };
+  const declared = Number(res.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > VIEWER_MAX_BYTES) return { ok: false, message: TOO_BIG };
+  return { ok: true, text: new TextDecoder("utf-8").decode(await res.arrayBuffer()) };
 }
 
 export function MsaRenderer({ path, name }: { path: string; name: string }) {
@@ -47,25 +77,20 @@ export function MsaRenderer({ path, name }: { path: string; name: string }) {
   const [showRaw, setShowRaw] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     setState({ status: "loading" });
     setShowRaw(false);
     void (async () => {
       try {
-        const res = await fetch(workspaceFileUrl(api, path, { project }));
-        if (!res.ok) {
-          if (!cancelled) setState({ status: "error", message: friendlyError(res.status) });
-          return;
-        }
-        const text = new TextDecoder("utf-8").decode(await res.arrayBuffer());
-        if (!cancelled) setState({ status: "ready", text });
+        const result = await fetchAlignmentText(api, path, project, controller.signal);
+        if (controller.signal.aborted) return;
+        setState(result.ok ? { status: "ready", text: result.text } : { status: "error", message: result.message });
       } catch (err) {
-        if (!cancelled) setState({ status: "error", message: err instanceof Error ? err.message : String(err) });
+        if (controller.signal.aborted) return;
+        setState({ status: "error", message: err instanceof Error ? err.message : String(err) });
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [api, path, project]);
 
   const parsed = useMemo(() => {

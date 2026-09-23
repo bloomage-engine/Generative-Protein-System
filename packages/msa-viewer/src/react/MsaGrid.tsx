@@ -14,7 +14,7 @@ import type { MsaAligned } from "../formats.js";
 import { DEFAULT_CONSERVED, columnStats, isConservedCol, tableStats } from "../stats.js";
 import type { MsaTarget } from "../mention.js";
 import {
-  PLAIN_TEXT_CELL_LIMIT,
+  PLAIN_TEXT_COLUMN_LIMIT,
   columnAtOffset,
   columnsToKeep,
   conservationBandColor,
@@ -102,14 +102,22 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
     return () => window.removeEventListener("mouseup", finish);
   }, [drag]);
 
-  const colStats = useMemo(() => columnStats(data), [data]);
+  // The scale guard comes FIRST: in plain mode the one-time statistics pass
+  // (O(rows × columns), ~400 ms at 6M cells) is exactly what must not run.
+  const plain = shouldUsePlainText(data.sequences.length, data.columns);
+  const colStats = useMemo(() => (plain ? [] : columnStats(data)), [data, plain]);
   const rows = useMemo(() => filterRowsByQuery(data.sequences, query), [data.sequences, query]);
   const keep = useMemo(
     () => columnsToKeep(data.columns, data.sequences, colStats, { conservedOnly, hideGaps }, DEFAULT_CONSERVED),
     [data.columns, data.sequences, colStats, conservedOnly, hideGaps],
   );
-  const table = useMemo(() => tableStats(data), [data]);
-  const plain = shouldUsePlainText(data.sequences.length, data.columns);
+  const table = useMemo(
+    () =>
+      plain
+        ? { sequences: data.sequences.length, columns: data.columns, averageIdentity: 0, conservedColumns: 0 }
+        : tableStats(data, DEFAULT_CONSERVED, colStats),
+    [data, colStats, plain],
+  );
 
   const windowed = rowWindow(rows.length, scrollTop, viewport > 0 ? viewport : 480, ROW_HEIGHT, OVERSCAN);
   const visible = rows.slice(windowed.start, windowed.start + windowed.count);
@@ -231,7 +239,7 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
           <input type="checkbox" checked={showBand} disabled={plain} onChange={(e) => setShowBand(e.target.checked)} />
           conservation band
         </label>
-        <button type="button" style={{ fontSize: 12 }} onClick={() => setShowStats((v) => !v)}>
+        <button type="button" style={{ fontSize: 12 }} disabled={plain} onClick={() => setShowStats((v) => !v)}>
           {showStats ? "hide stats" : "show stats"}
         </button>
       </div>
@@ -245,9 +253,17 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
 
       {plain && (
         <p style={{ fontSize: 12, padding: "0 8px 4px", opacity: 0.8 }}>
-          {(data.sequences.length * data.columns).toLocaleString()} cells is above{" "}
-          {PLAIN_TEXT_CELL_LIMIT.toLocaleString()} — showing the plain-text view (search still works;
-          selection, the band and the column filters are disabled at this size).
+          {(data.sequences.length * data.columns).toLocaleString()} cells
+          {data.columns > PLAIN_TEXT_COLUMN_LIMIT ? ` across ${data.columns.toLocaleString()} columns` : ""} is beyond what the
+          grid renders comfortably — showing the plain-text view (search still works; selection, the band, the
+          column filters and the statistics are disabled at this size).
+        </p>
+      )}
+
+      {data.insertionsStripped === true && (
+        <p style={{ fontSize: 12, padding: "0 8px 4px", opacity: 0.8 }}>
+          a3m: lowercase insertion residues are not part of the alignment and are hidden — “Raw text” shows the
+          file as written.
         </p>
       )}
 

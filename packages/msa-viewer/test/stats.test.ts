@@ -65,6 +65,11 @@ test("stats are total over every MsaParseResult shape", () => {
   assert.deepEqual(sequenceStats(unaligned)[0], { name: "x", length: 3, gapFraction: 0 });
 });
 
+test("tableStats reuses caller-computed column stats (the grid passes its memo, halving the work)", () => {
+  const stats = columnStats(ALIGNED);
+  assert.deepEqual(tableStats(ALIGNED, undefined, stats), tableStats(ALIGNED));
+});
+
 test("tableStats: averages + conserved count use the same predicate", () => {
   const t = tableStats(ALIGNED);
   assert.equal(t.sequences, 3);

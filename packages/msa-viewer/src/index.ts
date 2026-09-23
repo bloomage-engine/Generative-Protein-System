@@ -38,6 +38,7 @@ export {
 
 export {
   PLAIN_TEXT_CELL_LIMIT,
+  PLAIN_TEXT_COLUMN_LIMIT,
   columnAtOffset,
   columnsToKeep,
   conservationBandColor,

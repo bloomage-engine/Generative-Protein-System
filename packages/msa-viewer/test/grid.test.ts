@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   PLAIN_TEXT_CELL_LIMIT,
+  PLAIN_TEXT_COLUMN_LIMIT,
   columnAtOffset,
   columnsToKeep,
   conservationBandColor,
@@ -73,14 +74,21 @@ test("conservationBandColor: identity scale, gap-heavy override, clamped input",
   assert.equal(conservationBandColor(1.7, -1), "#c92a2a");   // inputs are clamped
 });
 
-test("shouldUsePlainText: the 250k-cell guard (and a custom limit)", () => {
-  assert.equal(PLAIN_TEXT_CELL_LIMIT, 250_000);
-  assert.equal(shouldUsePlainText(1000, 300), true);      // 300k > 250k
-  assert.equal(shouldUsePlainText(100, 1000), false);     // 100k
-  assert.equal(shouldUsePlainText(250, 1000), false);     // exactly 250k is still fine
-  assert.equal(shouldUsePlainText(10, 11, 100), true);    // 110 > 100
-  assert.equal(shouldUsePlainText(10, 10, 100), false);   // exactly 100 is still fine
-  assert.equal(shouldUsePlainText(0, 5), false);          // degenerate input
+test("shouldUsePlainText: a cost-based guard — real ColabFold MSAs stay a grid, pathologies degrade", () => {
+  assert.equal(PLAIN_TEXT_COLUMN_LIMIT, 20_000);
+  assert.equal(PLAIN_TEXT_CELL_LIMIT, 20_000_000);
+  // a real ColabFold/AF a3m: 14 633 sequences × 427 columns = 6.25M cells.
+  // Row virtualization bounds the render (~18 grouped spans per row at this
+  // width); the one-time stats cost is ~400 ms, measured.
+  assert.equal(shouldUsePlainText(14633, 427), false);
+  assert.equal(shouldUsePlainText(100, 1000), false); // 100k
+  // the stats backstop
+  assert.equal(shouldUsePlainText(50_000, 500), true); // 25M cells
+  // a pathologically WIDE alignment: the per-row DOM/width cost
+  assert.equal(shouldUsePlainText(10, 20_001), true);
+  assert.equal(shouldUsePlainText(10, 20_000), false);
+  assert.equal(shouldUsePlainText(10, 10, { columns: 5 }), true); // custom column limit
+  assert.equal(shouldUsePlainText(0, 5), false); // degenerate input
 });
 
 test("filterRowsByQuery: case-insensitive name substring; empty query is identity", () => {

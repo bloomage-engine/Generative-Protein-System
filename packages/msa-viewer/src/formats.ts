@@ -26,6 +26,12 @@ export interface MsaAligned {
   sequences: MsaSequence[];
   columns: number;
   annotations: MsaAnnotation[];
+  /**
+   * Set when the source was an a3m MSA (ColabFold / AlphaFold) and the lowercase
+   * insertion residues were removed to recover the match-state alignment. The
+   * renderer surfaces this so the view is never silently different from the file.
+   */
+  insertionsStripped?: boolean;
 }
 
 export interface MsaUnaligned {
@@ -64,6 +70,7 @@ const MSA_SUFFIXES = [
   ".faa",
   ".fna",
   ".aln",
+  ".a3m",
   ".result",
   "_result",
 ] as const;
@@ -285,7 +292,34 @@ function parseFasta(raw: string): MsaParseResult {
     const name = names[names.length - 1]!;
     chunks.set(name, (chunks.get(name) ?? "") + t);
   }
-  return alignOrUnalign(names, chunks);
+  const a3m = a3mAligned(names, chunks);
+  return a3m ?? alignOrUnalign(names, chunks);
+}
+
+/**
+ * a3m (ColabFold / AlphaFold MSA): lowercase letters are insertion residues and
+ * are NOT part of the alignment, so the file is ragged until they are removed.
+ * Returns the reduced alignment only when stripping them makes every record the
+ * same length — the format's own invariant — so an equal-length file, or one
+ * whose lowercase letters are soft-masking rather than insertions, is left as
+ * it is.
+ */
+function a3mAligned(names: string[], chunks: Map<string, string>): MsaAligned | null {
+  if (names.length < 2) return null;
+  if (!names.some((n) => /[a-z]/.test(chunks.get(n) ?? ""))) return null;
+  const raw = names.map((n) => chunks.get(n) ?? "");
+  const rawLen = raw[0]!.length;
+  if (raw.every((s) => s.length === rawLen)) return null; // already uniform: not ours to interpret
+  const stripped = raw.map((s) => s.replace(/[a-z]/g, ""));
+  const columns = stripped[0]!.length;
+  if (columns === 0 || !stripped.every((s) => s.length === columns)) return null;
+  return {
+    kind: "aligned",
+    sequences: names.map((n, i) => ({ name: n, seq: stripped[i]! })),
+    columns,
+    annotations: [],
+    insertionsStripped: true,
+  };
 }
 
 /**

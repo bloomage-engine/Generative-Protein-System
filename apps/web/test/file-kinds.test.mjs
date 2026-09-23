@@ -131,6 +131,8 @@ test("MSA alignment + mmseqs-result files map to the msa kind by name (mime-inde
     "hits.result",
     "mmseqs_output_result",
     "sub/dir/hits_result",
+    "fold_a.a3m",
+    "MSA.A3M",
   ]) {
     assert.equal(kindFor(name, "application/octet-stream"), "msa", name);
     assert.equal(isMsaFile(name), true, name);
