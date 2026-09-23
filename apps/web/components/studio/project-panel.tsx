@@ -15,22 +15,28 @@ import {
 import {
   archiveProject,
   archiveSession,
+  archiveWorktree,
   createProject,
   createSession,
   DEFAULT_HPC_API,
   DEFAULT_WORKTREE_ID,
   deleteProject,
   deleteSession,
+  deleteWorktree,
   fetchProjectsOverview,
   fetchProjectSessions,
+  fetchWorktrees,
   isOpenComputeJobState,
   listHpcJobs,
   renameProject,
   renameSession,
+  renameWorktree,
   unarchiveProject,
   unarchiveSession,
+  unarchiveWorktree,
   type Project,
   type Session,
+  type Worktree,
 } from "@science-studio/transport-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,30 +58,42 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { fallbackProject, fallbackSession } from "@/lib/scope-fallback";
 import { useStudioStore } from "@/store/studio-store";
+import { WorktreeCreateDialog } from "./worktree-create-dialog";
 
 const PROJECTS_API = process.env.NEXT_PUBLIC_PROJECTS_URL ?? "/api/projects";
+const WORKTREES_API = process.env.NEXT_PUBLIC_WORKTREES_URL ?? "/api/worktrees";
 
 /**
- * The inline rename target (a Project's `name` or a Session's `title`).
- * `projectId` is present for a Session — the path needs both halves.
+ * The inline rename target (a Project's `name`, a Worktree's `name`, or a
+ * Session's `title`). `projectId` is present for a Worktree/Session — the path
+ * needs both halves.
  */
 type Renaming =
   | { kind: "project"; id: string; value: string }
+  | { kind: "worktree"; projectId: string; id: string; value: string }
   | { kind: "session"; projectId: string; id: string; value: string }
   | null;
 
 /** The delete-confirmation target. */
 type Deleting =
   | { kind: "project"; id: string; name: string }
+  | { kind: "worktree"; projectId: string; id: string; name: string }
   | { kind: "session"; projectId: string; id: string; name: string }
   | null;
 
 /**
  * The left slot's Project view: every Project, the active one expanded to its
- * Sessions — create, switch, rename, archive and delete both scopes from here.
+ * Worktrees (a `Project → Worktree → Session` tree) — create, switch, rename,
+ * archive and delete all three scopes from here.
+ *
+ * A Project expands to its Worktrees; a Worktree expands to its Sessions.
+ * Single-clicking a Worktree SELECTS it (`setScope` with no Session), so browsing
+ * a checkout's files needs no conversation — and a Session is only created under
+ * the Worktree it is expanded on. The reserved `main` Worktree is the Project
+ * root and cannot be renamed/archived/deleted, so its row carries no menu.
  *
  * Archiving is reversible and lives behind the header's archive toggle; deleting
- * is not (docs/adr/0014). The bootstrap Project (`defaultProjectId`) is
+ * is not (docs/adr/0014, 0025). The bootstrap Project (`defaultProjectId`) is
  * immutable, so its row carries no menu at all. Archiving or deleting the ACTIVE
  * scope re-resolves the workbench through `setScope`, the one path the store,
  * the remembered scope and the URL move along (docs/adr/0009).
@@ -84,6 +102,7 @@ export function ProjectPanel() {
   const projects = useStudioStore((s) => s.projects);
   const defaultProjectId = useStudioStore((s) => s.defaultProjectId);
   const activeProjectId = useStudioStore((s) => s.projectId);
+  const activeWorktreeId = useStudioStore((s) => s.activeWorktreeId);
   const panelProjectId = useStudioStore((s) => s.panelProjectId);
   const sessions = useStudioStore((s) => s.panelSessions);
   const activeSessionId = useStudioStore((s) => s.activeSessionId);
@@ -94,6 +113,28 @@ export function ProjectPanel() {
   const [name, setName] = React.useState("");
   const [renaming, setRenaming] = React.useState<Renaming>(null);
   const [deleting, setDeleting] = React.useState<Deleting>(null);
+  // The Project whose "New worktree" dialog is open (`null` = closed).
+  const [creatingWorktreeFor, setCreatingWorktreeFor] = React.useState<string | null>(null);
+  /**
+   * Each expanded Project's Worktrees, cached so re-expanding does not refetch.
+   * The store holds only the ACTIVE Project's list (`worktrees`); the pane can
+   * browse another Project, so it keeps its own per-Project map (docs/adr/0025).
+   */
+  const [worktreesFor, setWorktreesFor] = React.useState<Record<string, Worktree[]>>({});
+  /**
+   * The `(Project, Worktree)` the pane has expanded to its Sessions. One at a
+   * time, matching the single `panelSessions` list; `null` means "follow the
+   * effective worktree" (the active one, else `main`) — which is the state the
+   * pane boots into.
+   */
+  const [expandedWorktree, setExpandedWorktree] = React.useState<{
+    projectId: string;
+    worktreeId: string;
+  } | null>(null);
+  // Read by `effectiveWorktreeId` from inside stable callbacks; the state drives
+  // rendering, the ref keeps those callbacks from closing over a stale value.
+  const expandedWorktreeRef = React.useRef(expandedWorktree);
+  expandedWorktreeRef.current = expandedWorktree;
   // The delete dialog counts the Project's non-terminal Compute Jobs so it can
   // warn that deleting does NOT stop them (docs/adr/0024). A failed count is
   // silence, not an error — the delete must not wedge on the HPC hop.
@@ -123,6 +164,8 @@ export function ProjectPanel() {
   const [archiveProjects, setArchiveProjects] = React.useState<Project[] | null>(null);
   const [archiveActive, setArchiveActive] = React.useState<Project[]>([]);
   const [archiveSessions, setArchiveSessions] = React.useState<Record<string, Session[]>>({});
+  // Archived Worktrees per Project, loaded with the archive view (docs/adr/0025).
+  const [archiveWorktrees, setArchiveWorktrees] = React.useState<Record<string, Worktree[]>>({});
   const [expandedArchive, setExpandedArchive] = React.useState<Set<string>>(new Set());
 
   // `submitRename` runs from both Enter and blur; the ref lets `cancelRename`
@@ -131,16 +174,19 @@ export function ProjectPanel() {
   renamingRef.current = renaming;
 
   /**
-   * The Worktree a target Project's Sessions are listed/created under. While
-   * the pane is expanded on the ACTIVE Project that is its active worktree; a
-   * Project the pane merely browses has no active worktree of its own, so
-   * `main` — a Worktree is only unique within a Project. Task 7 replaces the
-   * "active worktree" half with a real per-worktree expansion, but the
-   * session-scoping contract is already here: a Session belongs to the worktree
-   * it is created under, never to `main` behind the active worktree's back.
+   * The Worktree the pane's target Project is expanded on. A Project can hold
+   * several Worktrees, and the pane expands ONE at a time (`expandedWorktree`);
+   * when it has not picked one it follows the effective default — the ACTIVE
+   * worktree while the pane shows the active Project, else `main` (a Project the
+   * pane merely browses has no active worktree of its own: a Worktree id is only
+   * unique within a Project). That default is what keeps a Session created or
+   * listed while browsing another Project from landing on the active Project's
+   * checkout behind its back.
    */
-  const worktreeFor = React.useCallback((targetProjectId: string | null): string => {
+  const effectiveWorktreeId = React.useCallback((targetProjectId: string | null): string => {
     if (targetProjectId === null) return DEFAULT_WORKTREE_ID;
+    const expanded = expandedWorktreeRef.current;
+    if (expanded && expanded.projectId === targetProjectId) return expanded.worktreeId;
     const store = useStudioStore.getState();
     return targetProjectId === store.projectId
       ? (store.activeWorktreeId ?? DEFAULT_WORKTREE_ID)
@@ -162,34 +208,54 @@ export function ProjectPanel() {
     }
   }, []);
 
-  // List a Project's Sessions for the PANE. Expanding is browsing, not
-  // switching: the scope moves only when a Session is double-clicked. The list
-  // is scoped to the worktree the pane's Sessions belong to (`worktreeFor`), so
-  // the pane and the active scope never disagree about which checkout's
-  // Sessions are on screen.
-  const loadSessions = React.useCallback(async (projectId: string) => {
+  /** List a Project's Worktrees into the pane's per-Project cache (docs/adr/0025). */
+  const loadWorktrees = React.useCallback(async (projectId: string) => {
     setBusy(true);
     setError(null);
     try {
-      const list = await fetchProjectSessions(PROJECTS_API, projectId, {
-        worktreeId: worktreeFor(projectId),
-      });
+      const list = await fetchWorktrees(WORKTREES_API, projectId);
+      setWorktreesFor((map) => ({ ...map, [projectId]: list }));
       const store = useStudioStore.getState();
-      if (store.panelProjectId !== projectId) return;
-      store.setPanelSessions(list);
-      if (store.projectId === projectId) store.setSessions(list);
+      if (store.projectId === projectId) store.setWorktrees(list);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
-  }, [worktreeFor]);
+  }, []);
 
-  /** Refresh a Project's active Sessions wherever it is currently shown. */
+  // List a Worktree's Sessions for the PANE. Expanding is browsing, not
+  // switching: the scope moves only when a Session is double-clicked or a
+  // Worktree is selected. The list is scoped to the expanded worktree so the
+  // pane and the active scope never disagree about which checkout's Sessions are
+  // on screen; a stale response (the pane moved on) is dropped.
+  const loadSessions = React.useCallback(async (projectId: string, worktreeId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const list = await fetchProjectSessions(PROJECTS_API, projectId, { worktreeId });
+      const store = useStudioStore.getState();
+      if (store.panelProjectId !== projectId) return;
+      if (effectiveWorktreeId(projectId) !== worktreeId) return;
+      store.setPanelSessions(list);
+      if (
+        store.projectId === projectId &&
+        (store.activeWorktreeId ?? DEFAULT_WORKTREE_ID) === worktreeId
+      ) {
+        store.setSessions(list);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [effectiveWorktreeId]);
+
+  /** Refresh the pane's expanded Worktree wherever the Project is currently shown. */
   const refreshSessions = React.useCallback(async (projectId: string) => {
     try {
       const list = await fetchProjectSessions(PROJECTS_API, projectId, {
-        worktreeId: worktreeFor(projectId),
+        worktreeId: effectiveWorktreeId(projectId),
       });
       const store = useStudioStore.getState();
       if (store.panelProjectId === projectId) store.setPanelSessions(list);
@@ -197,7 +263,7 @@ export function ProjectPanel() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [worktreeFor]);
+  }, [effectiveWorktreeId]);
 
   const loadArchive = React.useCallback(async () => {
     setBusy(true);
@@ -207,6 +273,7 @@ export function ProjectPanel() {
       setArchiveProjects(projects.filter((p) => p.archivedAt !== undefined));
       setArchiveActive(projects.filter((p) => p.archivedAt === undefined));
       setArchiveSessions({});
+      setArchiveWorktrees({});
       setExpandedArchive(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -219,29 +286,47 @@ export function ProjectPanel() {
     if (projects === null) void loadProjects();
   }, [projects, loadProjects]);
 
-  // The pane re-lists whatever it is expanded on and has nothing to show for.
+  // The pane re-lists whatever it is expanded on and has nothing to show for:
+  // its Worktrees when they are not cached, else its expanded Worktree's
+  // Sessions.
   React.useEffect(() => {
     if (!panelProjectId) return;
+    const cached = worktreesFor[panelProjectId];
+    if (cached === undefined) {
+      void loadWorktrees(panelProjectId);
+    } else if (
+      useStudioStore.getState().projectId === panelProjectId &&
+      useStudioStore.getState().worktrees === null
+    ) {
+      // A cached list still has to reach the store after a Project switch reset it.
+      useStudioStore.getState().setWorktrees(cached);
+    }
     if (useStudioStore.getState().panelSessions.length > 0) return;
-    void loadSessions(panelProjectId);
-  }, [panelProjectId, loadSessions]);
+    void loadSessions(panelProjectId, effectiveWorktreeId(panelProjectId));
+  }, [panelProjectId, worktreesFor, loadWorktrees, loadSessions, effectiveWorktreeId]);
 
   /** Expand/collapse a Project — the conversation does NOT follow. */
   const toggleProject = (project: Project) => {
     const store = useStudioStore.getState();
     const expanding = store.panelProjectId !== project.id;
     store.setPanelProject(expanding ? project.id : null);
+    // Collapsing a Project drops its expanded Worktree; expanding one re-lists
+    // its Worktrees afresh (an agent may have created one between expands).
+    expandedWorktreeRef.current = null;
+    setExpandedWorktree(null);
+    if (!expanding) return;
+    setWorktreesFor((map) => {
+      if (!(project.id in map)) return map;
+      const next = { ...map };
+      delete next[project.id];
+      return next;
+    });
   };
 
-  /** Double-clicking a Session is what commits the scope. */
-  const switchSession = (sessionId: string) => {
+  /** Double-clicking a Session is what commits the conversation scope. */
+  const switchSession = (projectId: string, worktreeId: string, sessionId: string) => {
     const store = useStudioStore.getState();
-    if (!store.panelProjectId) return;
-    store.setScope({
-      projectId: store.panelProjectId,
-      worktreeId: worktreeFor(store.panelProjectId),
-      sessionId,
-    });
+    store.setScope({ projectId, worktreeId, sessionId });
     store.setLeftView("thread");
   };
 
@@ -266,20 +351,18 @@ export function ProjectPanel() {
     }
   };
 
-  const addSession = async () => {
+  const addSession = async (worktreeId: string) => {
     if (!panelProjectId) return;
     setBusy(true);
     setError(null);
     try {
-      const session = await createSession(PROJECTS_API, panelProjectId, {
-        worktreeId: worktreeFor(panelProjectId),
-      });
+      const session = await createSession(PROJECTS_API, panelProjectId, { worktreeId });
       const store = useStudioStore.getState();
       if (store.panelProjectId !== panelProjectId) return;
       store.setPanelSessions([...store.panelSessions, session]);
       store.setScope({
         projectId: panelProjectId,
-        worktreeId: worktreeFor(panelProjectId),
+        worktreeId,
         sessionId: session.id,
       });
       store.setLeftView("thread");
@@ -292,6 +375,13 @@ export function ProjectPanel() {
 
   const startProjectRename = (project: Project) =>
     setRenaming({ kind: "project", id: project.id, value: project.name });
+  const startWorktreeRename = (worktree: Worktree) =>
+    setRenaming({
+      kind: "worktree",
+      projectId: worktree.projectId,
+      id: worktree.id,
+      value: worktree.name,
+    });
   const startSessionRename = (session: Session) =>
     setRenaming({ kind: "session", projectId: session.projectId, id: session.id, value: session.title ?? "" });
   const cancelRename = () => {
@@ -311,6 +401,20 @@ export function ProjectPanel() {
     try {
       if (current.kind === "project") {
         useStudioStore.getState().upsertProject(await renameProject(PROJECTS_API, current.id, value));
+      } else if (current.kind === "worktree") {
+        const updated = await renameWorktree(WORKTREES_API, current.projectId, current.id, value);
+        setWorktreesFor((map) =>
+          map[current.projectId]
+            ? {
+                ...map,
+                [current.projectId]: map[current.projectId]!.map((w) =>
+                  w.id === updated.id ? updated : w,
+                ),
+              }
+            : map,
+        );
+        const store = useStudioStore.getState();
+        if (store.projectId === current.projectId) store.upsertWorktree(updated);
       } else {
         const updated = await renameSession(PROJECTS_API, current.projectId, current.id, value);
         useStudioStore.getState().upsertSession(updated);
@@ -340,7 +444,9 @@ export function ProjectPanel() {
       return;
     }
     try {
-      const worktreeId = worktreeFor(nextId);
+      // A fallback Project has no expanded worktree of its own yet: land on the
+      // one the scope rule would pick (`main`, since `nextId` is not active).
+      const worktreeId = effectiveWorktreeId(nextId);
       const list = await fetchProjectSessions(PROJECTS_API, nextId, { worktreeId });
       const s = useStudioStore.getState();
       s.setScope({
@@ -353,12 +459,12 @@ export function ProjectPanel() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, []);
+  }, [effectiveWorktreeId]);
 
   const commitSessionFallback = (projectId: string, remaining: Session[]) => {
     const store = useStudioStore.getState();
     const nextId = fallbackSession(projectId, remaining);
-    store.setScope({ projectId, worktreeId: worktreeFor(projectId), sessionId: nextId });
+    store.setScope({ projectId, worktreeId: effectiveWorktreeId(projectId), sessionId: nextId });
     if (!nextId) store.setLeftView("project");
   };
 
@@ -405,7 +511,10 @@ export function ProjectPanel() {
       const store = useStudioStore.getState();
       const wasActive = store.activeSessionId === session.id;
       store.removeSession(session.id);
-      if (wasActive) commitSessionFallback(session.projectId, useStudioStore.getState().sessions);
+      // Fall back within the pane's worktree list, which is what the removed
+      // Session was listed under (a Project-wide list could pick another
+      // checkout's Session).
+      if (wasActive) commitSessionFallback(session.projectId, useStudioStore.getState().panelSessions);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -427,8 +536,131 @@ export function ProjectPanel() {
           ? { ...map, [session.projectId]: map[session.projectId]!.filter((s) => s.id !== session.id) }
           : map,
       );
-      if (wasActive) commitSessionFallback(session.projectId, useStudioStore.getState().sessions);
+      if (wasActive) commitSessionFallback(session.projectId, useStudioStore.getState().panelSessions);
       setDeleting(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Expand one Worktree in the pane and list its Sessions. `commitScope` is set
+   * when the click should also move the ACTIVE scope (browsing a checkout's
+   * files); removal handlers that only need the pane to re-list pass `false`.
+   */
+  const focusWorktree = (
+    projectId: string,
+    worktreeId: string,
+    opts: { commitScope: boolean; worktrees?: Worktree[] },
+  ) => {
+    const store = useStudioStore.getState();
+    const next = { projectId, worktreeId };
+    expandedWorktreeRef.current = next;
+    setExpandedWorktree(next);
+    if (opts.commitScope) {
+      store.setScope({ projectId, worktreeId, sessionId: null });
+      // Keep the store's active Worktree list in step with the pane's cache
+      // (`setScope` resets it to null only on a Project switch). Re-read the
+      // store: the snapshot above predates the commit.
+      const live = useStudioStore.getState();
+      const cached = opts.worktrees ?? worktreesFor[projectId] ?? live.worktrees ?? [];
+      if (live.projectId === projectId) live.setWorktrees(cached);
+    }
+    store.setPanelSessions([]);
+    void loadSessions(projectId, worktreeId);
+  };
+
+  /** Select a Worktree (no Session required) and expand its Sessions. */
+  const selectWorktree = (projectId: string, worktree: Worktree, list?: Worktree[]) =>
+    focusWorktree(projectId, worktree.id, { commitScope: true, worktrees: list });
+
+  /** A freshly created Worktree lands in the cache and opens straight away. */
+  const handleWorktreeCreated = (worktree: Worktree) => {
+    const projectId = worktree.projectId;
+    const nextList = [...(worktreesFor[projectId] ?? []), worktree];
+    setWorktreesFor((map) => ({ ...map, [projectId]: nextList }));
+    const store = useStudioStore.getState();
+    if (store.projectId === projectId) store.upsertWorktree(worktree);
+    selectWorktree(projectId, worktree, nextList);
+  };
+
+  /** Re-list a Project's Worktrees after a mutation; the server is authoritative. */
+  const reloadWorktrees = async (projectId: string) => {
+    try {
+      const list = await fetchWorktrees(WORKTREES_API, projectId);
+      setWorktreesFor((map) => ({ ...map, [projectId]: list }));
+      const store = useStudioStore.getState();
+      if (store.projectId === projectId) store.setWorktrees(list);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  /**
+   * Reconcile the pane after a Worktree is archived or deleted. If it was the
+   * ACTIVE one the scope re-resolves to the Project root (`main`) — which clears
+   * the tabs, a Worktree switch — otherwise only the pane's expansion moves.
+   */
+  const afterWorktreeGone = async (projectId: string, id: string) => {
+    const store = useStudioStore.getState();
+    const activeWorktree = store.activeWorktreeId ?? DEFAULT_WORKTREE_ID;
+    const wasActive = store.projectId === projectId && activeWorktree === id;
+    const wasExpanded = effectiveWorktreeId(projectId) === id;
+    const remaining = (worktreesFor[projectId] ?? []).filter((w) => w.id !== id);
+    setWorktreesFor((map) => ({ ...map, [projectId]: remaining }));
+    store.removeWorktree(id);
+    if (wasActive) {
+      focusWorktree(projectId, DEFAULT_WORKTREE_ID, { commitScope: true, worktrees: remaining });
+    } else if (wasExpanded) {
+      const next = store.projectId === projectId ? activeWorktree : DEFAULT_WORKTREE_ID;
+      focusWorktree(projectId, next, { commitScope: false });
+    }
+    await reloadWorktrees(projectId);
+  };
+
+  const doArchiveWorktree = async (worktree: Worktree) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await archiveWorktree(WORKTREES_API, worktree.projectId, worktree.id);
+      await afterWorktreeGone(worktree.projectId, worktree.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doDeleteWorktree = async (projectId: string, id: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteWorktree(WORKTREES_API, projectId, id);
+      // The archive view may be showing the row; drop it there too.
+      setArchiveWorktrees((map) =>
+        map[projectId] ? { ...map, [projectId]: map[projectId]!.filter((w) => w.id !== id) } : map,
+      );
+      await afterWorktreeGone(projectId, id);
+      setDeleting(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doRestoreWorktree = async (worktree: Worktree) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await unarchiveWorktree(WORKTREES_API, worktree.projectId, worktree.id);
+      setArchiveWorktrees((map) => ({
+        ...map,
+        [worktree.projectId]: (map[worktree.projectId] ?? []).filter((w) => w.id !== worktree.id),
+      }));
+      await reloadWorktrees(worktree.projectId);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -473,12 +705,18 @@ export function ProjectPanel() {
       else next.add(projectId);
       return next;
     });
-    if (archiveSessions[projectId]) return;
+    if (archiveSessions[projectId] && archiveWorktrees[projectId]) return;
     void (async () => {
       setBusy(true);
       try {
-        const list = await fetchProjectSessions(PROJECTS_API, projectId, { includeArchived: true });
-        setArchiveSessions((map) => ({ ...map, [projectId]: list }));
+        if (!archiveSessions[projectId]) {
+          const list = await fetchProjectSessions(PROJECTS_API, projectId, { includeArchived: true });
+          setArchiveSessions((map) => ({ ...map, [projectId]: list }));
+        }
+        if (!archiveWorktrees[projectId]) {
+          const worktrees = await fetchWorktrees(WORKTREES_API, projectId, { includeArchived: true });
+          setArchiveWorktrees((map) => ({ ...map, [projectId]: worktrees }));
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -499,6 +737,7 @@ export function ProjectPanel() {
     const target = deleting;
     if (!target) return;
     if (target.kind === "project") await doDeleteProject(target.id);
+    else if (target.kind === "worktree") await doDeleteWorktree(target.projectId, target.id);
     else await doDeleteSession(target);
   };
 
@@ -570,11 +809,13 @@ export function ProjectPanel() {
             archived={archiveProjects}
             active={archiveActive}
             sessionsFor={(id) => archiveSessions[id] ?? null}
+            worktreesFor={(id) => archiveWorktrees[id] ?? null}
             expanded={expandedArchive}
             busy={busy}
             onToggle={toggleArchiveProject}
             onRestoreProject={doRestoreProject}
             onRestoreSession={doRestoreSession}
+            onRestoreWorktree={doRestoreWorktree}
             onDeleteProject={(project) =>
               setDeleting({ kind: "project", id: project.id, name: project.name })
             }
@@ -584,6 +825,14 @@ export function ProjectPanel() {
                 projectId: session.projectId,
                 id: session.id,
                 name: session.title ?? session.id,
+              })
+            }
+            onDeleteWorktree={(worktree) =>
+              setDeleting({
+                kind: "worktree",
+                projectId: worktree.projectId,
+                id: worktree.id,
+                name: worktree.name,
               })
             }
             onStartRename={startSessionRename}
@@ -659,21 +908,40 @@ export function ProjectPanel() {
                       )}
                     </div>
                     {expanded && !editing && (
-                      <SessionList
+                      <WorktreeList
+                        projectId={project.id}
+                        worktrees={worktreesFor[project.id] ?? null}
+                        activeProjectId={activeProjectId}
+                        activeWorktreeId={activeWorktreeId}
+                        expandedWorktreeId={effectiveWorktreeId(project.id)}
                         sessions={sessions}
                         activeSessionId={activeSessionId}
                         busy={busy}
                         renaming={renaming}
-                        onPick={switchSession}
-                        onCreate={() => void addSession()}
-                        onStartRename={startSessionRename}
+                        onSelect={(worktree) => selectWorktree(project.id, worktree)}
+                        onCreate={() => setCreatingWorktreeFor(project.id)}
+                        onPickSession={(worktreeId, sessionId) =>
+                          switchSession(project.id, worktreeId, sessionId)
+                        }
+                        onCreateSession={(worktreeId) => void addSession(worktreeId)}
+                        onStartRename={startWorktreeRename}
                         onRenameChange={(value) =>
                           setRenaming((r) => (r ? { ...r, value } : r))
                         }
                         onSubmitRename={() => void submitRename()}
                         onCancelRename={cancelRename}
-                        onArchive={(session) => void doArchiveSession(session)}
-                        onDelete={(session) =>
+                        onArchive={(worktree) => void doArchiveWorktree(worktree)}
+                        onDelete={(worktree) =>
+                          setDeleting({
+                            kind: "worktree",
+                            projectId: worktree.projectId,
+                            id: worktree.id,
+                            name: worktree.name,
+                          })
+                        }
+                        onStartSessionRename={startSessionRename}
+                        onArchiveSession={(session) => void doArchiveSession(session)}
+                        onDeleteSession={(session) =>
                           setDeleting({
                             kind: "session",
                             projectId: session.projectId,
@@ -691,16 +959,29 @@ export function ProjectPanel() {
         )}
       </div>
 
+      <WorktreeCreateDialog
+        open={creatingWorktreeFor !== null}
+        projectId={creatingWorktreeFor ?? ""}
+        onOpenChange={(open) => (!open ? setCreatingWorktreeFor(null) : undefined)}
+        onCreated={handleWorktreeCreated}
+      />
+
       <Dialog open={deleting !== null} onOpenChange={(open) => (!open ? setDeleting(null) : undefined)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {deleting?.kind === "session" ? "删除会话？" : "删除项目？"}
+              {deleting?.kind === "session"
+                ? "删除会话？"
+                : deleting?.kind === "worktree"
+                  ? "删除工作树？"
+                  : "删除项目？"}
             </DialogTitle>
             <DialogDescription>
               {deleting?.kind === "session"
                 ? `「${deleting.name}」及其所有运行记录都会被删除，且无法恢复。`
-                : `「${deleting?.name ?? ""}」连同它的会话、运行记录与全部历史文件都会被删除，且无法恢复。`}
+                : deleting?.kind === "worktree"
+                  ? `「${deleting.name}」及其所有会话、运行记录都会被删除；该 checkout 与分支也会一并移除，且无法恢复。`
+                  : `「${deleting?.name ?? ""}」连同它的会话、工作树、运行记录与全部历史文件都会被删除，且无法恢复。`}
             </DialogDescription>
             {deleting?.kind === "project" && openJobCount > 0 ? (
               <p className="text-destructive text-xs">
@@ -722,7 +1003,154 @@ export function ProjectPanel() {
   );
 }
 
-/** The expanded Project's Sessions, with its rename/archive/delete affordances. */
+/**
+ * The expanded Project's Worktrees (`Project → Worktree → Session`). A Worktree
+ * row selects that checkout and expands its Sessions; `main` is the Project root
+ * and carries no menu (docs/adr/0025).
+ */
+function WorktreeList({
+  projectId,
+  worktrees,
+  activeProjectId,
+  activeWorktreeId,
+  expandedWorktreeId,
+  sessions,
+  activeSessionId,
+  busy,
+  renaming,
+  onSelect,
+  onCreate,
+  onPickSession,
+  onCreateSession,
+  onStartRename,
+  onRenameChange,
+  onSubmitRename,
+  onCancelRename,
+  onArchive,
+  onDelete,
+  onStartSessionRename,
+  onArchiveSession,
+  onDeleteSession,
+}: {
+  projectId: string;
+  worktrees: Worktree[] | null;
+  activeProjectId: string | null;
+  activeWorktreeId: string | null;
+  /** The one Worktree whose Sessions are listed (only one at a time). */
+  expandedWorktreeId: string;
+  sessions: Session[];
+  activeSessionId: string | null;
+  busy: boolean;
+  renaming: Renaming;
+  /** Select the checkout (no Session) and expand its Sessions. */
+  onSelect: (worktree: Worktree) => void;
+  onCreate: () => void;
+  onPickSession: (worktreeId: string, sessionId: string) => void;
+  onCreateSession: (worktreeId: string) => void;
+  onStartRename: (worktree: Worktree) => void;
+  onRenameChange: (value: string) => void;
+  onSubmitRename: () => void;
+  onCancelRename: () => void;
+  onArchive: (worktree: Worktree) => void;
+  onDelete: (worktree: Worktree) => void;
+  onStartSessionRename: (session: Session) => void;
+  onArchiveSession: (session: Session) => void;
+  onDeleteSession: (session: Session) => void;
+}) {
+  if (worktrees === null) {
+    return (
+      <div className="border-border/70 text-muted-foreground ms-3 mb-1 flex items-center gap-2 border-s px-2 py-1 text-xs">
+        <Loader2 className="size-3.5 animate-spin" /> Loading worktrees…
+      </div>
+    );
+  }
+  return (
+    <ul className="border-border/70 ms-3 mb-1 flex flex-col gap-0.5 border-s ps-1">
+      {worktrees.map((worktree) => {
+        const active = projectId === activeProjectId && worktree.id === activeWorktreeId;
+        const expanded = worktree.id === expandedWorktreeId;
+        const editing = renaming?.kind === "worktree" && renaming.id === worktree.id;
+        return (
+          <li key={worktree.id}>
+            {editing ? (
+              <div className="flex items-center gap-1.5 rounded-md px-2 py-1">
+                <RenameField
+                  value={renaming.value}
+                  onChange={onRenameChange}
+                  onSubmit={onSubmitRename}
+                  onCancel={onCancelRename}
+                />
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  "group hover:bg-muted flex items-center gap-1.5 rounded-md px-2 py-1.5",
+                  active && "bg-muted font-medium",
+                )}
+              >
+                <button
+                  type="button"
+                  title={`Open worktree ${worktree.name}`}
+                  aria-current={active ? "true" : undefined}
+                  aria-expanded={expanded}
+                  onClick={() => onSelect(worktree)}
+                  className="flex min-w-0 flex-1 items-center gap-1.5 text-start text-xs"
+                >
+                  <ChevronRight
+                    className={cn(
+                      "text-muted-foreground size-3.5 shrink-0 transition-transform",
+                      expanded && "rotate-90",
+                    )}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{worktree.name}</span>
+                  <span className="bg-muted text-muted-foreground shrink-0 rounded px-1 font-mono text-[10px]">
+                    {worktree.branch}
+                  </span>
+                </button>
+                {worktree.id !== DEFAULT_WORKTREE_ID && (
+                  <RowMenu
+                    label={`Worktree actions: ${worktree.name}`}
+                    onRename={() => onStartRename(worktree)}
+                    onArchive={() => onArchive(worktree)}
+                    onDelete={() => onDelete(worktree)}
+                  />
+                )}
+              </div>
+            )}
+            {expanded && !editing && (
+              <SessionList
+                sessions={sessions}
+                activeSessionId={activeSessionId}
+                busy={busy}
+                renaming={renaming}
+                onPick={(id) => onPickSession(worktree.id, id)}
+                onCreate={() => onCreateSession(worktree.id)}
+                onStartRename={onStartSessionRename}
+                onRenameChange={onRenameChange}
+                onSubmitRename={onSubmitRename}
+                onCancelRename={onCancelRename}
+                onArchive={onArchiveSession}
+                onDelete={onDeleteSession}
+              />
+            )}
+          </li>
+        );
+      })}
+      <li>
+        <button
+          type="button"
+          onClick={onCreate}
+          disabled={busy}
+          className="hover:bg-muted text-muted-foreground flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-start text-xs disabled:opacity-50"
+        >
+          <Plus className="size-3.5 shrink-0" /> New worktree
+        </button>
+      </li>
+    </ul>
+  );
+}
+
+/** The expanded Worktree's Sessions, with its rename/archive/delete affordances. */
 function SessionList({
   sessions,
   activeSessionId,
@@ -828,18 +1256,21 @@ function SessionList({
   );
 }
 
-/** The archive view: archived Projects and archived Sessions, both restorable. */
+/** The archive view: archived Projects, their archived Worktrees and Sessions, all restorable. */
 function ArchiveList({
   archived,
   active,
   sessionsFor,
+  worktreesFor,
   expanded,
   busy,
   onToggle,
   onRestoreProject,
   onRestoreSession,
+  onRestoreWorktree,
   onDeleteProject,
   onDeleteSession,
+  onDeleteWorktree,
   onStartRename,
   renamer,
   onRenameChange,
@@ -849,13 +1280,16 @@ function ArchiveList({
   archived: Project[] | null;
   active: Project[];
   sessionsFor: (projectId: string) => Session[] | null;
+  worktreesFor: (projectId: string) => Worktree[] | null;
   expanded: Set<string>;
   busy: boolean;
   onToggle: (projectId: string) => void;
   onRestoreProject: (project: Project) => void;
   onRestoreSession: (session: Session) => void;
+  onRestoreWorktree: (worktree: Worktree) => void;
   onDeleteProject: (project: Project) => void;
   onDeleteSession: (session: Session) => void;
+  onDeleteWorktree: (worktree: Worktree) => void;
   onStartRename: (session: Session) => void;
   renamer: Renaming;
   onRenameChange: (value: string) => void;
@@ -882,6 +1316,9 @@ function ArchiveList({
         // An archived Project shows all its Sessions; an active one only its
         // archived ones (that is the point of listing it here).
         const shown = all === null ? null : isArchived ? all : all.filter((s) => s.archivedAt);
+        const allWorktrees = worktreesFor(project.id);
+        const archivedWorktrees =
+          allWorktrees === null ? null : allWorktrees.filter((w) => w.archivedAt !== undefined);
         return (
           <li key={project.id}>
             <div className="group hover:bg-muted flex items-center gap-1.5 rounded-md px-2 py-1.5">
@@ -928,6 +1365,40 @@ function ArchiveList({
             </div>
             {isOpen && (
               <ul className="border-border/70 ms-3 mb-1 flex flex-col gap-0.5 border-s ps-1">
+                {archivedWorktrees !== null && archivedWorktrees.length > 0 && (
+                  <li>
+                    <ul className="flex flex-col gap-0.5">
+                      {archivedWorktrees.map((worktree) => (
+                        <li
+                          key={worktree.id}
+                          className="group hover:bg-muted flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs"
+                        >
+                          <span className="min-w-0 flex-1 truncate">{worktree.name}</span>
+                          <span className="bg-muted text-muted-foreground shrink-0 rounded px-1 font-mono text-[10px]">
+                            {worktree.branch}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`Restore worktree ${worktree.name}`}
+                            onClick={() => onRestoreWorktree(worktree)}
+                          >
+                            <ArchiveRestore />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            className="text-destructive"
+                            aria-label={`Delete worktree ${worktree.name} permanently`}
+                            onClick={() => onDeleteWorktree(worktree)}
+                          >
+                            <Trash2 />
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                )}
                 {shown === null && (
                   <li className="text-muted-foreground flex items-center gap-2 px-2 py-1 text-xs">
                     <Loader2 className="size-3.5 animate-spin" /> Loading sessions…
