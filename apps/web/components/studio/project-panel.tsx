@@ -610,7 +610,11 @@ export function ProjectPanel() {
     const wasExpanded = effectiveWorktreeId(projectId) === id;
     const remaining = (worktreesFor[projectId] ?? []).filter((w) => w.id !== id);
     setWorktreesFor((map) => ({ ...map, [projectId]: remaining }));
-    store.removeWorktree(id);
+    // `store.worktrees` is the ACTIVE Project's list only; a worktree id is
+    // unique only WITHIN a Project, so dropping the id while the pane browses
+    // another Project would remove that Project's same-slug entry. Guard to the
+    // active Project (both the archive and the delete path reach here).
+    if (store.projectId === projectId) store.removeWorktree(id);
     if (wasActive) {
       focusWorktree(projectId, DEFAULT_WORKTREE_ID, { commitScope: true, worktrees: remaining });
     } else if (wasExpanded) {
