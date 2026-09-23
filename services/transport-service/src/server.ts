@@ -35,10 +35,12 @@ import type { Backend, CorsConfig } from "./composition.js";
 import { registerCronRoutes } from "./cron/routes.js";
 import { createCronScheduler } from "./cron/scheduler.js";
 import { createCronStore } from "./cron/store.js";
-import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS } from "./directory.js";
+import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS, WorktreeNotFoundError } from "./directory.js";
 import { registerHpcRoutes } from "./hpc/routes.js";
 import { createHpcPoller } from "./hpc/poller.js";
 import { createSshRunner } from "./hpc/ssh.js";
+import { createGitRunner } from "./worktree/git.js";
+import { registerWorktreeRoutes } from "./worktree/routes.js";
 import { canonicalSessionKey, createProjectScopes } from "./project-scope.js";
 import {
   computeInteractionsForSelection,
@@ -90,6 +92,20 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       return;
     }
     request.principal = principal;
+  });
+
+  // A worktree that the record does not know is a 404, not a 500 (the deferred
+  // mapping the `/api/worktrees` routes rely on). Everything else keeps
+  // Fastify's own status (e.g. a 413 body-limit rejection).
+  app.setErrorHandler((err, _request, reply) => {
+    if (err instanceof WorktreeNotFoundError) {
+      return reply.code(404).send({ error: err.message });
+    }
+    const statusCode = (err as { statusCode?: unknown }).statusCode;
+    if (typeof statusCode === "number" && statusCode >= 400) {
+      reply.code(statusCode);
+    }
+    return reply.send(err);
   });
 
   // One in-flight run per session, and identity is record-owned: the store IS the
@@ -547,6 +563,20 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     ssh,
     poller: hpcPoller,
     ...(backend.workspaceLimits ? { workspaceLimits: backend.workspaceLimits } : {}),
+  });
+
+  // -- Project git worktrees (docs/adr/0025) ---------------------------------
+  // The repository is initialized lazily by the first create; listing a
+  // Project's worktrees reads the record and never touches the disk. The
+  // `projectRoot`/`git` seams let a test point both at a tmp dir and a fake git.
+  const worktreeRoot = backend.projectRoot ?? process.env.PROJECT_ROOT;
+  registerWorktreeRoutes(app, {
+    scope,
+    directory,
+    records,
+    environments: backend.environments,
+    git: backend.git ?? createGitRunner(),
+    ...(worktreeRoot ? { projectRoot: worktreeRoot } : {}),
   });
 
   // -- Standing watch (NDJSON, long-lived, NOT [DONE]-terminated) ------------

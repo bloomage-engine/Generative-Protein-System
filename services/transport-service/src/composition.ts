@@ -66,6 +66,10 @@ export interface Backend {
    * Absent = the real system-OpenSSH spawner.
    */
   hpcSsh?: import("./hpc/ssh.js").SshRunner;
+  /** Test seam: the host-side project root git worktrees live under (default `PROJECT_ROOT`). */
+  projectRoot?: string;
+  /** Test seam: the git runner (defaults to the real system-git spawner). */
+  git?: import("./worktree/git.js").GitRunner;
 }
 
 /** The out-of-tree contract a private enterprise module implements. */
