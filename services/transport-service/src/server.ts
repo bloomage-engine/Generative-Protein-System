@@ -17,7 +17,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import { posix } from "node:path";
 import { Readable } from "node:stream";
-import { createInMemoryRecordStore, type Session } from "@science-studio/record";
+import { createInMemoryRecordStore, sessionWorktreeId, type Session } from "@science-studio/record";
 import type {
   AttachmentRef,
   FileContent,
@@ -245,11 +245,18 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
 
   app.post("/api/projects/:id/sessions", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const body = (request.body ?? {}) as { agentId?: unknown; title?: unknown };
+    const body = (request.body ?? {}) as { agentId?: unknown; title?: unknown; worktreeId?: unknown };
+    const worktreeId =
+      typeof body.worktreeId === "string" && body.worktreeId ? body.worktreeId : undefined;
+    // Validate the claimed worktree BEFORE the project-missing catch, so an
+    // unknown worktree is a 404 through the error handler rather than a
+    // misleading "project not found".
+    if (worktreeId) await directory.requireWorktree(id, worktreeId);
     try {
       const session = await directory.createSession(id, {
         ...(typeof body.agentId === "string" && body.agentId ? { agentId: body.agentId } : {}),
         ...(typeof body.title === "string" && body.title ? { title: body.title } : {}),
+        ...(worktreeId ? { worktreeId } : {}),
       });
       return reply.code(201).send({ session });
     } catch {
@@ -259,8 +266,14 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
 
   app.get("/api/projects/:id/sessions", async (request) => {
     const { id } = request.params as { id: string };
-    const includeArchived = (request.query as { includeArchived?: string }).includeArchived === "1";
-    return { sessions: await directory.listSessions(id, { includeArchived }) };
+    const query = request.query as { includeArchived?: string; worktreeId?: string };
+    const includeArchived = query.includeArchived === "1";
+    const sessions = await directory.listSessions(id, { includeArchived });
+    return {
+      sessions: query.worktreeId
+        ? sessions.filter((session) => sessionWorktreeId(session) === query.worktreeId)
+        : sessions,
+    };
   });
 
   app.post("/api/projects/:id/sessions/:sessionId/rename", async (request, reply) => {
