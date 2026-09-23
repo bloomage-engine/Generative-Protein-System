@@ -6,7 +6,7 @@ import {
   INTERACTION_DESCRIPTION,
   MEASUREMENTS_TOOL_NAME,
   MEASUREMENTS_DESCRIPTION,
-  createMolqlResult,
+  executeMolqlTool,
   fetchInteractions,
   fetchMeasurements,
 } from "@science-studio/molql-shared";
@@ -54,19 +54,25 @@ export default defineToolPlugin({
           }),
         ),
       }),
-      execute: (args) => createMolqlResult(args),
+      execute: (args) => executeMolqlTool(args),
     }),
 
     tool({
       name: INTERACTION_TOOL_NAME,
       description: INTERACTION_DESCRIPTION,
       parameters: Type.Object({
-        project: Type.String({
-          description: 'The Project id from the mention, e.g. "project-default".',
-        }),
-        path: Type.String({
-          description: 'The workspace-relative structure file path, e.g. "boltz_holo.pdb".',
-        }),
+        project: Type.Optional(
+          Type.String({
+            description:
+              'Optional. The Project id from a mention, e.g. "project-default". Omit when the user named no file: the service targets the file the user has open.',
+          }),
+        ),
+        path: Type.Optional(
+          Type.String({
+            description:
+              'Optional. The workspace-relative structure file path, e.g. "boltz_holo.pdb". Omit when the user named no file.',
+          }),
+        ),
         molql: Type.String({
           description: "The MolQL (mol-script) selection expression from the mention.",
         }),
@@ -94,12 +100,15 @@ export default defineToolPlugin({
             "Ordered selection items (A, B, C, D): a bare MolQL expression or a full @project/path/molql mention.",
         }),
         project: Type.Optional(
-          Type.String({ description: "The Project id; read from the first mention when omitted." }),
+          Type.String({
+            description:
+              "Optional Project id; read from the first mention when omitted. Omit when the user named no file.",
+          }),
         ),
         path: Type.Optional(
           Type.String({
             description:
-              "The workspace-relative structure file path; read from the first mention when omitted.",
+              "Optional workspace-relative structure file path; read from the first mention when omitted. Omit when the user named no file.",
           }),
         ),
         description: Type.Optional(

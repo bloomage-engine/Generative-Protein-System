@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { isStructureFile } from "@science-studio/molql-viewer/formats";
 import type { Project, Session, Worktree } from "@science-studio/transport-client";
 import {
   readScopeMemory,
@@ -167,6 +168,22 @@ type State = {
   /** Reset the visible message window back to the default (20). */
   resetVisibleMessageCount: () => void;
 };
+
+/**
+ * The workspace path of the structure file the user is CURRENTLY VIEWING, or
+ * `null` when the active tab is absent or is not a structure file.
+ *
+ * `activeTabPath` is the ONE file being viewed; other open tabs stay mounted but
+ * hidden. Derived (never stored) so it can never drift from
+ * `tabs`/`activeTabPath`.
+ */
+export function activeStructurePath(
+  state: Pick<State, "tabs" | "activeTabPath">,
+): string | null {
+  const tab = state.tabs.find((t) => t.path === state.activeTabPath);
+  if (!tab) return null;
+  return isStructureFile(tab.name) ? tab.path : null;
+}
 
 export const useStudioStore = create<State>()((set) => ({
   projectId: null,

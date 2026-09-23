@@ -32,6 +32,14 @@ export type UseTransportOptions = {
   threadId?: string | null;
   /** Extra request headers for the transport calls. */
   headers?: Record<string, string>;
+  /**
+   * The client's current view for each send — the workspace path of the
+   * structure file the user is viewing (or `null`). It travels to the SERVICE
+   * only (`body.view`), never into the model's prompt: the service uses it so a
+   * structure tool that names no file targets the file the user actually has
+   * open.
+   */
+  view?: () => { activeStructure: string | null };
   /** Called when a run finishes. */
   onFinish?: () => void;
   /**
@@ -113,6 +121,9 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
     api: scopedApi,
     protocol: "assistant-transport",
     headers: options.headers ?? {},
+    // The service-only view context rides every send; the transport hop relays
+    // the body verbatim. It never becomes prompt text.
+    body: async () => ({ view: options.view?.() ?? { activeStructure: null } }),
     initialState: createInitialRuntimeState(),
     converter: (state, { pendingCommands }) => {
       const isRunning = state.status === "running";

@@ -11,6 +11,17 @@ This skill translates natural language molecular structure queries into valid Mo
 
 The selection is delivered by calling the `molql` **tool** — never by printing the expression in a code block. The tool forwards the expression to the viewer, which compiles it with Mol* and highlights/focuses the matching atoms. Measurements are delivered by the separate `measurements` tool (see "Measuring" below).
 
+## Which structure file?
+
+The `molql` tool takes no file argument: it always targets the structure file the user is **currently viewing**. That is intentional — the user picks the file in the viewer, not the model. If the `molql` tool reports that **no structure file is open**, do NOT assume the selection was applied: ask the user to open the structure file (.pdb, .cif, …) they want to operate on.
+
+The `measurements` and `computeInteraction` tools DO need a file. Resolve it in this order:
+
+1. **The user named one** (a path in words, or a `@…` mention) → pass `project`/`path` from it.
+2. **Otherwise omit `project`/`path`** → the service targets the file the user currently has open. **Do NOT reuse a file path from earlier in the conversation** — the open file may have changed since.
+3. **Neither is available** → the call fails with a message saying no file is open; relay it as a question ("which structure file should I use?").
+
+
 ## When to Use
 
 Trigger this skill when users:
@@ -70,7 +81,8 @@ distance, angle, dihedral, label, orientation or best-fit plane, call the
   - `dihedral` → 4 items (A—B—C—D)
   - `orientation` / `plane` → 1 or more items (a set)
 - `project` / `path` (optional): read from the first mention when the items are
-  mentions; otherwise pass them explicitly.
+  mentions; otherwise pass them explicitly. If the user named no file, omit them
+  (see "Which structure file?").
 
 Examples of the MolQL you pass as selection items:
 

@@ -7,7 +7,6 @@ import {
   type MolqlSelectionMode,
 } from "./directive.js";
 import { registerMissingMolstarCombinators } from "./molstar-combinators.js";
-import { getActiveMolqlViewer } from "./registry.js";
 import type { MolqlSelectionTarget } from "./target.js";
 
 registerMissingMolstarCombinators();
@@ -46,7 +45,8 @@ export function compileMolql(molql: string, structure: Structure): StructureElem
 }
 
 export interface ApplyMolqlOptions {
-  /** Defaults to the active viewer registered by `MolqlViewerPanel`. */
+  /** The viewer to apply to (the file the user is viewing). Required: the
+   *  registry is path-keyed, so the caller resolves the target explicitly. */
   target?: MolqlSelectionTarget;
   /** `"select"` (persistent, default) or `"highlight"` (transient). */
   mode?: MolqlSelectionMode;
@@ -115,7 +115,7 @@ export async function applyMolqlSelection(
   molql: string,
   options: ApplyMolqlOptions = {},
 ): Promise<StructureElement.Loci> {
-  const target = options.target ?? getActiveMolqlViewer();
+  const target = options.target;
   if (!target) throw new MolqlError("No structure viewer is open.", "NO_VIEWER");
 
   if (target.whenReady) await target.whenReady();
