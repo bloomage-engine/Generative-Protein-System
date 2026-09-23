@@ -49,14 +49,14 @@
   - `const DEFAULT_WORKTREE_ID = "main"; const MAIN_BRANCH = "main"`
   - `function sessionWorktreeId(session: Session): Id` (returns `session.worktreeId ?? DEFAULT_WORKTREE_ID`)
   - `Session.worktreeId?: Id`
-  - `RecordStore` methods:
+  - `RecordStore` methods (keyed by `(projectId, id)` — `main` is per-Project):
     `addWorktree(worktree: Worktree): Promise<Worktree>`,
-    `getWorktree(id: Id): Promise<Worktree | null>`,
+    `getWorktree(projectId: Id, id: Id): Promise<Worktree | null>`,
     `listWorktrees(projectId: Id, opts?: { includeArchived?: boolean }): Promise<Worktree[]>`,
-    `updateWorktree(id: Id, patch: { name: string }): Promise<Worktree>`,
-    `archiveWorktree(id: Id, archivedAt: string): Promise<Worktree>`,
-    `unarchiveWorktree(id: Id): Promise<Worktree>`,
-    `deleteWorktree(id: Id): Promise<void>`
+    `updateWorktree(projectId: Id, id: Id, patch: { name: string }): Promise<Worktree>`,
+    `archiveWorktree(projectId: Id, id: Id, archivedAt: string): Promise<Worktree>`,
+    `unarchiveWorktree(projectId: Id, id: Id): Promise<Worktree>`,
+    `deleteWorktree(projectId: Id, id: Id): Promise<void>`
 
 - [ ] **Step 1: Add the type and the normalizer**
 
@@ -122,17 +122,17 @@ Add the Worktree methods to the `RecordStore` interface (after `listProjects`, b
 
 ```ts
   addWorktree(worktree: Worktree): Promise<Worktree>;
-  getWorktree(id: Id): Promise<Worktree | null>;
+  getWorktree(projectId: Id, id: Id): Promise<Worktree | null>;
   /** A Project's Worktrees, insertion order. Archived worktrees excluded unless asked for. */
   listWorktrees(projectId: Id, opts?: { includeArchived?: boolean }): Promise<Worktree[]>;
   /** Rename a Worktree (its id and branch are immutable). Returns the updated row. */
-  updateWorktree(id: Id, patch: { name: string }): Promise<Worktree>;
+  updateWorktree(projectId: Id, id: Id, patch: { name: string }): Promise<Worktree>;
   /** Mark a Worktree archived; returns the updated row. */
-  archiveWorktree(id: Id, archivedAt: string): Promise<Worktree>;
+  archiveWorktree(projectId: Id, id: Id, archivedAt: string): Promise<Worktree>;
   /** Clear a Worktree's archived flag; returns the updated row. */
-  unarchiveWorktree(id: Id): Promise<Worktree>;
+  unarchiveWorktree(projectId: Id, id: Id): Promise<Worktree>;
   /** Remove a Worktree and every Session/Run under it. */
-  deleteWorktree(id: Id): Promise<void>;
+  deleteWorktree(projectId: Id, id: Id): Promise<void>;
 ```
 
 - [ ] **Step 3: Write the failing shared-contract test**
@@ -214,10 +214,10 @@ test("worktrees satisfy the RecordStore contract in both stores", async () => {
       (await store.listWorktrees("p1")).map((w) => w.id),
       ["main", "exp-a"],
     );
-    assert.equal((await store.getWorktree("exp-a"))?.branch, "exp/a");
-    assert.equal(await store.getWorktree("missing"), null);
+    assert.equal((await store.getWorktree("p1", "exp-a"))?.branch, "exp/a");
+    assert.equal(await store.getWorktree("p1", "missing"), null);
 
-    await store.archiveWorktree("exp-a", "2026-02-01T00:00:00.000Z");
+    await store.archiveWorktree("p1", "exp-a", "2026-02-01T00:00:00.000Z");
     assert.deepEqual(
       (await store.listWorktrees("p1")).map((w) => w.id),
       ["main"],
@@ -226,16 +226,23 @@ test("worktrees satisfy the RecordStore contract in both stores", async () => {
       (await store.listWorktrees("p1", { includeArchived: true })).map((w) => w.id),
       ["main", "exp-a"],
     );
-    await store.unarchiveWorktree("exp-a");
-    assert.equal((await store.getWorktree("exp-a"))?.archivedAt, undefined);
+    await store.unarchiveWorktree("p1", "exp-a");
+    assert.equal((await store.getWorktree("p1", "exp-a"))?.archivedAt, undefined);
 
-    await store.updateWorktree("exp-a", { name: "Renamed" });
-    assert.equal((await store.getWorktree("exp-a"))?.name, "Renamed");
+    await store.updateWorktree("p1", "exp-a", { name: "Renamed" });
+    assert.equal((await store.getWorktree("p1", "exp-a"))?.name, "Renamed");
 
     // Rows are copies.
     const fetched = (await store.listWorktrees("p1"))[0]!;
     fetched.name = "mutated";
-    assert.equal((await store.getWorktree("main"))?.name, "main");
+    assert.equal((await store.getWorktree("p1", "main"))?.name, "main");
+
+    // Two Projects may each have a `main` worktree without shadowing (the id is
+    // only unique WITHIN a project).
+    await store.createProject(project({ id: "p2", name: "Other" }));
+    await store.addWorktree(worktree({ id: "main", projectId: "p2" }));
+    assert.equal((await store.getWorktree("p1", "main"))?.projectId, "p1");
+    assert.equal((await store.getWorktree("p2", "main"))?.projectId, "p2");
   });
 });
 
@@ -250,8 +257,8 @@ test("deleting a worktree cascades its sessions and runs", async () => {
     await store.addRun(run({ id: "r1", sessionId: "s1" }));
     await store.addRun(run({ id: "r2", sessionId: "s2" }));
 
-    await store.deleteWorktree("exp-a");
-    assert.equal(await store.getWorktree("exp-a"), null);
+    await store.deleteWorktree("p1", "exp-a");
+    assert.equal(await store.getWorktree("p1", "exp-a"), null);
     assert.equal(await store.getSession("s1"), null);
     assert.equal((await store.getSession("s2"))?.id, "s2");
     assert.deepEqual(
@@ -275,6 +282,30 @@ test("sessionWorktreeId defaults a legacy session to main", () => {
   assert.equal(sessionWorktreeId(session()), DEFAULT_WORKTREE_ID);
   assert.equal(sessionWorktreeId(session({ worktreeId: "exp-a" })), "exp-a");
 });
+
+test("JSONL worktree rows and legacy sessions survive a reopen", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ss-record-worktree-reopen-"));
+  try {
+    const path = join(dir, "record.jsonl");
+    const first = await createJsonlRecordStore(path);
+    await first.createProject(project());
+    await first.addWorktree(worktree({ id: "exp-a", name: "Experiment A", branch: "exp/a" }));
+    // A session persisted WITHOUT a worktreeId (the pre-worktree shape).
+    await first.addSession({ ...session({ id: "s-legacy" }), worktreeId: undefined });
+    await first.addSession(session({ id: "s-linked", worktreeId: "exp-a" }));
+
+    const second = await createJsonlRecordStore(path);
+    assert.equal((await second.getWorktree("p1", "exp-a"))?.branch, "exp/a");
+    assert.deepEqual(
+      (await second.listWorktrees("p1")).map((w) => w.id),
+      ["exp-a"],
+    );
+    assert.equal(sessionWorktreeId((await second.getSession("s-legacy"))!), "main");
+    assert.equal((await second.getSession("s-linked"))?.worktreeId, "exp-a");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 ```
 
 - [ ] **Step 4: Run the test to verify it fails**
@@ -284,15 +315,15 @@ Expected: FAIL — the worktree methods are not on the store / exports are missi
 
 - [ ] **Step 5: Implement the in-memory store methods**
 
-In `packages/record/src/memory.ts`, import `Worktree`, add `const worktrees = new Map<Id, Worktree>();`, and add methods mirroring the Project ones:
+In `packages/record/src/memory.ts`, import `Worktree` and `sessionWorktreeId`, add `const worktrees = new Map<string, Worktree>();` and `const worktreeKey = (projectId: Id, id: Id) => \`${projectId}\\u0000${id}\`;`, and add methods mirroring the Project ones (keyed by `(projectId, id)` — a bare id is ambiguous because every Project has a `main`):
 
 ```ts
     async addWorktree(worktree: Worktree): Promise<Worktree> {
-      worktrees.set(worktree.id, clone(worktree));
+      worktrees.set(worktreeKey(worktree.projectId, worktree.id), clone(worktree));
       return clone(worktree);
     },
-    async getWorktree(id: Id): Promise<Worktree | null> {
-      const w = worktrees.get(id);
+    async getWorktree(projectId: Id, id: Id): Promise<Worktree | null> {
+      const w = worktrees.get(worktreeKey(projectId, id));
       return w ? clone(w) : null;
     },
     async listWorktrees(
@@ -304,32 +335,35 @@ In `packages/record/src/memory.ts`, import `Worktree`, add `const worktrees = ne
         (w) => w.projectId === projectId && (opts.includeArchived === true || w.archivedAt === undefined),
       );
     },
-    async updateWorktree(id: Id, patch: { name: string }): Promise<Worktree> {
-      const prev = worktrees.get(id);
-      if (!prev) throw new Error(`worktree not found: ${id}`);
+    async updateWorktree(projectId: Id, id: Id, patch: { name: string }): Promise<Worktree> {
+      const key = worktreeKey(projectId, id);
+      const prev = worktrees.get(key);
+      if (!prev) throw new Error(`worktree not found: ${projectId}/${id}`);
       const next = { ...prev, name: patch.name };
-      worktrees.set(id, clone(next));
+      worktrees.set(key, clone(next));
       return clone(next);
     },
-    async archiveWorktree(id: Id, archivedAt: string): Promise<Worktree> {
-      const prev = worktrees.get(id);
-      if (!prev) throw new Error(`worktree not found: ${id}`);
+    async archiveWorktree(projectId: Id, id: Id, archivedAt: string): Promise<Worktree> {
+      const key = worktreeKey(projectId, id);
+      const prev = worktrees.get(key);
+      if (!prev) throw new Error(`worktree not found: ${projectId}/${id}`);
       const next = { ...prev, archivedAt };
-      worktrees.set(id, clone(next));
+      worktrees.set(key, clone(next));
       return clone(next);
     },
-    async unarchiveWorktree(id: Id): Promise<Worktree> {
-      const prev = worktrees.get(id);
-      if (!prev) throw new Error(`worktree not found: ${id}`);
+    async unarchiveWorktree(projectId: Id, id: Id): Promise<Worktree> {
+      const key = worktreeKey(projectId, id);
+      const prev = worktrees.get(key);
+      if (!prev) throw new Error(`worktree not found: ${projectId}/${id}`);
       const { archivedAt: _dropped, ...rest } = prev;
-      worktrees.set(id, clone(rest));
+      worktrees.set(key, clone(rest));
       return clone(rest);
     },
-    async deleteWorktree(id: Id): Promise<void> {
-      worktrees.delete(id);
+    async deleteWorktree(projectId: Id, id: Id): Promise<void> {
+      worktrees.delete(worktreeKey(projectId, id));
       const removed = new Set<Id>();
       for (const session of [...sessions.values()]) {
-        if (session.worktreeId === id) {
+        if (sessionWorktreeId(session) === id && session.projectId === projectId) {
           sessions.delete(session.id);
           transcripts.delete(session.id);
           removed.add(session.id);
@@ -344,11 +378,11 @@ In `packages/record/src/memory.ts`, import `Worktree`, add `const worktrees = ne
     },
 ```
 
-In the existing `deleteProject`, add `worktrees.delete` for the project's rows:
+In the existing `deleteProject`, add `worktrees.delete(worktreeKey(id, w.id))` for the project's rows:
 
 ```ts
       for (const w of [...worktrees.values()]) {
-        if (w.projectId === id) worktrees.delete(w.id);
+        if (w.projectId === id) worktrees.delete(worktreeKey(id, w.id));
       }
 ```
 
@@ -380,20 +414,20 @@ git commit -m "feat(record): Worktree entity and in-memory store support"
 
 In `packages/record/src/jsonl.ts`:
 - Add `Worktree` to the type import.
-- Add `{ t: "worktree"; v: Worktree }` to the `Row` union and `"worktree"` to the `drop` table union.
-- Add `worktrees: Map<Id, Worktree>` to `Tables`.
-- In `apply()` add `case "worktree": tables.worktrees.set(row.v.id, row.v); break;` and `else if (row.table === "worktree") tables.worktrees.delete(row.id);`.
+- Add `{ t: "worktree"; v: Worktree }` to the `Row` union and `"worktree"` to the `drop` table union; add an optional `projectId?: Id` to the `drop` row (a worktree tombstone needs it).
+- Add `worktrees: Map<string, Worktree>` to `Tables` (keyed `${projectId}\u0000${id}` — a bare id is ambiguous).
+- In `apply()` add `case "worktree": tables.worktrees.set(\`${row.v.projectId}\u0000${row.v.id}\`, row.v); break;` and `else if (row.table === "worktree") tables.worktrees.delete(\`${row.projectId}\u0000${row.id}\`);`.
 - In `parseLine()`'s guard add `parsed.t === "worktree"`.
 - In `compact()` add `...[...tables.worktrees.values()].map((v): Row => ({ t: "worktree", v })),`.
-- Extend `drop(table, id)`'s parameter type to include `"worktree"`.
+- Extend `drop(table, id, projectId?)`'s parameter type to include `"worktree"` and an optional `projectId`.
 
 - [ ] **Step 2: Normalize a legacy Session on decode**
 
-In `apply()`, replace the session case so a missing `worktreeId` becomes `main`:
+In `apply()`, replace the session case so a missing `worktreeId` becomes `DEFAULT_WORKTREE_ID` (import it):
 
 ```ts
     case "session": {
-      const session = row.v.worktreeId === undefined ? { ...row.v, worktreeId: "main" } : row.v;
+      const session = row.v.worktreeId === undefined ? { ...row.v, worktreeId: DEFAULT_WORKTREE_ID } : row.v;
       tables.sessions.set(session.id, session);
       break;
     }
@@ -401,13 +435,13 @@ In `apply()`, replace the session case so a missing `worktreeId` becomes `main`:
 
 - [ ] **Step 3: Add the JSONL Worktree methods**
 
-Add `worktrees` to the `Tables` initializer, and implement the seven methods mirroring the Project methods, using `append({ t: "worktree", v })` and `drop("worktree", id)`. The cascade for `deleteWorktree` must reuse the existing per-session durable removal:
+Add `worktrees` to the `Tables` initializer, and implement the seven methods mirroring the Project methods, keyed by `(projectId, id)`, using `append({ t: "worktree", v })`, `getWorktree(projectId, id)`, `updateWorktree(projectId, id, patch)`, `archiveWorktree(projectId, id, archivedAt)`, `unarchiveWorktree(projectId, id)`, `listWorktrees(projectId, opts?)`. The cascade for `deleteWorktree` must use `sessionWorktreeId` and reuse the existing per-session durable removal:
 
 ```ts
-    async deleteWorktree(id: Id): Promise<void> {
+    async deleteWorktree(projectId: Id, id: Id): Promise<void> {
       const removed = new Set<Id>();
       for (const session of [...tables.sessions.values()]) {
-        if (session.worktreeId === id) {
+        if (sessionWorktreeId(session) === id && session.projectId === projectId) {
           await drop("session", session.id);
           tables.sessions.delete(session.id);
           await removeSessionDurable(session.id);
@@ -420,8 +454,8 @@ Add `worktrees` to the `Tables` initializer, and implement the seven methods mir
           tables.runs.delete(run.id);
         }
       }
-      await drop("worktree", id);
-      tables.worktrees.delete(id);
+      await drop("worktree", id, projectId);
+      tables.worktrees.delete(`${projectId}\u0000${id}`);
     },
 ```
 
@@ -430,8 +464,8 @@ and add to the existing `deleteProject` cascade:
 ```ts
       for (const worktree of [...tables.worktrees.values()]) {
         if (worktree.projectId === id) {
-          await drop("worktree", worktree.id);
-          tables.worktrees.delete(worktree.id);
+          await drop("worktree", worktree.id, id);
+          tables.worktrees.delete(`${id}\u0000${worktree.id}`);
         }
       }
 ```
@@ -439,7 +473,7 @@ and add to the existing `deleteProject` cascade:
 - [ ] **Step 4: Run the test to verify it passes in both stores**
 
 Run: `npm run test -w @science-studio/record`
-Expected: PASS — all `worktree.test.ts` cases green in both stores.
+Expected: PASS — all `worktree.test.ts` cases green in both stores, including the reopen/legacy-normalization case (Step 3 of Task 1).
 
 - [ ] **Step 5: Commit**
 
@@ -554,7 +588,7 @@ In `services/transport-service/src/directory.ts`:
     for (let i = 1; i < 1000; i += 1) {
       const candidate = i === 1 ? base : `${base}-${i}`;
       if (candidate === DEFAULT_WORKTREE_ID) continue;
-      if (!(await opts.store.getWorktree(candidate))) return candidate;
+      if (!(await opts.store.getWorktree(projectId, candidate))) return candidate;
     }
     throw new Error("could not mint a unique worktree id");
   };
@@ -564,8 +598,8 @@ In `services/transport-service/src/directory.ts`:
 
 ```ts
     async ensureWorktree(projectId: Id): Promise<Worktree> {
-      const existing = await opts.store.getWorktree(DEFAULT_WORKTREE_ID);
-      if (existing && existing.projectId === projectId) return existing;
+      const existing = await opts.store.getWorktree(projectId, DEFAULT_WORKTREE_ID);
+      if (existing) return existing;
       return opts.store.addWorktree({
         id: DEFAULT_WORKTREE_ID,
         projectId,
@@ -580,10 +614,8 @@ In `services/transport-service/src/directory.ts`:
 
 ```ts
     async requireWorktree(projectId: Id, id: Id): Promise<Worktree> {
-      const worktree = await opts.store.getWorktree(id);
-      if (!worktree || worktree.projectId !== projectId) {
-        throw new WorktreeNotFoundError(projectId, id);
-      }
+      const worktree = await opts.store.getWorktree(projectId, id);
+      if (!worktree) throw new WorktreeNotFoundError(projectId, id);
       return worktree;
     },
 ```
@@ -988,7 +1020,7 @@ Change the callback to accept `(projectId, worktreeId)`, compute the workspace w
       const workspace = localWorkspace(env, projectId, worktreeId);
       const adapter = plugin.factory.create(binding);
       const project = await records.getProject(projectId).catch(() => null);
-      const worktree = await records.getWorktree(worktreeId).catch(() => null);
+      const worktree = await records.getWorktree(projectId, worktreeId).catch(() => null);
       void adapter
         .init({
           binding,
