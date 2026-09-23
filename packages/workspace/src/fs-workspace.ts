@@ -38,6 +38,8 @@ export interface FsWorkspaceOptions {
   agentRoot: string;
   /** Default inline-read cap when `open` is called without `maxBytes`. */
   maxInlineBytes?: number;
+  /** Entry names omitted from `list` results (e.g. `.git`, `.worktrees`). */
+  hiddenEntries?: readonly string[];
 }
 
 const DEFAULT_MAX_INLINE_BYTES = 8 * 1024 * 1024;
@@ -45,6 +47,7 @@ const DEFAULT_MAX_INLINE_BYTES = 8 * 1024 * 1024;
 export class FsWorkspace implements Workspace {
   private readonly agentRoot: string;
   private readonly maxInlineBytes: number;
+  private readonly hidden: ReadonlySet<string>;
 
   constructor(
     private readonly root: string,
@@ -52,6 +55,7 @@ export class FsWorkspace implements Workspace {
   ) {
     this.agentRoot = normalizeAgentRoot(options.agentRoot);
     this.maxInlineBytes = options.maxInlineBytes ?? DEFAULT_MAX_INLINE_BYTES;
+    this.hidden = new Set(options.hiddenEntries ?? []);
   }
 
   async list(relPath = "", _opts: { depth?: number } = {}): Promise<DirListing> {
@@ -63,6 +67,7 @@ export class FsWorkspace implements Workspace {
     const entries: Entry[] = [];
     for (const dirent of dirents) {
       if (dirent.isSymbolicLink()) continue; // v1: symlinks are not exposed
+      if (this.hidden.has(dirent.name)) continue;
       const childRel = rel === "" ? dirent.name : posix.join(rel, dirent.name);
       const stats = await lstat(join(abs, dirent.name));
       const isDir = stats.isDirectory();
