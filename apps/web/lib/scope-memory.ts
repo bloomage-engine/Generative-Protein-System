@@ -15,12 +15,16 @@
  * unit-tested without a browser; only `read`/`write`/`syncScopeUrl` touch the
  * browser, and each tolerates a browser that refuses (private mode, quota).
  */
-import {
-  DEFAULT_WORKTREE_ID,
-  type Project,
-  type Session,
-  type Worktree,
-} from "@science-studio/transport-client";
+import type { Project, Session, Worktree } from "@science-studio/transport-client";
+
+/**
+ * The reserved `main` Worktree id. Mirrors `DEFAULT_WORKTREE_ID` in the record /
+ * transport-client packages, but is declared here on purpose: this module is a
+ * pure, browserless decision table, and a VALUE import of the client package
+ * would runtime-load its whole entry (React/assistant-ui/markdown) and require a
+ * built `dist`. The type-only import above erases under Node type stripping.
+ */
+export const DEFAULT_WORKTREE_ID = "main";
 
 /** The one key we own. Versioned, so a future shape can migrate instead of guess. */
 export const SCOPE_MEMORY_KEY = "science-studio.scope.v1";
