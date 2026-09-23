@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  branchDelete,
   createGitRunner,
   currentBranch,
   ensureRepo,
@@ -61,6 +62,21 @@ test("worktreeAdd on a branch already checked out throws GitError with stderr", 
       () => worktreeAdd(git, { repoDir: dir, path: join(dir, ".worktrees", "same-2"), branch: "same", base: "main", createBranch: false }),
       (err: unknown) => err instanceof GitError && /already checked out|already used/i.test(err.stderr),
     );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("branchDelete lets the same branch be created again", async () => {
+  const dir = await tmp();
+  try {
+    await ensureRepo(git, dir);
+    const path = join(dir, ".worktrees", "exp-a");
+    await worktreeAdd(git, { repoDir: dir, path, branch: "exp-a", base: "main", createBranch: true });
+    await worktreeRemove(git, { repoDir: dir, path, force: true });
+    await branchDelete(git, { repoDir: dir, branch: "exp-a" });
+    await worktreeAdd(git, { repoDir: dir, path, branch: "exp-a", base: "main", createBranch: true });
+    assert.equal(await currentBranch(git, path), "exp-a");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

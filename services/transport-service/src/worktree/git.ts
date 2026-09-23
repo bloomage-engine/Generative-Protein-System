@@ -120,6 +120,22 @@ export async function worktreeRemove(
   await must(git, args, opts.repoDir);
 }
 
+/**
+ * Delete a worktree's branch (best-effort): the branch is always created by
+ * `worktreeAdd -b`, so removing it on teardown is safe and lets the same name
+ * be recreated later. A branch the runtimes never created (or already gone) is
+ * not an error.
+ */
+export async function branchDelete(
+  git: GitRunner,
+  opts: { repoDir: string; branch: string },
+): Promise<void> {
+  const result = await git.run(["branch", "-D", opts.branch], { cwd: opts.repoDir });
+  if (result.code !== 0 && !/not found/i.test(result.stderr)) {
+    throw new GitError("git branch -D failed", result.stderr.trim(), result.code);
+  }
+}
+
 /** Parse `git worktree list --porcelain` into path/branch pairs. */
 export async function listWorktrees(
   git: GitRunner,

@@ -21,6 +21,7 @@ import type { EnvironmentProvider, Principal } from "@science-studio/transport";
 import type { RecordDirectory } from "../directory.js";
 import type { ProjectScopes } from "../project-scope.js";
 import {
+  branchDelete,
   ensureRepo,
   GitError,
   isRepo,
@@ -61,8 +62,9 @@ export function registerWorktreeRoutes(app: FastifyInstance, deps: WorktreeRoute
     const rows = await directory.listWorktrees(claim.projectId, { includeArchived });
 
     // Decorate with on-disk state only when the Project actually has a
-    // repository — a listing must never create one.
-    const dir = projectDir(claim.projectId);
+    // repository — a listing must never create one. An unsafe claimed id is
+    // left undecorated rather than joined onto the root as a path segment.
+    const dir = isSafeProjectId(claim.projectId) ? projectDir(claim.projectId) : null;
     const branchByPath = dir && (await isRepo(git, dir)) ? await branchMap(git, dir) : null;
 
     const worktrees = await Promise.all(
@@ -84,6 +86,9 @@ export function registerWorktreeRoutes(app: FastifyInstance, deps: WorktreeRoute
   app.post("/api/worktrees", async (request, reply) => {
     const claim = await scope.claim(request);
     const body = (request.body ?? {}) as { name?: unknown; branch?: unknown; base?: unknown };
+    if (!isSafeProjectId(claim.projectId)) {
+      return reply.code(400).send({ error: `unsafe project id: ${claim.projectId}` });
+    }
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) return reply.code(400).send({ error: "name is required" });
     if (!(await records.getProject(claim.projectId))) {
@@ -120,9 +125,12 @@ export function registerWorktreeRoutes(app: FastifyInstance, deps: WorktreeRoute
       return reply.code(201).send({ worktree });
     } catch (err) {
       // The record is authoritative: a failed row write must not leave an
-      // orphaned checkout behind.
+      // orphaned checkout (or its branch) behind.
       await worktreeRemove(git, { repoDir: dir, path, force: true }).catch((cleanupErr) => {
         console.error(`[transport-service] worktree cleanup failed for "${id}"`, cleanupErr);
+      });
+      await branchDelete(git, { repoDir: dir, branch }).catch((cleanupErr) => {
+        console.error(`[transport-service] branch cleanup failed for "${branch}"`, cleanupErr);
       });
       throw err;
     }
@@ -176,10 +184,14 @@ export function registerWorktreeRoutes(app: FastifyInstance, deps: WorktreeRoute
   app.post("/api/worktrees/:id/delete", async (request, reply) => {
     const claim = await scope.claim(request);
     const { id } = request.params as { id: string };
+    if (!isSafeProjectId(claim.projectId)) {
+      return reply.code(400).send({ error: `unsafe project id: ${claim.projectId}` });
+    }
     if (id === DEFAULT_WORKTREE_ID) {
       return reply.code(403).send({ error: "the main worktree cannot be deleted" });
     }
-    if (!(await directory.findWorktree(claim.projectId, id))) {
+    const row = await directory.findWorktree(claim.projectId, id);
+    if (!row) {
       return reply.code(404).send({ error: `worktree not found: ${id}` });
     }
     await releaseEnvironment(environments, claim.principal, claim.projectId, id);
@@ -191,6 +203,11 @@ export function registerWorktreeRoutes(app: FastifyInstance, deps: WorktreeRoute
       // repo) the directory move below still removes it by hand.
       await worktreeRemove(git, { repoDir: dir, path, force: true }).catch((err) => {
         console.error(`[transport-service] git worktree remove failed for "${id}"`, err);
+      });
+      // `worktree remove` leaves the branch ref behind, which would make the
+      // same worktree name un-creatable forever (mint → same id → `-b` fails).
+      await branchDelete(git, { repoDir: dir, branch: row.branch }).catch((err) => {
+        console.error(`[transport-service] git branch delete failed for "${row.branch}"`, err);
       });
       if (await pathExists(path)) {
         await moveToRecycle(path).catch((err) => {
@@ -208,6 +225,17 @@ export function registerWorktreeRoutes(app: FastifyInstance, deps: WorktreeRoute
 async function branchMap(git: GitRunner, repoDir: string): Promise<Map<string, string | null>> {
   const entries = await listWorktrees(git, repoDir);
   return new Map(entries.map((entry) => [entry.path, entry.branch]));
+}
+
+/**
+ * A Project id that is safe to join onto the workspace root as ONE path
+ * segment. The claim is client-supplied, so `../..` must never reach `mkdir`,
+ * `git init` or `git worktree` as a path segment — and the `records.getProject`
+ * gate cannot stop it, because a probe first-use records the claimed id. Project
+ * ids are minted as slugs (docs/adr/0006), so this only rejects nonsense.
+ */
+export function isSafeProjectId(id: string): boolean {
+  return id !== ".." && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id);
 }
 
 /** `stat` that reports a missing path as `false` instead of throwing. */

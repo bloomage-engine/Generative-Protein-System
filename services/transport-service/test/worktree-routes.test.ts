@@ -88,3 +88,74 @@ test("listing does not create a repository", async () => {
     await rm(projectRoot, { recursive: true, force: true });
   }
 });
+
+test("create rejects an unsafe project id (400)", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const records = await createInMemoryRecordStore();
+  await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
+  const backend: Backend = {
+    principal: new LocalPrincipalResolver(),
+    environments: new LocalEnvironmentProvider({
+      environmentFor: async () => ({ adapter: adapter(), workspace: new NullWorkspace() }),
+    }),
+    cors: { origin: true },
+    records,
+    recordDefaults: { projectId: "project-default", projectName: "D", agentId: "main" },
+    projectRoot,
+  };
+  const app = await createTransportService({ backend });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const base = `http://127.0.0.1:${(app.server.address() as { port: number }).port}`;
+  try {
+    const res = await fetch(`${base}/api/worktrees`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "../../evil", name: "x" }),
+    });
+    assert.equal(res.status, 400);
+    // Nothing was created outside the root.
+    const { stat } = await import("node:fs/promises");
+    await assert.rejects(() => stat(join(projectRoot, "..", "evil")));
+  } finally {
+    await app.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("a deleted worktree name can be created again", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const records = await createInMemoryRecordStore();
+  await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
+  const backend: Backend = {
+    principal: new LocalPrincipalResolver(),
+    environments: new LocalEnvironmentProvider({
+      environmentFor: async () => ({ adapter: adapter(), workspace: new NullWorkspace() }),
+    }),
+    cors: { origin: true },
+    records,
+    recordDefaults: { projectId: "project-default", projectName: "D", agentId: "main" },
+    projectRoot,
+  };
+  const app = await createTransportService({ backend });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const base = `http://127.0.0.1:${(app.server.address() as { port: number }).port}`;
+  const create = (name: string) =>
+    fetch(`${base}/api/worktrees`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "project-default", name }),
+    });
+  try {
+    assert.equal((await create("Experiment A")).status, 201);
+    const deleted = await fetch(`${base}/api/worktrees/experiment-a/delete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "project-default" }),
+    });
+    assert.equal(deleted.status, 200);
+    assert.equal((await create("Experiment A")).status, 201);
+  } finally {
+    await app.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
