@@ -1223,6 +1223,7 @@ git commit -m "feat(service): resolve a worktree in the project scope"
     - `currentBranch(git, dir): Promise<string>`
     - `worktreeAdd(git, { repoDir, path, branch, base, createBranch }): Promise<void>` (throws `GitError` on failure)
     - `worktreeRemove(git, { repoDir, path, force }): Promise<void>`
+    - `branchDelete(git, { repoDir, branch }): Promise<void>` — best-effort `git branch -D`; a missing branch is not an error (a worktree branch is always created by `-b`, so deleting it on teardown is safe and lets the same name be recreated).
     - `listWorktrees(git, repoDir): Promise<{ path: string; branch: string | null }[]>`
   - `const GITIGNORE_ENTRIES = [".worktrees/", ".science-studio/"]`
 
@@ -1294,6 +1295,21 @@ test("worktreeAdd on a branch already checked out throws GitError with stderr", 
       () => worktreeAdd(git, { repoDir: dir, path: join(dir, ".worktrees", "same-2"), branch: "same", base: "main", createBranch: false }),
       (err: unknown) => err instanceof GitError && /already checked out|already used/i.test(err.stderr),
     );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("branchDelete lets the same branch be created again", async () => {
+  const dir = await tmp();
+  try {
+    await ensureRepo(git, dir);
+    const path = join(dir, ".worktrees", "exp-a");
+    await worktreeAdd(git, { repoDir: dir, path, branch: "exp-a", base: "main", createBranch: true });
+    await worktreeRemove(git, { repoDir: dir, path, force: true });
+    await branchDelete(git, { repoDir: dir, branch: "exp-a" });
+    await worktreeAdd(git, { repoDir: dir, path, branch: "exp-a", base: "main", createBranch: true });
+    assert.equal(await currentBranch(git, path), "exp-a");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -1428,6 +1444,22 @@ export async function worktreeRemove(
 ): Promise<void> {
   const args = ["worktree", "remove", ...(opts.force ? ["--force"] : []), opts.path];
   await must(git, args, opts.repoDir);
+}
+
+/**
+ * Delete a worktree's branch (best-effort): the branch is always created by
+ * `worktreeAdd -b`, so removing it on teardown is safe and lets the same name
+ * be recreated later. A branch the runtimes never created (or already gone) is
+ * not an error.
+ */
+export async function branchDelete(
+  git: GitRunner,
+  opts: { repoDir: string; branch: string },
+): Promise<void> {
+  const result = await git.run(["branch", "-D", opts.branch], { cwd: opts.repoDir });
+  if (result.code !== 0 && !/not found/i.test(result.stderr)) {
+    throw new GitError("git branch -D failed", result.stderr.trim(), result.code);
+  }
 }
 
 /** Parse `git worktree list --porcelain` into path/branch pairs. */
@@ -1572,6 +1604,77 @@ test("listing does not create a repository", async () => {
     await rm(projectRoot, { recursive: true, force: true });
   }
 });
+
+test("create rejects an unsafe project id (400)", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const records = await createInMemoryRecordStore();
+  await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
+  const backend: Backend = {
+    principal: new LocalPrincipalResolver(),
+    environments: new LocalEnvironmentProvider({
+      environmentFor: async () => ({ adapter: adapter(), workspace: new NullWorkspace() }),
+    }),
+    cors: { origin: true },
+    records,
+    recordDefaults: { projectId: "project-default", projectName: "D", agentId: "main" },
+    projectRoot,
+  };
+  const app = await createTransportService({ backend });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const base = `http://127.0.0.1:${(app.server.address() as { port: number }).port}`;
+  try {
+    const res = await fetch(`${base}/api/worktrees`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "../../evil", name: "x" }),
+    });
+    assert.equal(res.status, 400);
+    // Nothing was created outside the root.
+    const { stat } = await import("node:fs/promises");
+    await assert.rejects(() => stat(join(projectRoot, "..", "evil")));
+  } finally {
+    await app.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("a deleted worktree name can be created again", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const records = await createInMemoryRecordStore();
+  await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
+  const backend: Backend = {
+    principal: new LocalPrincipalResolver(),
+    environments: new LocalEnvironmentProvider({
+      environmentFor: async () => ({ adapter: adapter(), workspace: new NullWorkspace() }),
+    }),
+    cors: { origin: true },
+    records,
+    recordDefaults: { projectId: "project-default", projectName: "D", agentId: "main" },
+    projectRoot,
+  };
+  const app = await createTransportService({ backend });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const base = `http://127.0.0.1:${(app.server.address() as { port: number }).port}`;
+  const create = (name: string) =>
+    fetch(`${base}/api/worktrees`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "project-default", name }),
+    });
+  try {
+    assert.equal((await create("Experiment A")).status, 201);
+    const deleted = await fetch(`${base}/api/worktrees/experiment-a/delete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "project-default" }),
+    });
+    assert.equal(deleted.status, 200);
+    assert.equal((await create("Experiment A")).status, 201);
+  } finally {
+    await app.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1594,12 +1697,12 @@ In `services/transport-service/src/composition.ts`, add to `Backend`:
 
 Implement `registerWorktreeRoutes(app, deps)`:
 
-- Resolve `projectDir(projectId)` = `projectRoot ? join(projectRoot, projectId) : null`; `worktreeDir(projectId, id)` = `projectDir ? join(projectDir, worktreeRelPath(id)) : null`.
-- `GET /api/worktrees`: `const claim = await scope.claim(request)`; `await directory.ensureWorktree(claim.projectId)`; list with `includeArchived`; decorate each row with on-disk info when `projectDir` exists and `isRepo` is true (parse `listWorktrees(git, projectDir)` into a path→branch map; `exists` = the worktree dir stat succeeds). Return `{ worktrees, defaultWorktreeId: DEFAULT_WORKTREE_ID }`.
-- `POST /api/worktrees`: validate `name` non-empty → 400; 404 when `records.getProject(projectId)` is null; 503 when `projectDir` is null; `await ensureRepo(git, projectDir)`; `id = await directory.mintWorktreeId(...)`; `branch = body.branch?.trim() || id`; `base = body.base?.trim() || "main"`; `path = worktreeDir(...)!`; wrap `worktreeAdd` — on `GitError`, map `/already checked out|already exists|is already used/i.test(err.stderr)` to 409 else 502, returning `{ error: err.stderr || err.message }`; then `directory.addWorktree(projectId, { id, name, branch })` in a try/catch whose catch best-effort `worktreeRemove(..., force: true)` and rethrows; return 201 `{ worktree }`.
+- Resolve `projectDir(projectId)` = `projectRoot ? join(projectRoot, projectId) : null`; `worktreeDir(projectId, id)` = `projectDir ? join(projectDir, worktreeRelPath(id)) : null`. **Guard every path-touching route with `isSafeProjectId(projectId)`** (`/^[A-Za-z0-9][A-Za-z0-9._-]*$/`, and not `..`) and answer 400 when it fails — a claimed project id can be arbitrary and must not reach `mkdir`/`git init`/`git worktree` as a path segment.
+- `GET /api/worktrees`: `const claim = await scope.claim(request)`; `await directory.ensureWorktree(claim.projectId)`; list with `includeArchived`; decorate each row with on-disk info when `projectDir` exists, `isSafeProjectId` holds, and `isRepo` is true (parse `listWorktrees(git, projectDir)` into a path→branch map; `exists` = the worktree dir stat succeeds). Return `{ worktrees, defaultWorktreeId: DEFAULT_WORKTREE_ID }`.
+- `POST /api/worktrees`: 400 when `!isSafeProjectId(projectId)`; validate `name` non-empty → 400; 404 when `records.getProject(projectId)` is null; 503 when `projectDir` is null; `mkdir(projectDir, { recursive: true })`; `await ensureRepo(git, projectDir)`; `id = await directory.mintWorktreeId(...)`; `branch = body.branch?.trim() || id`; `base = body.base?.trim() || "main"`; `path = worktreeDir(...)!`; wrap `worktreeAdd` — on `GitError`, map `/already checked out|already exists|is already used/i.test(err.stderr)` to 409 else 502, returning `{ error: err.stderr || err.message }`; then `directory.addWorktree(projectId, { id, name, branch })` in a try/catch whose catch best-effort `worktreeRemove(..., force: true)` **and `branchDelete(git, { repoDir: projectDir, branch }).catch(log)`** then rethrows; return 201 `{ worktree }`.
 - `POST /api/worktrees/:id/rename`: 403 for `main`; 400 empty name; 404 when `directory.getWorktree(claim.projectId, id)` misses; return `{ worktree: await directory.renameWorktree(claim.projectId, id, name) }`.
 - `POST /api/worktrees/:id/archive` / `unarchive`: 403 for `main`; 404 when missing; for archive call `environments.release?.(claim.principal, claim.projectId, id)` (best-effort, log on failure); return `{ worktree: await directory.archiveWorktree(claim.projectId, id) }` (or `unarchiveWorktree`).
-- `POST /api/worktrees/:id/delete`: 403 for `main`; 404 when `directory.getWorktree(claim.projectId, id)` misses; `await environments.release?.(...)`; if `projectDir` and `worktreeDir` exist: `await worktreeRemove(git, { repoDir: projectDir, path, force: true }).catch(log)`; if the dir still exists after, move it to a sibling `.recycle/<basename>-<ts>` with `mkdir`+`rename` (copy `moveToRecycle`'s shape from `fs-workspace.ts`); `await directory.deleteWorktree(claim.projectId, id)`; return `{ ok: true }`.
+- `POST /api/worktrees/:id/delete`: 400 when `!isSafeProjectId(projectId)`; 403 for `main`; 404 when `directory.getWorktree(claim.projectId, id)` misses; `await environments.release?.(...)`; if `projectDir` and `worktreeDir` exist: `await worktreeRemove(git, { repoDir: projectDir, path, force: true }).catch(log)` then `await branchDelete(git, { repoDir: projectDir, branch: row.branch }).catch(log)` (so the same name can be created again); if the dir still exists after, move it to a sibling `.recycle/<basename>-<ts>` with `mkdir`+`rename` (copy `moveToRecycle`'s shape from `fs-workspace.ts`); `await directory.deleteWorktree(claim.projectId, id)`; return `{ ok: true }`.
 - Map a thrown `WorktreeNotFoundError` via the server error handler (next step), or catch it in each route; prefer the handler.
 
 - [ ] **Step 5: Register the routes and add the error handler**
