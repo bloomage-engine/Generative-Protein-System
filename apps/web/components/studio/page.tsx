@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchProjectsOverview, fetchProjectSessions, fetchSettings } from "@science-studio/transport-client";
+import { fetchProjectsOverview, fetchProjectSessions, fetchSettings, DEFAULT_WORKTREE_ID } from "@science-studio/transport-client";
 import { readScopeMemory, resolveProject, resolveSession } from "@/lib/scope-memory";
 import { SETTINGS_API } from "./settings-dialog";
 import { StudioHost } from "./host";
@@ -84,7 +84,7 @@ export function StudioPage({
 
         if (!project.projectId) {
           // A fresh install: the Projects pane is where the first one is created.
-          s().setScope({ projectId: null, sessionId: null }, project.memory);
+          s().setScope({ projectId: null, worktreeId: null, sessionId: null }, project.memory);
           s().setLeftView("project");
           applyThreadSettings();
           setReady(true);
@@ -94,13 +94,22 @@ export function StudioPage({
         const sessions = await fetchProjectSessions(api, project.projectId);
         if (cancelled) return;
 
+        // MINIMAL boot scope for now: always `main`. Task 6 resolves the real
+        // Worktree (fetch `/api/worktrees`, `resolveWorktree` against the URL's
+        // claim / the memory) before this line; until then `main` is the one
+        // worktree the record guarantees exists for every Project.
+        const worktreeId = DEFAULT_WORKTREE_ID;
         const session = resolveSession({
           projectId: project.projectId,
+          worktreeId,
           hint: project.sessionHint,
           sessions,
           memory: project.memory,
         });
-        s().setScope({ projectId: project.projectId, sessionId: session.sessionId }, session.memory);
+        s().setScope(
+          { projectId: project.projectId, worktreeId, sessionId: session.sessionId },
+          session.memory,
+        );
         // After the commit: `setSessions` is what the pane shows while it is
         // expanded on the active Project.
         s().setSessions(sessions);

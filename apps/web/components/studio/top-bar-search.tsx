@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Search, MessageSquare } from "lucide-react";
 import {
+  DEFAULT_WORKTREE_ID,
   useWorkspaceRoot,
   type Entry,
 } from "@science-studio/transport-client";
@@ -20,6 +21,7 @@ export function TopBarSearch() {
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   const projectId = useStudioStore((s) => s.projectId);
+  const activeWorktreeId = useStudioStore((s) => s.activeWorktreeId);
   const openFile = useStudioStore((s) => s.openFile);
   const sessions = useStudioStore((s) => s.sessions);
   const setScope = useStudioStore((s) => s.setScope);
@@ -76,7 +78,7 @@ export function TopBarSearch() {
   const pickSession = (id: string) => {
     // The conversation and the Projects pane share the left slot: picking a
     // Session from the top bar has to bring the conversation back.
-    setScope({ projectId, sessionId: id });
+    setScope({ projectId, worktreeId: activeWorktreeId ?? DEFAULT_WORKTREE_ID, sessionId: id });
     setLeftView("thread");
     setOpen(false);
     setQuery("");

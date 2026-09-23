@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { RefreshCw, Server, XCircle } from "lucide-react";
 import type { ComputeJob } from "@science-studio/transport-client";
-import { DEFAULT_HPC_API, cancelHpcJob, isOpenComputeJobState, useHpcJobs } from "@science-studio/transport-client";
+import { DEFAULT_HPC_API, DEFAULT_WORKTREE_ID, cancelHpcJob, isOpenComputeJobState, useHpcJobs } from "@science-studio/transport-client";
 import { Button } from "@/components/ui/button";
 import { ModuleEmptyState, SidebarSection } from "./sidebar-section";
 import { useStudioStore } from "@/store/studio-store";
@@ -39,6 +39,7 @@ export function JobsView() {
   const toggleRightSection = useStudioStore((s) => s.toggleRightSection);
   const height = useStudioStore((s) => s.rightHeights.jobs);
   const projectId = useStudioStore((s) => s.projectId);
+  const activeWorktreeId = useStudioStore((s) => s.activeWorktreeId);
   const sessions = useStudioStore((s) => s.sessions);
   const openJob = useStudioStore((s) => s.openJob);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -141,7 +142,11 @@ export function JobsView() {
                         onClick={(event) => {
                           event.stopPropagation();
                           const store = useStudioStore.getState();
-                          store.setScope({ projectId, sessionId: source.id });
+                          store.setScope({
+                            projectId,
+                            worktreeId: activeWorktreeId ?? DEFAULT_WORKTREE_ID,
+                            sessionId: source.id,
+                          });
                           store.revealLeftView("thread");
                         }}
                       >

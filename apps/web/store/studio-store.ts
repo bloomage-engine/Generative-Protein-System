@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { Project, Session } from "@science-studio/transport-client";
+import type { Project, Session, Worktree } from "@science-studio/transport-client";
 import {
   readScopeMemory,
   rememberScope,
@@ -56,6 +56,16 @@ type State = {
   defaultProjectId: string | null;
   /** The ACTIVE Project's Sessions — never another Project's list. */
   sessions: Session[];
+  /**
+   * The ACTIVE Project's Worktrees (docs/adr/0025). `null` = not loaded yet;
+   * loading is lazy and belongs to the panel.
+   */
+  worktrees: Worktree[] | null;
+  /**
+   * The Worktree the workspace/runtime are scoped to (`main` is the Project
+   * root). `null` until a scope is committed.
+   */
+  activeWorktreeId: string | null;
   /** The PANE's Project's Sessions — the same list as `sessions` while the pane shows the active Project. */
   panelSessions: Session[];
   activeSessionId: string | null;
@@ -97,6 +107,16 @@ type State = {
   upsertSession: (session: Session) => void;
   /** Drop an archived/deleted Session from both lists. */
   removeSession: (id: string) => void;
+  /** Replace the ACTIVE Project's Worktree list wholesale. */
+  setWorktrees: (list: Worktree[]) => void;
+  /** Replace a Worktree in place (rename/archive), or append it (a new/restored row). */
+  upsertWorktree: (worktree: Worktree) => void;
+  /**
+   * Drop a deleted Worktree from the list. If it was ACTIVE the caller
+   * re-resolves the scope (`setScope`), exactly like `removeProject` — the store
+   * never invents a Session or moves the scope itself.
+   */
+  removeWorktree: (id: string) => void;
   /** Expand the pane on a Project (or `null` for none); a real move drops the previous list. */
   setPanelProject: (id: string | null) => void;
   setPanelSessions: (list: Session[]) => void;
@@ -154,6 +174,8 @@ export const useStudioStore = create<State>()((set) => ({
   projects: null,
   defaultProjectId: null,
   sessions: [],
+  worktrees: null,
+  activeWorktreeId: null,
   panelSessions: [],
   activeSessionId: null,
   tabs: [],
@@ -208,6 +230,21 @@ export const useStudioStore = create<State>()((set) => ({
       panelSessions: s.panelSessions.filter((x) => x.id !== id),
       sessions: s.sessions.filter((x) => x.id !== id),
     })),
+  setWorktrees: (worktrees) => set({ worktrees }),
+  upsertWorktree: (worktree) =>
+    set((s) => {
+      const list = s.worktrees;
+      if (!list) return { worktrees: [worktree] };
+      return {
+        worktrees: list.some((w) => w.id === worktree.id)
+          ? list.map((w) => (w.id === worktree.id ? worktree : w))
+          : [...list, worktree],
+      };
+    }),
+  removeWorktree: (id) =>
+    set((s) => ({
+      worktrees: s.worktrees === null ? null : s.worktrees.filter((w) => w.id !== id),
+    })),
   setPanelProject: (panelProjectId) =>
     set((state) =>
       state.panelProjectId === panelProjectId
@@ -215,36 +252,42 @@ export const useStudioStore = create<State>()((set) => ({
         : { panelProjectId, panelSessions: [] },
     ),
   setPanelSessions: (panelSessions) => set({ panelSessions }),
-  setScope: ({ projectId, sessionId }, memory) => {
+  setScope: ({ projectId, worktreeId, sessionId }, memory) => {
     set((state) => {
       // The pane's list IS the committed Project's list whenever the pane was
       // already expanded on it (that is how a Session gets picked).
       const paneHoldsTarget = state.panelProjectId === projectId;
+      const projectChanged = state.projectId !== projectId;
+      const worktreeChanged = state.activeWorktreeId !== worktreeId;
       const sessionChanged = state.activeSessionId !== sessionId;
+      // A Project OR Worktree switch swaps the workspace under the tabs: every
+      // open file belongs to the previous checkout. A Session switch inside one
+      // checkout only moves the conversation.
+      const checkoutChanged = projectChanged || worktreeChanged;
       return {
         projectId,
+        activeWorktreeId: worktreeId,
         activeSessionId: sessionId,
         visibleMessageCount: sessionChanged ? 20 : state.visibleMessageCount,
         // A committed scope is what the pane shows.
         panelProjectId: projectId,
-        ...(state.projectId === projectId
-          ? {}
-          : {
-              // A Project switch swaps the workspace under the tabs: every open
-              // file belongs to the previous Project's tree. The new Project's
-              // Sessions are the ones the pane was showing, or unknown.
-              tabs: [],
-              activeTabPath: null,
+        ...(checkoutChanged ? { tabs: [], activeTabPath: null } : {}),
+        ...(projectChanged
+          ? {
+              // A new Project's Sessions are the ones the pane was showing, or
+              // unknown; its Worktrees are not loaded yet.
               sessions: paneHoldsTarget ? state.panelSessions : [],
-            }),
+              worktrees: null,
+            }
+          : {}),
         // The pane's list only belongs to it while it is expanded on that
         // Project; expanding elsewhere drops it and the pane re-lists what it
         // shows (its own effect owns that load).
         ...(paneHoldsTarget ? {} : { panelSessions: [] }),
       };
     });
-    writeScopeMemory(memory ?? rememberScope(readScopeMemory(), { projectId, sessionId }));
-    syncScopeUrl({ projectId, sessionId });
+    writeScopeMemory(memory ?? rememberScope(readScopeMemory(), { projectId, worktreeId, sessionId }));
+    syncScopeUrl({ projectId, worktreeId, sessionId });
   },
 
   openFile: (path, name) =>

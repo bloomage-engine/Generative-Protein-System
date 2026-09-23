@@ -18,6 +18,7 @@ import {
   createProject,
   createSession,
   DEFAULT_HPC_API,
+  DEFAULT_WORKTREE_ID,
   deleteProject,
   deleteSession,
   fetchProjectsOverview,
@@ -208,11 +209,28 @@ export function ProjectPanel() {
     store.setPanelProject(expanding ? project.id : null);
   };
 
+  /**
+   * The Worktree to commit alongside a target Project: the ACTIVE worktree when
+   * the Project is unchanged, else `main` (a switch to another Project has no
+   * active worktree of its own). Task 7 replaces this with a real picker.
+   */
+  const worktreeFor = React.useCallback((targetProjectId: string | null): string => {
+    if (targetProjectId === null) return DEFAULT_WORKTREE_ID;
+    const store = useStudioStore.getState();
+    return targetProjectId === store.projectId
+      ? (store.activeWorktreeId ?? DEFAULT_WORKTREE_ID)
+      : DEFAULT_WORKTREE_ID;
+  }, []);
+
   /** Double-clicking a Session is what commits the scope. */
   const switchSession = (sessionId: string) => {
     const store = useStudioStore.getState();
     if (!store.panelProjectId) return;
-    store.setScope({ projectId: store.panelProjectId, sessionId });
+    store.setScope({
+      projectId: store.panelProjectId,
+      worktreeId: worktreeFor(store.panelProjectId),
+      sessionId,
+    });
     store.setLeftView("thread");
   };
 
@@ -226,7 +244,7 @@ export function ProjectPanel() {
       const project = await createProject(PROJECTS_API, trimmed);
       const store = useStudioStore.getState();
       store.upsertProject(project);
-      store.setScope({ projectId: project.id, sessionId: null });
+      store.setScope({ projectId: project.id, worktreeId: DEFAULT_WORKTREE_ID, sessionId: null });
       store.setSessions([]);
       setName("");
       setCreating(false);
@@ -246,7 +264,11 @@ export function ProjectPanel() {
       const store = useStudioStore.getState();
       if (store.panelProjectId !== panelProjectId) return;
       store.setPanelSessions([...store.panelSessions, session]);
-      store.setScope({ projectId: panelProjectId, sessionId: session.id });
+      store.setScope({
+        projectId: panelProjectId,
+        worktreeId: worktreeFor(panelProjectId),
+        sessionId: session.id,
+      });
       store.setLeftView("thread");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -300,14 +322,18 @@ export function ProjectPanel() {
     const nextId = fallbackProject(remaining);
     const store = useStudioStore.getState();
     if (!nextId) {
-      store.setScope({ projectId: null, sessionId: null });
+      store.setScope({ projectId: null, worktreeId: null, sessionId: null });
       store.setLeftView("project");
       return;
     }
     try {
       const list = await fetchProjectSessions(PROJECTS_API, nextId);
       const s = useStudioStore.getState();
-      s.setScope({ projectId: nextId, sessionId: fallbackSession(nextId, list) });
+      s.setScope({
+        projectId: nextId,
+        worktreeId: worktreeFor(nextId),
+        sessionId: fallbackSession(nextId, list),
+      });
       s.setSessions(list);
       if (list.length === 0) s.setLeftView("project");
     } catch (err) {
@@ -318,7 +344,7 @@ export function ProjectPanel() {
   const commitSessionFallback = (projectId: string, remaining: Session[]) => {
     const store = useStudioStore.getState();
     const nextId = fallbackSession(projectId, remaining);
-    store.setScope({ projectId, sessionId: nextId });
+    store.setScope({ projectId, worktreeId: worktreeFor(projectId), sessionId: nextId });
     if (!nextId) store.setLeftView("project");
   };
 
