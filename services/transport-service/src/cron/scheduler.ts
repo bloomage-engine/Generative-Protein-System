@@ -1,4 +1,4 @@
-import type { Id, RecordStore } from "@science-studio/record";
+import { DEFAULT_WORKTREE_ID, type Id, type RecordStore } from "@science-studio/record";
 import { matchesSchedule, type CronRunStatus, type CronTask } from "@science-studio/cron";
 import type {
   Environment,
@@ -151,7 +151,7 @@ export function createCronScheduler(deps: CronSchedulerDeps): CronScheduler {
           // Per project AND per task: one unreadable workspace, unreachable
           // environment or foreign task must never suspend the rest of the tick.
           try {
-            const environment = await environments.acquire(principal, project.id);
+            const environment = await environments.acquire(principal, project.id, DEFAULT_WORKTREE_ID);
             const { tasks } = await store.list(environment.workspace);
             for (const task of tasks) {
               try {
@@ -177,7 +177,7 @@ export function createCronScheduler(deps: CronSchedulerDeps): CronScheduler {
     },
     async fire(projectId, id) {
       if (principal === null) return { status: "error" };
-      const environment = await environments.acquire(principal, projectId);
+      const environment = await environments.acquire(principal, projectId, DEFAULT_WORKTREE_ID);
       const task = await store.read(environment.workspace, id);
       if (task === null) return { status: "error" };
       return { status: await fireWith(projectId, environment, task) };

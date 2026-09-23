@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_WORKTREE_ID } from "@science-studio/record";
 import type { Backend } from "../src/composition.js";
 import { createBackend } from "../src/composition.js";
 import type { RecordingAdapter } from "./fixtures/per-project-runtime.js";
@@ -49,8 +50,8 @@ test("every Project gets its own adapter, launched in that Project's directory",
   });
   const principal = await principalOf(backend);
 
-  const alpha = await backend.environments.acquire(principal, "alpha");
-  const beta = await backend.environments.acquire(principal, "beta");
+  const alpha = await backend.environments.acquire(principal, "alpha", DEFAULT_WORKTREE_ID);
+  const beta = await backend.environments.acquire(principal, "beta", DEFAULT_WORKTREE_ID);
 
   assert.notEqual(alpha.adapter, beta.adapter, "two Projects must not share one adapter");
   assert.deepEqual(
@@ -74,7 +75,7 @@ test("every Project gets its own adapter, launched in that Project's directory",
   assert.equal(alpha.projectId, "alpha");
 
   // A Project's Sessions share ONE adapter, and re-acquiring must not re-init it.
-  const alphaAgain = await backend.environments.acquire(principal, "alpha");
+  const alphaAgain = await backend.environments.acquire(principal, "alpha", DEFAULT_WORKTREE_ID);
   assert.equal(alphaAgain.adapter, alpha.adapter, "a Project's adapter is built once");
   assert.equal(
     (alpha.adapter as RecordingAdapter).inits.length,
@@ -100,7 +101,7 @@ test("an adapter is initialized with the record-owned Project identity", async (
     createdAt: "2026-09-01T00:00:00.000Z",
   });
 
-  const environment = await backend.environments.acquire(principal, project.id);
+  const environment = await backend.environments.acquire(principal, project.id, DEFAULT_WORKTREE_ID);
   assert.deepEqual(
     (environment.adapter as RecordingAdapter).inits.map((o) => o.project),
     [{ id: "drought-screen", name: "抗旱基因筛选", createdAt: "2026-09-01T00:00:00.000Z" }],
@@ -115,7 +116,7 @@ test("an unconfigured root stays a NullWorkspace for every Project", async (t) =
   const backend = await backendOver({});
   const principal = await principalOf(backend);
 
-  const alpha = await backend.environments.acquire(principal, "alpha");
+  const alpha = await backend.environments.acquire(principal, "alpha", DEFAULT_WORKTREE_ID);
   assert.equal(
     alpha.workspace.toAgentPath(""),
     "",
@@ -133,7 +134,11 @@ test("the default Project is provisioned like any other", async (t) => {
   });
   const principal = await principalOf(backend);
 
-  const environment = await backend.environments.acquire(principal, "project-default");
+  const environment = await backend.environments.acquire(
+    principal,
+    "project-default",
+    DEFAULT_WORKTREE_ID,
+  );
   assert.equal(environment.workspace.toAgentPath(""), join(root, "agent", "project-default"));
   assert.equal(
     (environment.adapter as RecordingAdapter).inits.length,

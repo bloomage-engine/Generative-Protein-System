@@ -1,19 +1,21 @@
 /**
- * The environment seam: what a Project gets — a runtime adapter and a file root.
+ * The environment seam: what a Project's Worktree gets — a runtime adapter and a
+ * file root.
  *
  * This is the central deep module of the deployment story. Callers (the HTTP
  * route handlers) resolve a Session first, then ask
- * `acquire(principal, session.projectId)`; behind it sit tenant->project lookup,
- * sandbox provisioning, adapter construction via a runtime factory, per-Project
- * connection caching/eviction, tenant-scoped record store wiring, and
- * workspace-root resolution.
+ * `acquire(principal, session.projectId, session.worktreeId)`; behind it sit
+ * tenant->project lookup, sandbox provisioning, adapter construction via a
+ * runtime factory, per-worktree connection caching/eviction, tenant-scoped
+ * record store wiring, and workspace-root resolution.
  *
- * The environment is scoped to a **Project**, not a principal and not a Session:
- * a Project owns one Project Workspace and its Sessions share it (docs/adr/0006).
+ * The environment is scoped to a **Project Worktree**, not a principal and not a
+ * Session: a Project owns Worktrees, and the Sessions of one Worktree share its
+ * workspace and adapter (docs/adr/0006, 0025).
  *
- * Single-user ships `LocalEnvironmentProvider` (a per-Project builder supplied by
- * the composition root). The hosted implementation (private enterprise module)
- * composes a fleet sandbox provider with a caching lifecycle.
+ * Single-user ships `LocalEnvironmentProvider` (a per-worktree builder supplied
+ * by the composition root). The hosted implementation (private enterprise
+ * module) composes a fleet sandbox provider with a caching lifecycle.
  */
 import type { Id } from "@science-studio/record";
 import type { Principal } from "./principal.js";
@@ -65,9 +67,10 @@ export interface LocalEnvironmentOptions {
 }
 
 /**
- * Single-user: environments are built on demand per Project and cached, so a
- * Project's Sessions share one adapter (and, for dsh, one harness child whose cwd
- * is that Project's workspace). Deliberately no auth — single-user is login-free.
+ * Single-user: environments are built on demand per worktree and cached, so a
+ * worktree's Sessions share one adapter (and, for dsh, one harness child whose
+ * cwd is that worktree's directory). Deliberately no auth — single-user is
+ * login-free.
  */
 export class LocalEnvironmentProvider implements EnvironmentProvider {
   private readonly environments = new Map<string, Environment>();

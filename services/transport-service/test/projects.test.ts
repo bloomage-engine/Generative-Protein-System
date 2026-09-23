@@ -387,10 +387,11 @@ test("deleting a Project recycles its workspace and releases its environment", a
   const backend: Backend = {
     principal: new LocalPrincipalResolver(),
     environments: {
-      acquire: async (_principal, projectId) => ({
+      acquire: async (_principal, projectId, worktreeId) => ({
         adapter: fakeAdapter(),
         workspace: new FsWorkspace(join(root, projectId), { agentRoot: join(root, projectId) }),
         projectId,
+        worktreeId,
       }),
       release: async (_principal, projectId) => {
         released.push(projectId);

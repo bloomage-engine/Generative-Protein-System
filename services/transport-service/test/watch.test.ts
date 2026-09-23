@@ -110,9 +110,9 @@ test("the watch scopes its Project from the projectId query parameter", async ()
   const backend: Backend = {
     principal: new LocalPrincipalResolver(),
     environments: {
-      acquire: async (_principal, projectId) => {
+      acquire: async (_principal, projectId, worktreeId) => {
         acquired.push(projectId);
-        return { adapter, workspace: new NullWorkspace(), projectId };
+        return { adapter, workspace: new NullWorkspace(), projectId, worktreeId };
       },
       dispose: async () => {},
     },

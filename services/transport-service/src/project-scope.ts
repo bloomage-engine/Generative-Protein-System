@@ -1,12 +1,12 @@
 /**
- * The request's Project scope — the one place a route learns which Project (and
- * which Session of it) it is serving.
+ * The request's Project + Worktree scope — the one place a route learns which
+ * Project (and which Worktree and Session of it) it is serving.
  *
  * Every environment-acquiring route needs the same three things: the request's
- * Principal, its Project, and that Project's `Environment` (one adapter and one
- * Project Workspace per Project — docs/adr/0008). Written out per route that was
- * nine copies of one preamble, three spellings of the Project key and five
- * copies of one error mapping.
+ * Principal, its Project, and that Project's Worktree `Environment` (one adapter
+ * and one Project Workspace per worktree — docs/adr/0008, 0025). Written out per
+ * route that was nine copies of one preamble, three spellings of the Project key
+ * and five copies of one error mapping.
  *
  * The claim is read in ONE order — the query first, the body second, else the
  * default Project — so no route has its own dialect. The query wins over the
@@ -14,15 +14,16 @@
  * send body and always puts a per-page local `__LOCALID_*` threadId in it, so a
  * body-first read would let the body shadow the Session the app selected in the
  * URL (the reply would then reconcile against a different transcript). `project`
- * is the older spelling of the Project claim and stays accepted.
+ * is the older spelling of the Project claim and stays accepted, and an omitted
+ * `worktreeId` claims the Project's `main` worktree.
  *
  * Resolving the record's Session lives here too: a claimed runtime session key
  * IS a Science Studio Session id (1:1, docs/adr/0007), and the key is mapped
- * through the Project's OWN adapter (`resolveSessionKey`) — never a fabricated
+ * through the Worktree's OWN adapter (`resolveSessionKey`) — never a fabricated
  * constant.
  */
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { Id, Session } from "@science-studio/record";
+import { DEFAULT_WORKTREE_ID, type Id, type Session } from "@science-studio/record";
 import {
   FileTooLargeError,
   WorkspaceNotFoundError,
@@ -37,17 +38,29 @@ import type { RecordDirectory } from "./directory.js";
 
 /** The Project claim's keys, canonical first; both are read from query and body. */
 const PROJECT_CLAIM_KEYS = ["projectId", "project"] as const;
+/** The Worktree claim's key (a Project root is the `main` worktree — docs/adr/0025). */
+const WORKTREE_CLAIM_KEYS = ["worktreeId"] as const;
 /** The Session claim's keys (a runtime session key, 1:1 with the record id). */
 const SESSION_CLAIM_KEYS = ["threadId"] as const;
 
-/** What one request is scoped to: its Principal, Project, Session claim, Environment. */
+/** The ids one request resolves to, before any environment is acquired. */
+export interface ProjectClaim {
+  readonly principal: Principal;
+  readonly projectId: Id;
+  readonly worktreeId: Id;
+  readonly threadId: string | null;
+}
+
+/** What one request is scoped to: its Principal, Project, Worktree, Session claim, Environment. */
 export interface ProjectScope {
   readonly principal: Principal;
   /** The Project this request names, or the default Project when it names none. */
   readonly projectId: Id;
+  /** The Worktree this request names, or the Project's `main` when it names none. */
+  readonly worktreeId: Id;
   /** The Session the client claimed, or `null` (the mount probe claims none). */
   readonly threadId: string | null;
-  /** The Project's adapter + Project Workspace, built on first use. */
+  /** The worktree's adapter + Project Workspace, built on first use. */
   readonly environment: Environment;
 }
 
@@ -62,9 +75,15 @@ export interface ProjectScopes {
   /** The request's Principal, its Project and that Project's Environment. */
   acquire(request: FastifyRequest): Promise<ProjectScope>;
   /**
+   * The request's ids WITHOUT acquiring an environment — for routes that need
+   * only the claim (e.g. the Worktree list, which ensures `main` itself).
+   */
+  claim(request: FastifyRequest): Promise<ProjectClaim>;
+  /**
    * Acquire a NAMED Project's environment, ignoring the request's claim. For
    * routes that act on the Project in their path rather than a claim (e.g.
-   * delete, which recycles its workspace — docs/adr/0014).
+   * delete, which recycles its workspace — docs/adr/0014). Resolves to the
+   * Project's `main` worktree.
    */
   acquireProject(principal: Principal, projectId: Id): Promise<ProjectScope>;
   /**
@@ -112,33 +131,63 @@ export function createProjectScopes(opts: ProjectScopeOptions): ProjectScopes {
     return null;
   };
 
-  const acquire = async (request: FastifyRequest): Promise<ProjectScope> => {
+  const resolveClaim = (request: FastifyRequest): ProjectClaim => {
     const principal = request.principal!;
-    const projectId = claim(request, PROJECT_CLAIM_KEYS) ?? defaultProjectId;
     return {
       principal,
-      projectId,
+      projectId: claim(request, PROJECT_CLAIM_KEYS) ?? defaultProjectId,
+      worktreeId: claim(request, WORKTREE_CLAIM_KEYS) ?? DEFAULT_WORKTREE_ID,
       threadId: claim(request, SESSION_CLAIM_KEYS),
-      environment: await environments.acquire(principal, projectId),
+    };
+  };
+
+  const acquire = async (request: FastifyRequest): Promise<ProjectScope> => {
+    const resolved = resolveClaim(request);
+    // `main` is auto-ensured (docs/adr/0025): a Project root is its `main`
+    // worktree, so every worktree-touching path materializes the row first, and
+    // `requireWorktree` then rejects only an unknown NON-main id — never an
+    // implicit create.
+    await directory.ensureWorktree(resolved.projectId);
+    await directory.requireWorktree(resolved.projectId, resolved.worktreeId);
+    return {
+      ...resolved,
+      environment: await environments.acquire(
+        resolved.principal,
+        resolved.projectId,
+        resolved.worktreeId,
+      ),
     };
   };
 
   return {
     acquire,
 
+    claim: async (request) => resolveClaim(request),
+
     async acquireProject(principal, projectId) {
+      const worktreeId = DEFAULT_WORKTREE_ID;
+      await directory.ensureWorktree(projectId);
+      await directory.requireWorktree(projectId, worktreeId);
       return {
         principal,
         projectId,
+        worktreeId,
         threadId: null,
-        environment: await environments.acquire(principal, projectId),
+        environment: await environments.acquire(principal, projectId, worktreeId),
       };
     },
 
     async sessionOf(request) {
       const scope = await acquire(request);
       const sessionKey = canonicalSessionKey(scope.environment.adapter, scope.threadId);
-      return { ...scope, session: await directory.resolveOrCreateSession(scope.projectId, sessionKey) };
+      return {
+        ...scope,
+        session: await directory.resolveOrCreateSession(
+          scope.projectId,
+          sessionKey,
+          scope.worktreeId,
+        ),
+      };
     },
 
     async withWorkspace(request, reply, run) {

@@ -1,10 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { LocalEnvironmentProvider, NullWorkspace, type RuntimeAdapter } from "../src/index.js";
+import {
+  LocalEnvironmentProvider,
+  NullWorkspace,
+  type Principal,
+  type RuntimeAdapter,
+} from "../src/index.js";
 
 const adapter = (): RuntimeAdapter =>
   ({ runtime: "fake", init: async () => {}, run: async function* () {}, abort: () => {} }) as RuntimeAdapter;
-const principal = { id: "u", tenant: "t" };
+const principal: Principal = { id: "u", tenant: "t", displayName: "U", roles: [], local: true };
 
 test("environments are cached per (project, worktree)", async () => {
   const built: string[] = [];
