@@ -25,6 +25,7 @@ export type {
   RuntimeAdapter,
   RuntimeInitOptions,
   ProjectContext,
+  WorktreeContext,
   RecordStoreLike,
 } from "./types.js";
 

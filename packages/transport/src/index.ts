@@ -33,6 +33,7 @@ export type {
   RuntimeAdapter,
   RuntimeInitOptions,
   ProjectContext,
+  WorktreeContext,
   RecordStoreLike,
 } from "./seams.js";
 export type { Principal, PrincipalResolver, RequestContext, Role } from "./seams.js";

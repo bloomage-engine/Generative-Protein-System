@@ -322,6 +322,18 @@ export interface ProjectContext {
   createdAt: string;
 }
 
+/**
+ * The record-owned Worktree an adapter serves (docs/adr/0025) — a read-only
+ * view an adapter may render into its tools/system prompt. `root` is the
+ * worktree's directory as the AGENT sees it.
+ */
+export interface WorktreeContext {
+  id: string;
+  name: string;
+  branch: string;
+  root: string;
+}
+
 export interface RuntimeInitOptions {
   /**
    * Opaque connection material for THIS adapter, produced by a sandbox provider
@@ -335,6 +347,11 @@ export interface RuntimeInitOptions {
    * renders it into the Project Workspace's Project Brief (docs/adr/0012).
    */
   project?: ProjectContext;
+  /**
+   * The Worktree this adapter serves, when the deployment has one. A dsh child
+   * names it in the worktree plugin's system prompt (docs/adr/0025).
+   */
+  worktree?: WorktreeContext;
   /**
    * Optional deployment env slice, generic to every runtime. A FALLBACK only —
    * a runtime's launch surface belongs in its binding, not here.
