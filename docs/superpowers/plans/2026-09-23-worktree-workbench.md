@@ -436,7 +436,7 @@ Under an expanded Project, render a `WorktreeList`: one row per worktree (name +
 
 - [ ] **Step 3: Create dialog and mutations**
 
-Create `worktree-create-dialog.tsx` (name, optional branch, optional base; shadcn `Dialog`/`Input`) calling `createWorktree`. Add handlers in the panel for rename/archive/unarchive/delete via the Task 1 API; delete's confirm dialog warns that the worktree's Sessions are deleted too. Archiving/deleting the ACTIVE worktree re-resolves to `main` (fetch its worktrees, `setScope({ projectId, worktreeId: "main", sessionId: null })`, clear tabs).
+Create `worktree-create-dialog.tsx` (name, optional branch, optional base; shadcn `Dialog`/`Input`) calling `createWorktree`. Add handlers in the panel for rename/archive/unarchive/delete via the Task 1 API; delete's confirm dialog warns that the worktree's Sessions are deleted too. Archiving/deleting the ACTIVE worktree re-resolves to `main` (fetch its worktrees, `setScope({ projectId, worktreeId: "main", sessionId: null })`, clear tabs). When dropping a worktree from the store, call `removeWorktree(id)` ONLY when the pane's Project is the store's active Project (`store.projectId === projectId`) — `store.worktrees` holds only the active Project's list, so an unguarded removal would delete another Project's same-slug entry (a worktree id is unique only WITHIN a Project).
 
 - [ ] **Step 4: Verify**
 
