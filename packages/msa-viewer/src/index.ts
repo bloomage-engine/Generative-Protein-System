@@ -13,3 +13,15 @@ export {
   type MsaUnaligned,
   type MmseqsResult,
 } from "./formats.js";
+
+export {
+  DEFAULT_CONSERVED,
+  columnStats,
+  isConservedCol,
+  sequenceStats,
+  tableStats,
+  type ColumnStat,
+  type ConservedOptions,
+  type SequenceStat,
+  type TableStat,
+} from "./stats.js";
