@@ -276,7 +276,8 @@ only fetches the service, and never touches git itself.
   home `/` resolves the remembered scope. `StudioHost` keys `SessionView` by
   `projectId/worktreeId/sessionId`, so any scope change remounts the runtime.
 - **Scope memory** (ADR-0009): the blob grows to
-  `{ lastProjectId, worktrees?, lastWorktreeId, sessions }`. Resolution stays
+  `{ lastProjectId, worktrees, sessions }` (worktrees and sessions keyed per
+  Project). Resolution stays
   "URL claim if the record lists it, else remembered Project, else first
   Project"; a worktree claim must be in the Project's worktree list, else it
   falls back to `main`. Only an authoritative "no" prunes; a fetch failure
