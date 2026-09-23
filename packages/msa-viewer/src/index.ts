@@ -25,3 +25,12 @@ export {
   type SequenceStat,
   type TableStat,
 } from "./stats.js";
+
+export {
+  MsaMentionError,
+  formatMsaMention,
+  msaMentionKey,
+  parseMsaMention,
+  type MsaTarget,
+  type ParsedMsaMention,
+} from "./mention.js";
