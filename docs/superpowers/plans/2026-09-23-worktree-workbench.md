@@ -181,6 +181,7 @@ In `apps/web/lib/scope-memory.ts`:
 - Add `worktreeId` to `Scope`.
 - Add `lastWorktreeId: string | null` to `ScopeMemory`; update `parseScopeMemory` (default null), `rememberScope` (set `lastWorktreeId` when the scope names one), `pruneScopeMemory` (keep it only when the Project survives).
 - Key `sessions` by `${projectId}\u0000${worktreeId}`; update `writeSession`/`resolveSession` to take the worktreeId and key accordingly.
+- Define `export const DEFAULT_WORKTREE_ID = "main";` LOCALLY in scope-memory.ts. This module must stay React-free and artifact-independent: keep the `@science-studio/transport-client` import TYPE-ONLY (it erases under Node type stripping), and do NOT value-import the client package — its runtime entry pulls React/assistant-ui. A local constant (with the comment that the value mirrors the record/client constant) keeps `node --test apps/web/test/scope-memory.test.mjs` runnable without a built `dist`.
 - Add `resolveWorktree`:
 
 ```ts
