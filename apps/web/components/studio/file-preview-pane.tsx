@@ -13,6 +13,7 @@ import {
   useWorkspaceFile,
   uploadWorkspaceFile,
   workspaceFileUrl,
+  type ClientScope,
 } from "@science-studio/transport-client";
 import { isCronLogPath } from "@science-studio/cron";
 import { Button } from "@/components/ui/button";
@@ -101,7 +102,7 @@ export function FilePreviewPane() {
  * to the live Session only for a tab that records none.
  */
 function SubagentPreview({ path, name, session }: { path: string; name: string; session?: string }) {
-  const { api, project, worktree } = useTransportApi();
+  const { api, scope } = useTransportApi();
   const activeSessionId = useStudioStore((s) => s.activeSessionId);
   const closeTab = useStudioStore((s) => s.closeTab);
   const childId = subagentTabChildId(path);
@@ -110,11 +111,10 @@ function SubagentPreview({ path, name, session }: { path: string; name: string; 
   // different checkout cannot keep this tab open — docs/adr/0025).
   const { transcript, isLoading, error } = useSubagentTranscript({
     api,
-    project,
-    worktreeId: worktree,
+    scope,
     threadId: session ?? activeSessionId,
     childId,
-    enabled: project !== null,
+    enabled: scope.projectId !== null,
   });
 
   return (
@@ -170,15 +170,16 @@ function TabPanel({ active, children }: { active: boolean; children: React.React
 }
 
 function Preview({ path, name }: { path: string; name: string }) {
-  const { api, project, worktree } = useWorkspaceApi();
+  const { api, scope } = useWorkspaceApi();
   const closeTab = useStudioStore((s) => s.closeTab);
   const kind = kindFor(name);
   // Cron is Project-`main`-only, so a run log opened as a normal file tab must
   // read the Project root, not the ACTIVE checkout (docs/adr/0025). Every other
   // file keeps the active worktree.
-  const effectiveWorktree = isCronLogPath(path) ? DEFAULT_WORKTREE_ID : worktree;
-  const downloadUrl = workspaceFileUrl(api, path, { download: true, project, worktree: effectiveWorktree });
-  const fileUrl = workspaceFileUrl(api, path, { project, worktree: effectiveWorktree });
+  const effectiveWorktreeId = isCronLogPath(path) ? DEFAULT_WORKTREE_ID : (scope.worktreeId ?? null);
+  const effectiveScope: ClientScope = { projectId: scope.projectId, worktreeId: effectiveWorktreeId };
+  const downloadUrl = workspaceFileUrl(api, path, { download: true, scope: effectiveScope });
+  const fileUrl = workspaceFileUrl(api, path, { scope: effectiveScope });
 
   const [sourceView, setSourceView] = useState(false);
   const [editedText, setEditedText] = useState<string | null>(null);
@@ -191,12 +192,12 @@ function Preview({ path, name }: { path: string; name: string }) {
     if (editedText == null) return;
     setSaving(true);
     try {
-      await uploadWorkspaceFile(api, path, new Blob([editedText]), project, effectiveWorktree);
+      await uploadWorkspaceFile(api, path, new Blob([editedText]), effectiveScope);
       setDirty(false);
     } finally {
       setSaving(false);
     }
-  }, [api, editedText, path, project, effectiveWorktree]);
+  }, [api, editedText, path, scope.projectId, effectiveWorktreeId]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -270,7 +271,7 @@ function Preview({ path, name }: { path: string; name: string }) {
           <TextPreview
             path={path}
             name={name}
-            worktree={effectiveWorktree}
+            scope={effectiveScope}
             sourceView={sourceView}
             onEditedTextChange={setEditedText}
             onDirtyChange={setDirty}
@@ -285,19 +286,19 @@ function Preview({ path, name }: { path: string; name: string }) {
 function TextPreview({
   path,
   name,
-  worktree,
+  scope,
   sourceView,
   onEditedTextChange,
   onDirtyChange,
 }: {
   path: string;
   name: string;
-  worktree?: string | null;
+  scope: ClientScope;
   sourceView: boolean;
   onEditedTextChange: (text: string | null) => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
-  const { text, mime, isLoading, error } = useWorkspaceFile(path, { worktree });
+  const { text, mime, isLoading, error } = useWorkspaceFile(path, { scope });
   const kind = kindFor(name, mime);
   const language = kind === "code" ? languageFor(name, kind) : undefined;
 

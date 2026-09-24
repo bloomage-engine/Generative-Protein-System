@@ -30,7 +30,7 @@ export function TopBarSearch() {
   // The file half of this search reads the SAME root listing the file tree
   // shows, and the session half the ACTIVE Project's Sessions — both follow the
   // committed scope, so a pick here never points at another Project's files.
-  const root = useWorkspaceRoot({ project: projectId });
+  const root = useWorkspaceRoot();
   const rootEntries: Entry[] = React.useMemo(
     () => (root.listing?.entries ?? []).filter((entry) => entry.kind === "file"),
     [root.listing],

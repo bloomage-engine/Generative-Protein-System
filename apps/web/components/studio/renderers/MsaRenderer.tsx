@@ -11,7 +11,7 @@ import {
   parseAlignment,
   type MsaTarget,
 } from "@science-studio/msa-viewer";
-import { useWorkspaceApi, workspaceFileUrl } from "@science-studio/transport-client";
+import { useWorkspaceApi, workspaceFileUrl, type ClientScope } from "@science-studio/transport-client";
 import { useComposerInsert } from "@/components/assistant-ui/composer-insert";
 import { useStudioStore } from "@/store/studio-store";
 import { PlainTextRenderer } from "./PlainTextRenderer";
@@ -58,13 +58,12 @@ const TOO_BIG = `This alignment is larger than the ${Math.round(
 async function fetchAlignmentText(
   api: string,
   path: string,
-  project: string | null,
-  worktree: string | null,
+  scope: ClientScope,
   signal: AbortSignal,
 ): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
   const attempt = (download: boolean): Promise<Response> =>
     fetch(
-      workspaceFileUrl(api, path, download ? { download: true, project, worktree } : { project, worktree }),
+      workspaceFileUrl(api, path, download ? { download: true, scope } : { scope }),
       { signal },
     );
   let res = await attempt(false);
@@ -76,7 +75,8 @@ async function fetchAlignmentText(
 }
 
 export function MsaRenderer({ path, name }: { path: string; name: string }) {
-  const { api, project, worktree } = useWorkspaceApi();
+  const { api, scope } = useWorkspaceApi();
+  const { projectId, worktreeId = null } = scope;
   const [state, setState] = useState<FetchState>({ status: "loading" });
   const [showRaw, setShowRaw] = useState(false);
 
@@ -86,7 +86,7 @@ export function MsaRenderer({ path, name }: { path: string; name: string }) {
     setShowRaw(false);
     void (async () => {
       try {
-        const result = await fetchAlignmentText(api, path, project, worktree, controller.signal);
+        const result = await fetchAlignmentText(api, path, { projectId, worktreeId }, controller.signal);
         if (controller.signal.aborted) return;
         setState(result.ok ? { status: "ready", text: result.text } : { status: "error", message: result.message });
       } catch (err) {
@@ -95,7 +95,7 @@ export function MsaRenderer({ path, name }: { path: string; name: string }) {
       }
     })();
     return () => controller.abort();
-  }, [api, path, project, worktree]);
+  }, [api, path, projectId, worktreeId]);
 
   const parsed = useMemo(() => {
     if (state.status !== "ready") return null;
@@ -113,11 +113,11 @@ export function MsaRenderer({ path, name }: { path: string; name: string }) {
   const onMention = useCallback(
     (target: MsaTarget) => {
       if (!composer) return;
-      const key = `${project ?? ""}/${path}::${msaMentionKey(target)}`;
-      composer.toggleMention(key, formatMsaMention(project ?? "", path, target));
+      const key = `${projectId ?? ""}/${path}::${msaMentionKey(target)}`;
+      composer.toggleMention(key, formatMsaMention(projectId ?? "", path, target));
       revealLeftView("thread");
     },
-    [composer, project, path, revealLeftView],
+    [composer, projectId, path, revealLeftView],
   );
 
   if (state.status === "loading") {

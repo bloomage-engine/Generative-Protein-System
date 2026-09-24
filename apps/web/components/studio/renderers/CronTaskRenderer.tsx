@@ -55,8 +55,7 @@ export function CronTaskRenderer({ path }: { path: string }) {
   const [preset, setPreset] = useState<SchedulePreset | "custom">("custom");
 
   const log = useWorkspaceFile(id === "" ? null : cronLogPath(id), {
-    project: projectId,
-    worktree: DEFAULT_WORKTREE_ID,
+    scope: { projectId, worktreeId: DEFAULT_WORKTREE_ID },
   });
   const runs = log.text ? parseLogEntries(log.text) : [];
 
@@ -67,7 +66,7 @@ export function CronTaskRenderer({ path }: { path: string }) {
     }
     let active = true;
     setLoading(true);
-    fetchCronTask(DEFAULT_CRON_API, projectId, id)
+    fetchCronTask(DEFAULT_CRON_API, { projectId }, id)
       .then((next) => {
         if (active) setTask(next);
       })
@@ -90,7 +89,7 @@ export function CronTaskRenderer({ path }: { path: string }) {
     setError(null);
     setStatus(null);
     try {
-      const saved = await saveCronTask(DEFAULT_CRON_API, projectId, task);
+      const saved = await saveCronTask(DEFAULT_CRON_API, { projectId }, task);
       setTask(saved);
       setStatus("Saved");
     } catch (err) {
@@ -106,7 +105,7 @@ export function CronTaskRenderer({ path }: { path: string }) {
     setError(null);
     setStatus(null);
     try {
-      setStatus((await runCronTask(DEFAULT_CRON_API, projectId, task.id)) === "success" ? "Ran successfully" : "Run did not complete");
+      setStatus((await runCronTask(DEFAULT_CRON_API, { projectId }, task.id)) === "success" ? "Ran successfully" : "Run did not complete");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -119,7 +118,7 @@ export function CronTaskRenderer({ path }: { path: string }) {
     if (!window.confirm(`Delete “${task.name}”?`)) return;
     setBusy(true);
     try {
-      await deleteCronTask(DEFAULT_CRON_API, projectId, task.id);
+      await deleteCronTask(DEFAULT_CRON_API, { projectId }, task.id);
       closeTab(path);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

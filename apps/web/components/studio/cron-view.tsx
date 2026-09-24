@@ -30,8 +30,8 @@ export function CronView() {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const enabled = open && projectId !== null;
-  const { tasks, invalid, error, refresh } = useCronTasks({ projectId, enabled });
-  const { available } = useWorkspaceAvailability({ project: projectId });
+  const { tasks, invalid, error, refresh } = useCronTasks({ scope: { projectId }, enabled });
+  const { available } = useWorkspaceAvailability();
   const unavailable = available === false;
 
   return (

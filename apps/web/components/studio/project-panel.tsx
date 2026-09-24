@@ -147,7 +147,7 @@ export function ProjectPanel() {
     }
     let active = true;
     const controller = new AbortController();
-    listHpcJobs(DEFAULT_HPC_API, deleting.id, controller.signal)
+    listHpcJobs(DEFAULT_HPC_API, { projectId: deleting.id }, controller.signal)
       .then((jobs) => {
         if (active) setOpenJobCount(jobs.filter((job) => isOpenComputeJobState(job.state)).length);
       })
@@ -233,7 +233,7 @@ export function ProjectPanel() {
     setBusy(true);
     setError(null);
     try {
-      const list = await fetchProjectSessions(PROJECTS_API, projectId, { worktreeId });
+      const list = await fetchProjectSessions(PROJECTS_API, { projectId, worktreeId });
       const store = useStudioStore.getState();
       if (store.panelProjectId !== projectId) return;
       if (effectiveWorktreeId(projectId) !== worktreeId) return;
@@ -254,7 +254,8 @@ export function ProjectPanel() {
   /** Refresh the pane's expanded Worktree wherever the Project is currently shown. */
   const refreshSessions = React.useCallback(async (projectId: string) => {
     try {
-      const list = await fetchProjectSessions(PROJECTS_API, projectId, {
+      const list = await fetchProjectSessions(PROJECTS_API, {
+        projectId,
         worktreeId: effectiveWorktreeId(projectId),
       });
       const store = useStudioStore.getState();
@@ -356,7 +357,7 @@ export function ProjectPanel() {
     setBusy(true);
     setError(null);
     try {
-      const session = await createSession(PROJECTS_API, panelProjectId, { worktreeId });
+      const session = await createSession(PROJECTS_API, { projectId: panelProjectId, worktreeId });
       const store = useStudioStore.getState();
       if (store.panelProjectId !== panelProjectId) return;
       store.setPanelSessions([...store.panelSessions, session]);
@@ -447,7 +448,7 @@ export function ProjectPanel() {
       // A fallback Project has no expanded worktree of its own yet: land on the
       // one the scope rule would pick (`main`, since `nextId` is not active).
       const worktreeId = effectiveWorktreeId(nextId);
-      const list = await fetchProjectSessions(PROJECTS_API, nextId, { worktreeId });
+      const list = await fetchProjectSessions(PROJECTS_API, { projectId: nextId, worktreeId });
       const s = useStudioStore.getState();
       s.setScope({
         projectId: nextId,
@@ -714,7 +715,7 @@ export function ProjectPanel() {
       setBusy(true);
       try {
         if (!archiveSessions[projectId]) {
-          const list = await fetchProjectSessions(PROJECTS_API, projectId, { includeArchived: true });
+          const list = await fetchProjectSessions(PROJECTS_API, { projectId }, { includeArchived: true });
           setArchiveSessions((map) => ({ ...map, [projectId]: list }));
         }
         if (!archiveWorktrees[projectId]) {

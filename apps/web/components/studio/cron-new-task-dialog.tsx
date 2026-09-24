@@ -39,7 +39,7 @@ export function NewCronTaskDialog({
     setBusy(true);
     setError(null);
     try {
-      const task = await createCronTask("/api/cron", projectId, {
+      const task = await createCronTask("/api/cron", { projectId }, {
         name: name.trim() || "Scheduled task",
         schedule: presetToExpression(preset, { hour, minute }),
         prompt,

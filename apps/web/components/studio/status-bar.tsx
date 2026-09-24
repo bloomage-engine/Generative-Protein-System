@@ -40,7 +40,7 @@ export function StatusBar() {
 
 function WorkspaceChip() {
   const projectId = useStudioStore((s) => s.projectId);
-  const { available, reason } = useWorkspaceAvailability({ project: projectId });
+  const { available, reason } = useWorkspaceAvailability();
   const ok = available === true;
   const label = ok ? "workspace: enabled" : available === false ? "workspace: off" : "workspace: …";
   return (
@@ -145,7 +145,7 @@ function SessionStatusChip() {
   const active = sessions.find((s) => s.id === activeSessionId) ?? null;
   const metrics = useSessionMetrics({
     api: PROJECTS_API,
-    projectId,
+    scope: { projectId },
     sessionId: activeSessionId,
     revision: runsRevision,
   });

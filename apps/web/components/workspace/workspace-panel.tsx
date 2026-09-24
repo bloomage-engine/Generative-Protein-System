@@ -2,8 +2,10 @@
 
 import { useEffect, type FC } from "react";
 import {
+  useWorkspaceApi,
   useWorkspaceBrowser,
   useWorkspaceFile,
+  type ClientScope,
   type Entry,
 } from "@science-studio/transport-client";
 import {
@@ -40,8 +42,13 @@ export const WorkspacePanel: FC<WorkspacePanelProps> = ({
   onSelect,
   onClose,
 }) => {
+  const ctx = useWorkspaceApi();
+  const scope: ClientScope = {
+    projectId: project ?? ctx.scope.projectId,
+    worktreeId: ctx.scope.worktreeId,
+  };
   const { path: dir, listing, isLoading, error, unavailable, navigate, refresh } =
-    useWorkspaceBrowser({ project });
+    useWorkspaceBrowser({ scope });
 
   // An externally selected file (an agent link) reveals its directory.
   useEffect(() => {
@@ -140,7 +147,7 @@ export const WorkspacePanel: FC<WorkspacePanelProps> = ({
       </div>
 
       {selected && (
-        <FilePreview path={selected} project={project} onClose={() => onSelect(null)} />
+        <FilePreview path={selected} scope={scope} onClose={() => onSelect(null)} />
       )}
     </aside>
   );
@@ -148,11 +155,11 @@ export const WorkspacePanel: FC<WorkspacePanelProps> = ({
 
 const FilePreview: FC<{
   path: string;
-  project: string | null;
+  scope: ClientScope;
   onClose: () => void;
-}> = ({ path, project, onClose }) => {
+}> = ({ path, scope, onClose }) => {
   const { text, mime, isBinary, isLoading, error, downloadUrl } = useWorkspaceFile(path, {
-    project,
+    scope,
   });
   const name = path.slice(path.lastIndexOf("/") + 1);
 

@@ -44,7 +44,7 @@ export function JobsView() {
   const openJob = useStudioStore((s) => s.openJob);
   const [actionError, setActionError] = useState<string | null>(null);
   const { jobs, error, refresh, isRefreshing } = useHpcJobs({
-    projectId,
+    scope: { projectId },
     enabled: open && projectId !== null,
   });
 
@@ -116,7 +116,7 @@ export function JobsView() {
                             )
                           ) {
                             setActionError(null);
-                            cancelHpcJob(DEFAULT_HPC_API, projectId, job.id).catch((err: unknown) =>
+                            cancelHpcJob(DEFAULT_HPC_API, { projectId }, job.id).catch((err: unknown) =>
                               setActionError(err instanceof Error ? err.message : String(err)),
                             );
                           }

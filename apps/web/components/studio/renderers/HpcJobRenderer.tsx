@@ -29,7 +29,7 @@ export function HpcJobRenderer({ path, name }: { path: string; name: string }) {
     if (!projectId || !jobId) return;
     let active = true;
     const controller = new AbortController();
-    fetchHpcJob(DEFAULT_HPC_API, projectId, jobId, controller.signal)
+    fetchHpcJob(DEFAULT_HPC_API, { projectId }, jobId, controller.signal)
       .then((next) => {
         if (active) {
           setJob(next);
@@ -51,7 +51,7 @@ export function HpcJobRenderer({ path, name }: { path: string; name: string }) {
     let active = true;
     const controller = new AbortController();
     setLogLoading(true);
-    fetchHpcJobLogs(DEFAULT_HPC_API, projectId, jobId, "stdout", controller.signal)
+    fetchHpcJobLogs(DEFAULT_HPC_API, { projectId }, jobId, "stdout", controller.signal)
       .then((next) => {
         if (active) setLog(next);
       })
@@ -71,7 +71,7 @@ export function HpcJobRenderer({ path, name }: { path: string; name: string }) {
     if (!projectId || !jobId) return;
     setStream(which);
     setLogLoading(true);
-    fetchHpcJobLogs(DEFAULT_HPC_API, projectId, jobId, which)
+    fetchHpcJobLogs(DEFAULT_HPC_API, { projectId }, jobId, which)
       .then(setLog)
       .catch((err: unknown) =>
         setLog({ text: "", error: err instanceof Error ? err.message : String(err) }),

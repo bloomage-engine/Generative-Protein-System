@@ -65,7 +65,7 @@ export function HpcTab({ projectId }: { projectId: string | null }) {
   React.useEffect(() => {
     if (!projectId) return;
     let active = true;
-    fetchHpcBinding(DEFAULT_HPC_API, projectId)
+    fetchHpcBinding(DEFAULT_HPC_API, { projectId })
       .then((view) => {
         if (!active) return;
         setBound(view.bound);
@@ -154,7 +154,7 @@ export function HpcTab({ projectId }: { projectId: string | null }) {
           notes: bindNotes,
         },
         DEFAULT_HPC_API,
-        projectId,
+        { projectId },
       );
       setBound(true);
       setBindingError(null);

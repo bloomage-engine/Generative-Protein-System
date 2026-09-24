@@ -96,8 +96,7 @@ export function SubagentsView() {
   // the active Worktree or a linked-worktree Session reads `main`'s empty list
   // (docs/adr/0025).
   const { subagents } = useSubagents({
-    projectId,
-    worktreeId: activeWorktreeId,
+    scope: { projectId, worktreeId: activeWorktreeId },
     threadId: activeSessionId,
     enabled,
   });

@@ -32,7 +32,7 @@ export function SkillsTab({ projectId }: { projectId: string | null }) {
   const load = React.useCallback(async (): Promise<boolean> => {
     setError(null);
     try {
-      setView(await fetchSkills(projectId ? { projectId } : {}));
+      setView(await fetchSkills(projectId ? { scope: { projectId } } : {}));
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -109,13 +109,13 @@ export function SkillsTab({ projectId }: { projectId: string | null }) {
         error={error}
         onInstall={() => setShowForm((open) => !open)}
         showForm={showForm}
-        onSubmit={(input) => run(() => installSkill(projectId ? { projectId } : {}, input))}
-        onRemove={(name) => run(() => removeSkill(projectId ? { projectId } : {}, name))}
+        onSubmit={(input) => run(() => installSkill(projectId ? { scope: { projectId } } : {}, input))}
+        onRemove={(name) => run(() => removeSkill(projectId ? { scope: { projectId } } : {}, name))}
       />
       <GlobalSection
         skills={globalSkills}
         onCopy={(name) =>
-          run(() => installSkill(projectId ? { projectId } : {}, { copyFrom: { name } }))
+          run(() => installSkill(projectId ? { scope: { projectId } } : {}, { copyFrom: { name } }))
         }
       />
     </div>

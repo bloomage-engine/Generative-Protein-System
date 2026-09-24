@@ -25,6 +25,7 @@ import {
   useWorkspaceRoot,
   workspaceFileUrl,
   WORKSPACE_UNAVAILABLE_REASON,
+  type ClientScope,
   type DirListing,
   type Entry,
 } from "@science-studio/transport-client";
@@ -54,12 +55,14 @@ interface MenuTarget {
 }
 
 export function WorkspaceTree({ project }: { project?: string | null }) {
-  const scope = useWorkspaceApi();
-  const api = scope.api;
-  const proj = project ?? scope.project;
-  const worktree = scope.worktree;
+  const { api, scope: contextScope } = useWorkspaceApi();
+  const scope: ClientScope = {
+    projectId: project ?? contextScope.projectId,
+    worktreeId: contextScope.worktreeId,
+  };
+  const { projectId: proj, worktreeId: worktree } = scope;
 
-  const root = useWorkspaceRoot({ project: proj, worktree });
+  const root = useWorkspaceRoot({ scope });
   const openFile = useStudioStore((s) => s.openFile);
   const activeTabPath = useStudioStore((s) => s.activeTabPath);
   const filesOpen = useStudioStore((s) => s.rightSections.files);
@@ -90,7 +93,7 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
         return rootListingRef.current?.entries ?? [];
       }
       try {
-        const listing = await fetchWorkspaceEntries(api, id, proj, worktree);
+        const listing = await fetchWorkspaceEntries(api, id, { projectId: proj, worktreeId: worktree });
         setLoadError(null);
         return listing.entries;
       } catch (error) {
@@ -200,7 +203,10 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
       setUploading(files.length);
       try {
         for (const file of files) {
-          await uploadWorkspaceFile(api, dir ? `${dir}/${file.name}` : file.name, file, proj, worktree);
+          await uploadWorkspaceFile(api, dir ? `${dir}/${file.name}` : file.name, file, {
+            projectId: proj,
+            worktreeId: worktree,
+          });
         }
       } catch (err) {
         setActionError(err instanceof Error ? err.message : String(err));
@@ -219,7 +225,10 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
       // A real navigation to the file's download URL — the service answers with
       // `content-disposition: attachment`, so the browser saves it.
       const a = document.createElement("a");
-      a.href = workspaceFileUrl(api, entry.path, { download: true, project: proj, worktree });
+      a.href = workspaceFileUrl(api, entry.path, {
+        download: true,
+        scope: { projectId: proj, worktreeId: worktree },
+      });
       a.download = entry.name;
       document.body.appendChild(a);
       a.click();
@@ -240,7 +249,7 @@ export function WorkspaceTree({ project }: { project?: string | null }) {
       if (!confirmed) return;
       setActionError(null);
       try {
-        await deleteWorkspaceEntry(api, entry.path, proj, worktree);
+        await deleteWorkspaceEntry(api, entry.path, { projectId: proj, worktreeId: worktree });
       } catch (err) {
         setActionError(err instanceof Error ? err.message : String(err));
         return;

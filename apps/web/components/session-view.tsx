@@ -68,8 +68,7 @@ const Session = memo(function Session({
   const { api } = useTransportApi();
   const runtime = useTransport({
     api,
-    projectId,
-    worktreeId,
+    scope: { projectId, worktreeId },
     threadId: sessionId,
     // The status bar's metrics come from the record; a finished run is the
     // signal to refetch. Read the store imperatively so this component — which

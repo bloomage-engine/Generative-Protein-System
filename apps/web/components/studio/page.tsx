@@ -112,7 +112,8 @@ export function StudioPage({
           worktrees,
         });
 
-        const sessions = await fetchProjectSessions(api, project.projectId, {
+        const sessions = await fetchProjectSessions(api, {
+          projectId: project.projectId,
           worktreeId: resolved.worktreeId,
         });
         if (cancelled) return;

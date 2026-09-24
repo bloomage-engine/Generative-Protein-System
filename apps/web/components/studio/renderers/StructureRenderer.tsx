@@ -27,10 +27,11 @@ import { useStudioStore } from "@/store/studio-store";
  * `ssr: false`.
  */
 export function StructureRenderer({ path, name }: { path: string; name: string }) {
-  const { api, project, worktree } = useWorkspaceApi();
+  const { api, scope } = useWorkspaceApi();
+  const { projectId, worktreeId = null } = scope;
   const url = useMemo(
-    () => workspaceFileUrl(api, path, { download: true, project, worktree }),
-    [api, path, project, worktree],
+    () => workspaceFileUrl(api, path, { download: true, scope: { projectId, worktreeId } }),
+    [api, path, projectId, worktreeId],
   );
 
   const [error, setError] = useState<string | null>(null);
@@ -63,11 +64,11 @@ export function StructureRenderer({ path, name }: { path: string; name: string }
         default:
           molql = formatBondMolql(target.a, target.b);
       }
-      const key = `${project ?? ""}/${path}::${molqlTargetKey(target)}`;
-      composer.toggleMention(key, formatStructureMention(project, path, molql, label));
+      const key = `${projectId ?? ""}/${path}::${molqlTargetKey(target)}`;
+      composer.toggleMention(key, formatStructureMention(projectId, path, molql, label));
       revealLeftView("thread");
     },
-    [composer, project, path, revealLeftView],
+    [composer, projectId, path, revealLeftView],
   );
 
   return (
