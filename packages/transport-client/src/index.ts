@@ -2,6 +2,14 @@
 
 export { useTransport, type UseTransportOptions } from "./use-transport.js";
 export {
+  scopeBody,
+  scopeQuery,
+  scopedUrl,
+  withScope,
+  type ClientScope,
+  type ScopeQueryParams,
+} from "./scope.js";
+export {
   fetchCommandCatalog,
   TransportApiProvider,
   useRuntimeCommands,
