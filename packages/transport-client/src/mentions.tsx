@@ -25,6 +25,7 @@ import {
   workspaceParentPath,
   type WorkspaceBrowser,
 } from "./workspace.js";
+import type { ClientScope } from "./scope.js";
 
 type MentionBundle = ReturnType<typeof unstable_useMentionAdapter>;
 
@@ -45,15 +46,13 @@ export interface WorkspaceMentions {
 
 export function useWorkspaceMentions(
   opts: {
-    project?: string | null;
-    worktree?: string | null;
+    scope?: ClientScope;
     initialPath?: string;
     withParent?: boolean;
   } = {},
 ): WorkspaceMentions {
   const browser = useWorkspaceBrowser({
-    ...(opts.project !== undefined ? { project: opts.project } : {}),
-    ...(opts.worktree !== undefined ? { worktree: opts.worktree } : {}),
+    ...(opts.scope !== undefined ? { scope: opts.scope } : {}),
     ...(opts.initialPath !== undefined ? { initialPath: opts.initialPath } : {}),
   });
   const withParent = opts.withParent ?? false;

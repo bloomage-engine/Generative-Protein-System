@@ -6,6 +6,7 @@ import type {
   RuntimeSettingsView,
   SubagentSettings,
 } from "@science-studio/transport";
+import { scopedUrl } from "./scope.js";
 
 export const DEFAULT_SETTINGS_API = "/api/settings";
 
@@ -65,7 +66,8 @@ export class SettingsRequestError extends Error {
 }
 
 function base(api: string): string {
-  return api.replace(/\/+$/, "");
+  // The settings routes carry no Project/Worktree claim; this trims the base.
+  return scopedUrl(api, "", { projectId: null });
 }
 
 async function request<T>(input: string, init?: RequestInit): Promise<T> {

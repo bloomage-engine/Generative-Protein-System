@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchSessionRuns, DEFAULT_PROJECTS_API } from "./projects.js";
 import { summarizeSessionRuns, type SessionMetrics } from "./session-metrics.js";
+import type { ClientScope } from "./scope.js";
 
 export interface UseSessionMetricsOptions {
   /** The record API base. Defaults to the same-origin `/api/projects`. */
   api?: string;
-  projectId: string | null;
+  /** The (Project, Worktree) whose Session this is. */
+  scope: ClientScope;
   sessionId: string | null;
   /** Bump to refetch (e.g. a run finished); a scope change refetches anyway. */
   revision?: number;
@@ -22,7 +24,8 @@ export interface UseSessionMetricsOptions {
  */
 export function useSessionMetrics(options: UseSessionMetricsOptions): SessionMetrics | null {
   const api = options.api ?? DEFAULT_PROJECTS_API;
-  const { projectId, sessionId, revision = 0 } = options;
+  const { scope, sessionId, revision = 0 } = options;
+  const projectId = scope.projectId;
   const [metrics, setMetrics] = useState<SessionMetrics | null>(null);
   // The value survives a re-render that happens before the new fetch settles.
   const lastRef = useRef<SessionMetrics | null>(null);
@@ -36,7 +39,7 @@ export function useSessionMetrics(options: UseSessionMetricsOptions): SessionMet
     let active = true;
     void (async () => {
       try {
-        const runs = await fetchSessionRuns(api, projectId, sessionId);
+        const runs = await fetchSessionRuns(api, { projectId }, sessionId);
         if (!active) return;
         const next = summarizeSessionRuns(runs, sessionId);
         lastRef.current = next;

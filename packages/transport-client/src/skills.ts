@@ -1,6 +1,7 @@
 "use client";
 
 import type { SkillInfo, SkillInstallInput } from "@science-studio/transport";
+import { scopedUrl, type ClientScope } from "./scope.js";
 
 export const DEFAULT_SKILLS_API = "/api/skills";
 
@@ -15,8 +16,8 @@ export interface SkillsView {
 export interface SkillsApiOptions {
   /** The skills API base; defaults to the same-origin `/api/skills`. */
   api?: string;
-  /** The Project whose adapter serves the catalog. */
-  projectId?: string;
+  /** The Project whose adapter serves the catalog (skills are Project-level; a Worktree claim is dropped). */
+  scope?: ClientScope;
 }
 
 export class SkillsRequestError extends Error {
@@ -29,12 +30,13 @@ export class SkillsRequestError extends Error {
   }
 }
 
-function base(api: string): string {
-  return api.replace(/\/+$/, "");
-}
-
-function query(projectId?: string): string {
-  return projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+/**
+ * The skills surface is PROJECT-level (docs/adr/0020): the catalog rides the
+ * active Project's adapter and the install target is the Project's workspace
+ * root, so any Worktree claim is dropped here.
+ */
+function projectScope(scope?: ClientScope): ClientScope {
+  return { projectId: scope?.projectId ?? null };
 }
 
 async function request<T>(input: string, init?: RequestInit): Promise<T> {
@@ -62,23 +64,26 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
  */
 export async function fetchSkills(options: SkillsApiOptions = {}): Promise<SkillsView> {
   const api = options.api ?? DEFAULT_SKILLS_API;
-  return request<SkillsView>(`${base(api)}${query(options.projectId)}`);
+  return request<SkillsView>(scopedUrl(api, "", projectScope(options.scope)));
 }
 
 /** Install (or overwrite) one Project skill; returns the installed skill. */
 export async function installSkill(options: SkillsApiOptions, input: SkillInstallInput): Promise<SkillInfo> {
   const api = options.api ?? DEFAULT_SKILLS_API;
-  const { skill } = await request<{ skill: SkillInfo }>(`${base(api)}/install${query(options.projectId)}`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  const { skill } = await request<{ skill: SkillInfo }>(
+    scopedUrl(api, "/install", projectScope(options.scope)),
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
   return skill;
 }
 
 /** Remove one Project skill. */
 export async function removeSkill(options: SkillsApiOptions, name: string): Promise<void> {
   const api = options.api ?? DEFAULT_SKILLS_API;
-  await request<{ removed: string }>(`${base(api)}/remove${query(options.projectId)}`, {
+  await request<{ removed: string }>(scopedUrl(api, "/remove", projectScope(options.scope)), {
     method: "POST",
     body: JSON.stringify({ name, confirm: true }),
   });

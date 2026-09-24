@@ -11,6 +11,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import { DEFAULT_API } from "./use-transport.js";
+import { scopedUrl, type ClientScope } from "./scope.js";
 
 /**
  * Runtime command catalog (docs/adr/0003).
@@ -35,14 +36,12 @@ import { DEFAULT_API } from "./use-transport.js";
  */
 export interface TransportScope {
   api: string;
-  project: string | null;
-  worktree: string | null;
+  scope: ClientScope;
 }
 
 const TransportApiContext = createContext<TransportScope>({
   api: DEFAULT_API,
-  project: null,
-  worktree: null,
+  scope: { projectId: null },
 });
 
 /** Provide the transport base URL (`/api/transport` by default) and Project/Worktree. */
@@ -50,13 +49,13 @@ export const TransportApiProvider: FC<
   PropsWithChildren<{ api: string; project?: string | null; worktree?: string | null }>
 > = ({ api, project = null, worktree = null, children }) => {
   const value = useMemo<TransportScope>(
-    () => ({ api, project, worktree }),
+    () => ({ api, scope: { projectId: project, worktreeId: worktree } }),
     [api, project, worktree],
   );
   return <TransportApiContext.Provider value={value}>{children}</TransportApiContext.Provider>;
 };
 
-/** The transport scope (API base + Project + Worktree) from the nearest provider. */
+/** The transport scope (API base + the Project/Worktree claim) from the nearest provider. */
 export function useTransportApi(): TransportScope {
   return useContext(TransportApiContext);
 }
@@ -64,15 +63,9 @@ export function useTransportApi(): TransportScope {
 /** Fetch the runtime command catalog for one (Project, Worktree). Throws on HTTP failure. */
 export async function fetchCommandCatalog(
   api: string,
-  project: string | null = null,
-  worktree: string | null = null,
+  scope: ClientScope = { projectId: null },
 ): Promise<CommandDescriptor[]> {
-  const params: string[] = [];
-  if (project) params.push(`projectId=${encodeURIComponent(project)}`);
-  if (worktree) params.push(`worktreeId=${encodeURIComponent(worktree)}`);
-  const query = params.length ? `?${params.join("&")}` : "";
-  const url = `${api.replace(/\/+$/, "")}/commands${query}`;
-  const res = await fetch(url, { headers: { accept: "application/json" } });
+  const res = await fetch(scopedUrl(api, "/commands", scope), { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(`command catalog request failed: ${res.status}`);
   const body = (await res.json()) as { commands?: CommandDescriptor[] };
   return Array.isArray(body.commands) ? body.commands : [];
@@ -98,16 +91,17 @@ export async function fetchCommandCatalog(
  * without an assistant-ui runtime provider.
  */
 export function useRuntimeCommands(refreshToken?: unknown): CommandDescriptor[] | null {
-  const { api, project, worktree } = useTransportApi();
+  const { api, scope } = useTransportApi();
+  const { projectId, worktreeId } = scope;
   const [commands, setCommands] = useState<CommandDescriptor[] | null>(null);
 
   useEffect(() => {
     setCommands(null);
-  }, [api, project, worktree]);
+  }, [api, projectId, worktreeId]);
 
   useEffect(() => {
     let cancelled = false;
-    fetchCommandCatalog(api, project, worktree)
+    fetchCommandCatalog(api, { projectId, worktreeId })
       .then((list) => {
         if (!cancelled) setCommands(list);
       })
@@ -118,7 +112,7 @@ export function useRuntimeCommands(refreshToken?: unknown): CommandDescriptor[] 
     return () => {
       cancelled = true;
     };
-  }, [api, project, worktree, refreshToken]);
+  }, [api, projectId, worktreeId, refreshToken]);
 
   return commands;
 }

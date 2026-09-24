@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComputeJob } from "@science-studio/record";
 import type { HpcEndpointSettings } from "@science-studio/transport";
+import { scopedUrl, type ClientScope } from "./scope.js";
 export { isOpenComputeJobState } from "@science-studio/hpc";
 
 /** The same-origin HPC proxy base (the web hop). */
@@ -16,10 +17,6 @@ export class HpcRequestError extends Error {
     super(message);
     this.name = "HpcRequestError";
   }
-}
-
-function base(api: string): string {
-  return api.replace(/\/+$/, "");
 }
 
 async function request<T>(input: string, init?: RequestInit): Promise<T> {
@@ -39,11 +36,13 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-function scoped(path: string, projectId: string | null): string {
-  const query = new URLSearchParams();
-  if (projectId) query.set("projectId", projectId);
-  const merged = query.toString();
-  return merged ? `${path}${path.includes("?") ? "&" : "?"}${merged}` : path;
+/**
+ * HPC is a PROJECT-level surface (docs/adr/0024): the binding, the ledger and
+ * the jobs all live at the Project root, so every scoped HPC route pins the
+ * scope to the Project and drops any Worktree claim.
+ */
+function projectScope(scope: ClientScope): ClientScope {
+  return { projectId: scope.projectId };
 }
 
 // -- The deployment endpoints (the settings `hpc` section view) --------------
@@ -52,7 +51,10 @@ export async function fetchHpcEndpoints(
   api: string = DEFAULT_HPC_API,
   signal?: AbortSignal,
 ): Promise<HpcEndpointSettings[]> {
-  const body = await request<{ endpoints: HpcEndpointSettings[] }>(`${base(api)}/endpoints`, { signal });
+  const body = await request<{ endpoints: HpcEndpointSettings[] }>(
+    scopedUrl(api, "/endpoints", { projectId: null }),
+    { signal },
+  );
   return body.endpoints ?? [];
 }
 
@@ -64,7 +66,10 @@ export interface HpcProbeResult {
 }
 
 export function probeHpcEndpoint(api: string, id: string): Promise<HpcProbeResult> {
-  return request<HpcProbeResult>(`${base(api)}/endpoints/${encodeURIComponent(id)}/probe`, { method: "POST" });
+  return request<HpcProbeResult>(
+    scopedUrl(api, `/endpoints/${encodeURIComponent(id)}/probe`, { projectId: null }),
+    { method: "POST" },
+  );
 }
 
 // -- The Project HPC Binding --------------------------------------------------
@@ -84,72 +89,79 @@ export interface HpcBindingView {
 
 export function fetchHpcBinding(
   api: string = DEFAULT_HPC_API,
-  projectId: string | null = null,
+  scope: ClientScope = { projectId: null },
   signal?: AbortSignal,
 ): Promise<HpcBindingView> {
-  return request<HpcBindingView>(scoped(`${base(api)}/binding`, projectId), { signal });
+  return request<HpcBindingView>(scopedUrl(api, "/binding", projectScope(scope)), { signal });
 }
 
 export function saveHpcBinding(
   binding: { endpoint: string; partition?: string; workDir?: string; defaultTime?: string; notes?: string },
   api: string = DEFAULT_HPC_API,
-  projectId: string | null = null,
+  scope: ClientScope = { projectId: null },
 ): Promise<{ binding: unknown }> {
-  return request(scoped(`${base(api)}/binding`, projectId), { method: "PUT", body: JSON.stringify(binding) });
+  return request(scopedUrl(api, "/binding", projectScope(scope)), {
+    method: "PUT",
+    body: JSON.stringify(binding),
+  });
 }
 
 // -- The Compute Job ledger ---------------------------------------------------
 
 export async function listHpcJobs(
   api: string = DEFAULT_HPC_API,
-  projectId: string | null = null,
+  scope: ClientScope = { projectId: null },
   signal?: AbortSignal,
 ): Promise<ComputeJob[]> {
-  const body = await request<{ jobs: ComputeJob[] }>(scoped(`${base(api)}/jobs`, projectId), { signal });
+  const body = await request<{ jobs: ComputeJob[] }>(
+    scopedUrl(api, "/jobs", projectScope(scope)),
+    { signal },
+  );
   return body.jobs ?? [];
 }
 
 export function fetchHpcJob(
   api: string = DEFAULT_HPC_API,
-  projectId: string | null,
+  scope: ClientScope,
   jobId: string,
   signal?: AbortSignal,
 ): Promise<ComputeJob> {
   return request<{ job: ComputeJob }>(
-    scoped(`${base(api)}/jobs/${encodeURIComponent(jobId)}`, projectId),
+    scopedUrl(api, `/jobs/${encodeURIComponent(jobId)}`, projectScope(scope)),
     { signal },
   ).then((body) => body.job);
 }
 
 export function refreshHpcJobs(
   api: string = DEFAULT_HPC_API,
-  projectId: string | null,
+  scope: ClientScope,
 ): Promise<ComputeJob[]> {
-  return request<{ jobs: ComputeJob[] }>(scoped(`${base(api)}/jobs/refresh`, projectId), { method: "POST" }).then(
-    (body) => body.jobs ?? [],
-  );
+  return request<{ jobs: ComputeJob[] }>(
+    scopedUrl(api, "/jobs/refresh", projectScope(scope)),
+    { method: "POST" },
+  ).then((body) => body.jobs ?? []);
 }
 
 export function cancelHpcJob(
   api: string = DEFAULT_HPC_API,
-  projectId: string | null,
+  scope: ClientScope,
   jobId: string,
 ): Promise<ComputeJob> {
   return request<{ job: ComputeJob }>(
-    scoped(`${base(api)}/jobs/${encodeURIComponent(jobId)}/cancel`, projectId),
+    scopedUrl(api, `/jobs/${encodeURIComponent(jobId)}/cancel`, projectScope(scope)),
     { method: "POST" },
   ).then((body) => body.job);
 }
 
 export function fetchHpcJobLogs(
   api: string = DEFAULT_HPC_API,
-  projectId: string | null,
+  scope: ClientScope,
   jobId: string,
   stream: "stdout" | "stderr",
   signal?: AbortSignal,
 ): Promise<{ text: string; error?: string }> {
   return request<{ text: string; error?: string }>(
-    scoped(`${base(api)}/jobs/${encodeURIComponent(jobId)}/logs?stream=${stream}`, projectId),
+    scopedUrl(api, `/jobs/${encodeURIComponent(jobId)}/logs`, projectScope(scope), { stream }),
     { signal },
   );
 }
@@ -157,7 +169,8 @@ export function fetchHpcJobLogs(
 export interface UseHpcJobsOptions {
   /** HPC base; defaults to the same-origin `/api/hpc`. */
   api?: string;
-  projectId: string | null;
+  /** The active Project (HPC is Project-level; any Worktree claim is dropped). */
+  scope: ClientScope;
   /** False makes NO request (module collapsed). */
   enabled: boolean;
   /** Poll cadence in ms (default 5000 — the ledger is reconciled every 15 s). */
@@ -178,7 +191,8 @@ export function useHpcJobs(options: UseHpcJobsOptions): {
   refresh: () => Promise<void>;
   isRefreshing: boolean;
 } {
-  const { api = DEFAULT_HPC_API, projectId, enabled, intervalMs = 5000 } = options;
+  const { api = DEFAULT_HPC_API, scope, enabled, intervalMs = 5000 } = options;
+  const projectId = scope.projectId;
   const [jobs, setJobs] = useState<ComputeJob[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -191,7 +205,7 @@ export function useHpcJobs(options: UseHpcJobsOptions): {
     const controller = new AbortController();
     const tick = async () => {
       try {
-        const next = await listHpcJobs(api, projectId, controller.signal);
+        const next = await listHpcJobs(api, { projectId }, controller.signal);
         if (active) {
           setJobs(next);
           setError(null);
@@ -214,7 +228,7 @@ export function useHpcJobs(options: UseHpcJobsOptions): {
     const requested = projectId;
     setIsRefreshing(true);
     try {
-      const next = await refreshHpcJobs(api, requested);
+      const next = await refreshHpcJobs(api, { projectId: requested });
       // A scope switch while the forced tick runs: the poll loop owns the new
       // Project's list — a stale answer must not overwrite it (docs/adr/0009).
       if (projectRef.current !== requested) return;

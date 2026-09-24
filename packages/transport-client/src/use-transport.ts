@@ -11,6 +11,7 @@ import {
   type RuntimeState,
 } from "./session-sync.js";
 import { watchReconnect } from "./watch-loop.js";
+import { withScope, type ClientScope } from "./scope.js";
 
 const DEFAULT_API = "/api/transport";
 
@@ -20,15 +21,10 @@ export type UseTransportOptions = {
   /** Transport endpoint. Defaults to the same-origin `/api/transport`. */
   api?: string;
   /**
-   * The Project whose Session this runtime drives. Carried on every request
-   * (probe, sends, watch); omitted → the service's default Project.
+   * The Project/Worktree whose Session this runtime drives. Carried on every
+   * request (probe, sends, watch); omitted → the service's defaults.
    */
-  projectId?: string | null;
-  /**
-   * The Worktree inside that Project (docs/adr/0025). Carried on every request
-   * alongside `projectId`; omitted → the service's `main`.
-   */
-  worktreeId?: string | null;
+  scope?: ClientScope;
   /**
    * The Session (a record-owned id) to load and drive. `null`/omitted → the
    * runtime's own default session (the single-session mount probe).
@@ -98,13 +94,14 @@ export type UseTransportOptions = {
 export function useTransport(options: UseTransportOptions = {}): AssistantRuntime {
   const api = options.api ?? DEFAULT_API;
   const base = api.replace(/\/+$/, "");
-  const projectId = options.projectId ?? null;
-  const worktreeId = options.worktreeId ?? null;
-  const threadId = options.threadId ?? null;
+  const projectId = options.scope?.projectId ?? null;
+  const worktreeId = options.scope?.worktreeId ?? null;
+  const threadId = options.threadId ?? options.scope?.threadId ?? null;
+  const scope: ClientScope = { projectId, worktreeId, threadId };
   // The scope travels in the URL so it also reaches assistant-ui's OWN send
   // requests (we do not build their body); the service reads it from the query
   // when the body does not carry it.
-  const scopedApi = withScope(api, projectId, worktreeId, threadId);
+  const scopedApi = withScope(api, scope);
 
   // Set when the user stops a run. The service may not have converged out of
   // `running` yet (a slow/unavailable runtime cancel), so a watch push of the
@@ -143,7 +140,7 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
       // The local cancel only aborts this fetch; the runtime still needs telling
       // so the harness stops the turn (otherwise the next message queues behind
       // it). Best-effort: a failed request must not block the UI from settling.
-      void requestAbort(`${base}/abort`, projectId, worktreeId, threadId).catch((err: unknown) => {
+      void requestAbort(base, scope).catch((err: unknown) => {
         console.warn("[transport-client] abort request failed", err);
       });
       // Drop out of `running`: the aborted run sends no terminal frame, so the
@@ -169,11 +166,9 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
     const controller = new AbortController();
     void (async () => {
       const snapshot = await fetchSessionSnapshot(
-        scopedApi,
+        api,
         createInitialRuntimeState(),
-        threadId,
-        projectId,
-        worktreeId,
+        scope,
         controller.signal,
       );
       if (cancelled || snapshot === null) return;
@@ -243,7 +238,7 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
 
     async function frameLoop(): Promise<void> {
       try {
-        const res = await fetch(`${base}/watch${watchQuery(projectId, worktreeId, threadId)}`, {
+        const res = await fetch(withScope(`${base}/watch`, scope), {
           headers: { accept: "application/x-ndjson" },
           signal: controller.signal,
         });
@@ -297,53 +292,13 @@ export function useTransport(options: UseTransportOptions = {}): AssistantRuntim
   return runtime;
 }
 
-/** Append the Project/Worktree/Session scope to a transport URL (sends included). */
-function withScope(
-  api: string,
-  projectId: string | null,
-  worktreeId: string | null,
-  threadId: string | null,
-): string {
-  const qs = scopeParams(projectId, worktreeId, threadId);
-  if (!qs) return api;
-  return `${api}${api.includes("?") ? "&" : "?"}${qs}`;
-}
-
-/** The watch endpoint's query (its scope is always explicit). */
-function watchQuery(
-  projectId: string | null,
-  worktreeId: string | null,
-  threadId: string | null,
-): string {
-  const qs = scopeParams(projectId, worktreeId, threadId);
-  return qs ? `?${qs}` : "";
-}
-
-function scopeParams(
-  projectId: string | null,
-  worktreeId: string | null,
-  threadId: string | null,
-): string {
-  const params = new URLSearchParams();
-  if (projectId) params.set("projectId", projectId);
-  if (worktreeId) params.set("worktreeId", worktreeId);
-  if (threadId) params.set("threadId", threadId);
-  return params.toString();
-}
-
 /**
  * POST one run-control abort. The stop button's local `AbortController` only
  * kills the client's SSE fetch; this is what tells the service's adapter to
  * cancel the turn itself.
  */
-async function requestAbort(
-  api: string,
-  projectId: string | null,
-  worktreeId: string | null,
-  threadId: string | null,
-): Promise<void> {
-  const qs = scopeParams(projectId, worktreeId, threadId);
-  const res = await fetch(`${api}${qs ? `?${qs}` : ""}`, {
+async function requestAbort(base: string, scope: ClientScope): Promise<void> {
+  const res = await fetch(withScope(`${base}/abort`, scope), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: "{}",

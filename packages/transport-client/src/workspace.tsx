@@ -26,6 +26,7 @@ import {
 } from "react";
 import type { DirListing, Entry, FileStat } from "@science-studio/transport";
 import type { FileRef } from "./file-reference.js";
+import { scopedUrl, type ClientScope } from "./scope.js";
 
 /** Re-exported so apps consume workspace shapes without depending on transport. */
 export type { DirListing, Entry, FileStat };
@@ -42,14 +43,12 @@ export const DEFAULT_WORKSPACE_API = "/api/workspace";
  */
 export interface WorkspaceScope {
   api: string;
-  project: string | null;
-  worktree: string | null;
+  scope: ClientScope;
 }
 
 const WorkspaceApiContext = createContext<WorkspaceScope>({
   api: DEFAULT_WORKSPACE_API,
-  project: null,
-  worktree: null,
+  scope: { projectId: null },
 });
 
 /** Provide the workspace API base (and Project/Worktree) to the subtree. */
@@ -57,7 +56,7 @@ export const WorkspaceApiProvider: FC<
   PropsWithChildren<{ api: string; project?: string | null; worktree?: string | null }>
 > = ({ api, project = null, worktree = null, children }) => {
   const value = useMemo<WorkspaceScope>(
-    () => ({ api, project, worktree }),
+    () => ({ api, scope: { projectId: project, worktreeId: worktree } }),
     [api, project, worktree],
   );
   return <WorkspaceApiContext.Provider value={value}>{children}</WorkspaceApiContext.Provider>;
@@ -67,19 +66,8 @@ export function useWorkspaceApi(): WorkspaceScope {
   return useContext(WorkspaceApiContext);
 }
 
-/** Trim trailing slashes so `${api}/entries` is always well-formed. */
-function base(api: string): string {
-  return api.replace(/\/+$/, "");
-}
-
-function projectParam(project: string | null | undefined): string {
-  return project ? `&project=${encodeURIComponent(project)}` : "";
-}
-
-/** The Worktree claim the service resolves the scope's checkout from (docs/adr/0025). */
-function worktreeParam(worktree: string | null | undefined): string {
-  return worktree ? `&worktreeId=${encodeURIComponent(worktree)}` : "";
-}
+/** The claim a workspace call defaults to when its caller names no scope. */
+const ROOT_SCOPE: ClientScope = { projectId: null };
 
 /**
  * The parent of a workspace-relative directory path: `"a/b"` → `"a"`, `"a"` →
@@ -120,13 +108,11 @@ export const WORKSPACE_UNAVAILABLE_REASON =
 export async function fetchWorkspaceEntries(
   api: string,
   path: string,
-  project: string | null = null,
-  worktree: string | null = null,
+  scope: ClientScope = ROOT_SCOPE,
 ): Promise<DirListing> {
-  const res = await fetch(
-    `${base(api)}/entries?path=${encodeURIComponent(path)}${projectParam(project)}${worktreeParam(worktree)}`,
-    { headers: { accept: "application/json" } },
-  );
+  const res = await fetch(scopedUrl(api, "/entries", scope, { path }), {
+    headers: { accept: "application/json" },
+  });
   if (!res.ok) throw await requestError(res);
   return (await res.json()) as DirListing;
 }
@@ -135,13 +121,11 @@ export async function fetchWorkspaceEntries(
 export async function fetchWorkspaceStat(
   api: string,
   path: string,
-  project: string | null = null,
-  worktree: string | null = null,
+  scope: ClientScope = ROOT_SCOPE,
 ): Promise<FileStat> {
-  const res = await fetch(
-    `${base(api)}/stat?path=${encodeURIComponent(path)}${projectParam(project)}${worktreeParam(worktree)}`,
-    { headers: { accept: "application/json" } },
-  );
+  const res = await fetch(scopedUrl(api, "/stat", scope, { path }), {
+    headers: { accept: "application/json" },
+  });
   if (!res.ok) throw await requestError(res);
   return (await res.json()) as FileStat;
 }
@@ -150,10 +134,9 @@ export async function fetchWorkspaceStat(
 export function workspaceFileUrl(
   api: string,
   path: string,
-  opts: { download?: boolean; project?: string | null; worktree?: string | null } = {},
+  opts: { download?: boolean; scope?: ClientScope } = {},
 ): string {
-  const download = opts.download ? "&download=1" : "";
-  return `${base(api)}/file?path=${encodeURIComponent(path)}${projectParam(opts.project)}${worktreeParam(opts.worktree)}${download}`;
+  return scopedUrl(api, "/file", opts.scope ?? ROOT_SCOPE, { path, download: opts.download });
 }
 
 /**
@@ -165,18 +148,14 @@ export async function uploadWorkspaceFile(
   api: string,
   path: string,
   file: Blob,
-  project: string | null = null,
-  worktree: string | null = null,
+  scope: ClientScope = ROOT_SCOPE,
 ): Promise<void> {
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const res = await fetch(
-    `${base(api)}/upload?path=${encodeURIComponent(path)}${projectParam(project)}${worktreeParam(worktree)}`,
-    {
-      method: "POST",
-      headers: { accept: "application/json", "content-type": "application/octet-stream" },
-      body: bytes,
-    },
-  );
+  const res = await fetch(scopedUrl(api, "/upload", scope, { path }), {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/octet-stream" },
+    body: bytes,
+  });
   if (!res.ok) throw await requestError(res);
 }
 
@@ -184,13 +163,12 @@ export async function uploadWorkspaceFile(
 export async function deleteWorkspaceEntry(
   api: string,
   path: string,
-  project: string | null = null,
-  worktree: string | null = null,
+  scope: ClientScope = ROOT_SCOPE,
 ): Promise<void> {
-  const res = await fetch(
-    `${base(api)}/delete?path=${encodeURIComponent(path)}${projectParam(project)}${worktreeParam(worktree)}`,
-    { method: "POST", headers: { accept: "application/json" } },
-  );
+  const res = await fetch(scopedUrl(api, "/delete", scope, { path }), {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
   if (!res.ok) throw await requestError(res);
 }
 
@@ -226,16 +204,15 @@ export interface WorkspaceBrowser {
 
 /** Directory listing state for one (Project, Worktree) workspace (root by default). */
 export function useWorkspaceBrowser(opts: {
-  project?: string | null;
-  worktree?: string | null;
+  scope?: ClientScope;
   initialPath?: string;
 } = {}): WorkspaceBrowser {
-  const scope = useWorkspaceApi();
-  const api = scope.api;
-  const project = opts.project ?? scope.project;
-  const worktree = opts.worktree ?? scope.worktree;
+  const ctx = useWorkspaceApi();
+  const api = ctx.api;
+  const scope = opts.scope ?? ctx.scope;
+  const { projectId, worktreeId = null } = scope;
   const [path, setPath] = useState(opts.initialPath ?? "");
-  const root = useWorkspaceRoot({ project, worktree });
+  const root = useWorkspaceRoot({ scope });
   const [sub, setSub] = useState<{
     listing: DirListing | null;
     isLoading: boolean;
@@ -250,7 +227,7 @@ export function useWorkspaceBrowser(opts: {
     if (path === "") return;
     let cancelled = false;
     setSub({ listing: null, isLoading: true, error: null, unavailable: false });
-    fetchWorkspaceEntries(api, path, project, worktree)
+    fetchWorkspaceEntries(api, path, { projectId, worktreeId })
       .then((next) => {
         if (!cancelled) setSub({ listing: next, isLoading: false, error: null, unavailable: false });
       })
@@ -268,7 +245,7 @@ export function useWorkspaceBrowser(opts: {
     return () => {
       cancelled = true;
     };
-  }, [api, path, project, worktree, nonce]);
+  }, [api, path, projectId, worktreeId, nonce]);
 
   const refresh = useCallback(() => {
     if (path === "") root.refresh();
@@ -334,7 +311,9 @@ function publishRoot(key: string, snapshot: RootSnapshot): void {
 }
 
 /** Fetch the root once, unless a request for it is already in flight. */
-function loadRoot(api: string, project: string | null, worktree: string | null): void {
+function loadRoot(api: string, scope: ClientScope): void {
+  const project = scope.projectId;
+  const worktree = scope.worktreeId ?? null;
   const key = rootKey(api, project, worktree);
   if (rootInflight.has(key)) return;
 
@@ -346,7 +325,7 @@ function loadRoot(api: string, project: string | null, worktree: string | null):
     unavailable: false,
   });
 
-  const pending = fetchWorkspaceEntries(api, "", project, worktree)
+  const pending = fetchWorkspaceEntries(api, "", scope)
     .then((listing) => publishRoot(key, { listing, isLoading: false, error: null, unavailable: false }))
     .catch((err: unknown) => {
       const off = isWorkspaceUnavailable(err);
@@ -373,12 +352,12 @@ export interface WorkspaceRoot {
 }
 
 /** The shared root listing of one (Project, Worktree) workspace. */
-export function useWorkspaceRoot(opts: { project?: string | null; worktree?: string | null } = {}): WorkspaceRoot {
-  const scope = useWorkspaceApi();
-  const api = scope.api;
-  const project = opts.project ?? scope.project;
-  const worktree = opts.worktree ?? scope.worktree;
-  const key = rootKey(api, project, worktree);
+export function useWorkspaceRoot(opts: { scope?: ClientScope } = {}): WorkspaceRoot {
+  const ctx = useWorkspaceApi();
+  const api = ctx.api;
+  const scope = opts.scope ?? ctx.scope;
+  const { projectId, worktreeId = null } = scope;
+  const key = rootKey(api, projectId, worktreeId);
 
   const subscribe = useCallback(
     (onChange: () => void) => {
@@ -392,14 +371,14 @@ export function useWorkspaceRoot(opts: { project?: string | null; worktree?: str
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, () => ROOT_PENDING);
 
   useEffect(() => {
-    loadRoot(api, project, worktree);
-  }, [api, project, worktree]);
+    loadRoot(api, { projectId, worktreeId });
+  }, [api, projectId, worktreeId]);
 
   const refresh = useCallback(() => {
     const cached = rootSnapshots.get(key);
     publishRoot(key, { listing: cached?.listing ?? null, isLoading: true, error: null, unavailable: false });
-    loadRoot(api, project, worktree);
-  }, [api, key, project, worktree]);
+    loadRoot(api, { projectId, worktreeId });
+  }, [api, key, projectId, worktreeId]);
 
   return { ...snapshot, refresh };
 }
@@ -426,8 +405,7 @@ export interface WorkspaceAvailability {
  * rather than issuing a second request for the same directory.
  */
 export function useWorkspaceAvailability(opts: {
-  project?: string | null;
-  worktree?: string | null;
+  scope?: ClientScope;
 } = {}): WorkspaceAvailability {
   const root = useWorkspaceRoot(opts);
   return {
@@ -453,12 +431,12 @@ export interface WorkspaceFilePreview {
 /** Text preview for one file; binaries and over-cap files surface as download. */
 export function useWorkspaceFile(
   path: string | null,
-  opts: { project?: string | null; worktree?: string | null } = {},
+  opts: { scope?: ClientScope } = {},
 ): WorkspaceFilePreview {
-  const scope = useWorkspaceApi();
-  const api = scope.api;
-  const project = opts.project ?? scope.project;
-  const worktree = opts.worktree ?? scope.worktree;
+  const ctx = useWorkspaceApi();
+  const api = ctx.api;
+  const scope = opts.scope ?? ctx.scope;
+  const { projectId, worktreeId = null } = scope;
   const [state, setState] = useState<Omit<WorkspaceFilePreview, "downloadUrl">>({
     text: null,
     mime: null,
@@ -477,7 +455,7 @@ export function useWorkspaceFile(
 
     void (async () => {
       try {
-        const res = await fetch(workspaceFileUrl(api, path, { project, worktree }), {
+        const res = await fetch(workspaceFileUrl(api, path, { scope: { projectId, worktreeId } }), {
           headers: { accept: "*/*" },
         });
         if (!res.ok) throw await requestError(res);
@@ -508,12 +486,12 @@ export function useWorkspaceFile(
     return () => {
       cancelled = true;
     };
-  }, [api, path, project, worktree]);
+  }, [api, path, projectId, worktreeId]);
 
   return {
     ...state,
     downloadUrl: path
-      ? workspaceFileUrl(api, path, { download: true, project, worktree })
+      ? workspaceFileUrl(api, path, { download: true, scope: { projectId, worktreeId } })
       : "",
   };
 }

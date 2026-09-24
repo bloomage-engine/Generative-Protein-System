@@ -108,8 +108,8 @@ test("session rename/archive/unarchive/delete hit the expected action paths", as
 
 test("fetchProjectSessions can include archived Sessions", async () => {
   await withFetch({ sessions: [] }, async (calls) => {
-    await fetchProjectSessions(API, "p1");
-    await fetchProjectSessions(API, "p1", { includeArchived: true });
+    await fetchProjectSessions(API, { projectId: "p1" });
+    await fetchProjectSessions(API, { projectId: "p1" }, { includeArchived: true });
     assert.equal(calls[0]!.url, `${API}/p1/sessions`);
     assert.equal(calls[1]!.url, `${API}/p1/sessions?includeArchived=1`);
   });
@@ -117,7 +117,7 @@ test("fetchProjectSessions can include archived Sessions", async () => {
 
 test("fetchSessionRuns scopes the runs request to one Session", async () => {
   await withFetch({ runs: [] }, async (calls) => {
-    const runs = await fetchSessionRuns(API, "p 1", "s/1");
+    const runs = await fetchSessionRuns(API, { projectId: "p 1" }, "s/1");
     assert.deepEqual(runs, []);
     assert.equal(calls[0]!.url, `${API}/p%201/runs?sessionId=s%2F1`);
   });

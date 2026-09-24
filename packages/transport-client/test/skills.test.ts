@@ -44,7 +44,7 @@ const SKILL = {
 
 test("fetchSkills GETs the catalog with the Project claim", async () => {
   await withFetch(200, { available: true, runtime: "dsh", skills: [SKILL] }, async (calls) => {
-    const view = await fetchSkills({ api: "/api/skills", projectId: "proj-1" });
+    const view = await fetchSkills({ api: "/api/skills", scope: { projectId: "proj-1" } });
     assert.equal(calls[0]!.method, "GET");
     assert.equal(calls[0]!.url, "/api/skills?projectId=proj-1");
     assert.equal(view.available, true);
@@ -66,7 +66,7 @@ test("fetchSkills throws on a failed hop so the caller owns the decision", async
 test("installSkill POSTs the input and returns the skill", async () => {
   await withFetch(200, { skill: SKILL }, async (calls) => {
     const skill = await installSkill(
-      { api: "/api/skills", projectId: "p" },
+      { api: "/api/skills", scope: { projectId: "p" } },
       { name: "alpha", description: "A", body: "b" },
     );
     assert.equal(calls[0]!.method, "POST");

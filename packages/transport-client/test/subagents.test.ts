@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fetchSubagentTranscript, fetchSubagents } from "../src/subagents.js";
+import { withScope } from "../src/scope.js";
 
 test("fetchSubagentTranscript targets the per-child route and parses the body", async () => {
   const transcript = { id: "child-1", parentId: "s1", messages: [] };
@@ -14,9 +15,12 @@ test("fetchSubagentTranscript targets the per-child route and parses the body", 
     });
   }) as typeof fetch;
   try {
-    const got = await fetchSubagentTranscript("/api/transport", "p1", "child-1", "s1");
+    const got = await fetchSubagentTranscript("/api/transport", { projectId: "p1" }, "child-1", "s1");
     assert.deepEqual(got, transcript);
-    assert.match(calls[0]!, /\/api\/transport\/subagents\/child-1\/transcript\?projectId=p1&threadId=s1/);
+    assert.equal(
+      calls[0],
+      withScope("/api/transport/subagents/child-1/transcript", { projectId: "p1", threadId: "s1" }),
+    );
   } finally {
     globalThis.fetch = original;
   }
@@ -40,7 +44,7 @@ test("fetchSubagentTranscript throws on a 404 (a missing record)", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = (async () => new Response("nope", { status: 404 })) as typeof fetch;
   try {
-    await assert.rejects(() => fetchSubagentTranscript("/api/transport", "p1", "child-x"));
+    await assert.rejects(() => fetchSubagentTranscript("/api/transport", { projectId: "p1" }, "child-x"));
   } finally {
     globalThis.fetch = original;
   }
@@ -57,14 +61,13 @@ test("fetchSubagents carries the Worktree claim only when one is scoped", async 
     });
   }) as typeof fetch;
   try {
-    await fetchSubagents("/api/transport", {
-      projectId: "p1",
-      threadId: "s-exp",
-      worktreeId: "exp-a",
-    });
-    assert.match(calls[0]!, /\/api\/transport\/subagents\?projectId=p1&threadId=s-exp&worktreeId=exp-a/);
+    const scoped = { projectId: "p1", worktreeId: "exp-a", threadId: "s-exp" };
+    await fetchSubagents("/api/transport", scoped);
+    assert.equal(calls[0], withScope("/api/transport/subagents", scoped));
 
-    await fetchSubagents("/api/transport", { projectId: "p1", threadId: "s1" });
+    const mainOnly = { projectId: "p1", threadId: "s1" };
+    await fetchSubagents("/api/transport", mainOnly);
+    assert.equal(calls[1], withScope("/api/transport/subagents", mainOnly));
     assert.doesNotMatch(calls[1]!, /worktreeId=/, "an unscoped poll must not claim a Worktree");
   } finally {
     globalThis.fetch = original;
@@ -83,21 +86,15 @@ test("fetchSubagentTranscript carries the Worktree claim only when one is scoped
     });
   }) as typeof fetch;
   try {
-    const got = await fetchSubagentTranscript(
-      "/api/transport",
-      "p1",
-      "child-1",
-      "s-exp",
-      undefined,
-      "exp-a",
-    );
+    const scoped = { projectId: "p1", worktreeId: "exp-a" };
+    const got = await fetchSubagentTranscript("/api/transport", scoped, "child-1", "s-exp");
     assert.deepEqual(got, transcript);
-    assert.match(
-      calls[0]!,
-      /\/api\/transport\/subagents\/child-1\/transcript\?projectId=p1&threadId=s-exp&worktreeId=exp-a/,
+    assert.equal(
+      calls[0],
+      withScope("/api/transport/subagents/child-1/transcript", { ...scoped, threadId: "s-exp" }),
     );
 
-    await fetchSubagentTranscript("/api/transport", "p1", "child-1", "s1");
+    await fetchSubagentTranscript("/api/transport", { projectId: "p1" }, "child-1", "s1");
     assert.doesNotMatch(calls[1]!, /worktreeId=/, "an unscoped read must not claim a Worktree");
   } finally {
     globalThis.fetch = original;

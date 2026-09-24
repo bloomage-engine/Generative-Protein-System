@@ -142,7 +142,6 @@ export {
   useSubagents,
   fetchSubagentTranscript,
   useSubagentTranscript,
-  type SubagentScope,
   type UseSubagentsOptions,
   type UseSubagentTranscriptOptions,
 } from "./subagents.js";

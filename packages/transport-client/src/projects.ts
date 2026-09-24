@@ -9,6 +9,7 @@
  * app can use them from a route page and they stay unit-testable.
  */
 import type { Project, Run, Session } from "@science-studio/record";
+import { scopedUrl, scopeBody, type ClientScope } from "./scope.js";
 
 /** Re-exported so apps consume record shapes without depending on the package. */
 export type { Project, Run, Session };
@@ -24,10 +25,6 @@ export class RecordRequestError extends Error {
     super(message);
     this.name = "RecordRequestError";
   }
-}
-
-function base(api: string): string {
-  return api.replace(/\/+$/, "");
 }
 
 async function request<T>(input: string, init?: RequestInit): Promise<T> {
@@ -49,9 +46,17 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * A Project-scoped record path. The Project is a PATH segment here (never a
+ * claim), so the scope carries no query; only the extra `params` ride along.
+ */
+function projectPath(api: string, projectId: string, path: string, params?: Record<string, string | number | boolean | null | undefined>): string {
+  return scopedUrl(api, `/${encodeURIComponent(projectId)}${path}`, { projectId: null }, params);
+}
+
 /** The Projects this install knows about (archived ones excluded). */
 export async function fetchProjects(api: string = DEFAULT_PROJECTS_API): Promise<Project[]> {
-  const body = await request<{ projects: Project[] }>(`${base(api)}`);
+  const body = await request<{ projects: Project[] }>(scopedUrl(api, "", { projectId: null }));
   return body.projects;
 }
 
@@ -64,13 +69,14 @@ export async function fetchProjectsOverview(
   api: string = DEFAULT_PROJECTS_API,
   opts: { includeArchived?: boolean } = {},
 ): Promise<{ projects: Project[]; defaultProjectId: string }> {
-  const query = opts.includeArchived ? "?includeArchived=1" : "";
-  return request<{ projects: Project[]; defaultProjectId: string }>(`${base(api)}${query}`);
+  return request<{ projects: Project[]; defaultProjectId: string }>(
+    scopedUrl(api, "", { projectId: null }, { includeArchived: opts.includeArchived }),
+  );
 }
 
 /** Create a Project; the service mints its id (a filesystem-safe slug). */
 export async function createProject(api: string, name: string): Promise<Project> {
-  const body = await request<{ project: Project }>(`${base(api)}`, {
+  const body = await request<{ project: Project }>(scopedUrl(api, "", { projectId: null }), {
     method: "POST",
     body: JSON.stringify({ name }),
   });
@@ -79,28 +85,26 @@ export async function createProject(api: string, name: string): Promise<Project>
 
 /** Rename a Project; its id (and workspace directory) is immutable. */
 export async function renameProject(api: string, projectId: string, name: string): Promise<Project> {
-  const body = await request<{ project: Project }>(
-    `${base(api)}/${encodeURIComponent(projectId)}/rename`,
-    { method: "POST", body: JSON.stringify({ name }) },
-  );
+  const body = await request<{ project: Project }>(projectPath(api, projectId, "/rename"), {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
   return body.project;
 }
 
 /** Archive a Project — hidden from the default listing, restorable. */
 export async function archiveProject(api: string, projectId: string): Promise<Project> {
-  const body = await request<{ project: Project }>(
-    `${base(api)}/${encodeURIComponent(projectId)}/archive`,
-    { method: "POST" },
-  );
+  const body = await request<{ project: Project }>(projectPath(api, projectId, "/archive"), {
+    method: "POST",
+  });
   return body.project;
 }
 
 /** Clear a Project's archived flag. */
 export async function unarchiveProject(api: string, projectId: string): Promise<Project> {
-  const body = await request<{ project: Project }>(
-    `${base(api)}/${encodeURIComponent(projectId)}/unarchive`,
-    { method: "POST" },
-  );
+  const body = await request<{ project: Project }>(projectPath(api, projectId, "/unarchive"), {
+    method: "POST",
+  });
   return body.project;
 }
 
@@ -109,45 +113,52 @@ export async function unarchiveProject(api: string, projectId: string): Promise<
  * service moves its workspace into a recycle bin. The UI offers no restore.
  */
 export async function deleteProject(api: string, projectId: string): Promise<void> {
-  await request<{ ok: true }>(`${base(api)}/${encodeURIComponent(projectId)}/delete`, {
+  await request<{ ok: true }>(projectPath(api, projectId, "/delete"), {
     method: "POST",
   });
 }
 
 /**
  * A Project's Sessions, in creation order. Archived sessions excluded by
- * default. `worktreeId` filters to one Worktree's Sessions (docs/adr/0025): a
- * Session belongs to the checkout it was created under, so the workbench lists
- * them per worktree rather than Project-wide.
+ * default. The scope's Worktree filters to one Worktree's Sessions
+ * (docs/adr/0025): a Session belongs to the checkout it was created under, so
+ * the workbench lists them per worktree rather than Project-wide. The Project
+ * is the path; only the Worktree claim rides the query.
  */
 export async function fetchProjectSessions(
   api: string,
-  projectId: string,
-  opts: { includeArchived?: boolean; worktreeId?: string } = {},
+  scope: ClientScope,
+  opts: { includeArchived?: boolean } = {},
 ): Promise<Session[]> {
-  const params = new URLSearchParams();
-  if (opts.includeArchived) params.set("includeArchived", "1");
-  if (opts.worktreeId) params.set("worktreeId", opts.worktreeId);
-  const query = params.toString();
   const body = await request<{ sessions: Session[] }>(
-    `${base(api)}/${encodeURIComponent(projectId)}/sessions${query ? `?${query}` : ""}`,
+    scopedUrl(
+      api,
+      `/${encodeURIComponent(scope.projectId ?? "")}/sessions`,
+      { projectId: null, worktreeId: scope.worktreeId },
+      { includeArchived: opts.includeArchived },
+    ),
   );
   return body.sessions;
 }
 
 /**
  * Create a Session under a Project (optionally under one of its Worktrees) and
- * return it (its id is the threadId). The service validates a `worktreeId`
- * against the record, so an unknown one is a 404 — never a fabricated row.
+ * return it (its id is the threadId). The service reads the Worktree claim from
+ * the JSON body (`POST /api/projects/:id/sessions` — the Project is the path),
+ * validates it against the record, and files the Session under it; an unknown
+ * one is a 404, never a fabricated row.
  */
 export async function createSession(
   api: string,
-  projectId: string,
-  opts: { agentId?: string; title?: string; worktreeId?: string } = {},
+  scope: ClientScope,
+  opts: { agentId?: string; title?: string } = {},
 ): Promise<Session> {
   const body = await request<{ session: Session }>(
-    `${base(api)}/${encodeURIComponent(projectId)}/sessions`,
-    { method: "POST", body: JSON.stringify(opts) },
+    scopedUrl(api, `/${encodeURIComponent(scope.projectId ?? "")}/sessions`, { projectId: null }),
+    {
+      method: "POST",
+      body: JSON.stringify({ ...scopeBody({ projectId: null, worktreeId: scope.worktreeId }), ...opts }),
+    },
   );
   return body.session;
 }
@@ -159,10 +170,13 @@ export async function renameSession(
   sessionId: string,
   title: string,
 ): Promise<Session> {
-  const body = await request<{ session: Session }>(sessionPath(api, projectId, sessionId, "rename"), {
-    method: "POST",
-    body: JSON.stringify({ title }),
-  });
+  const body = await request<{ session: Session }>(
+    sessionPath(api, projectId, sessionId, "rename"),
+    {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    },
+  );
   return body.session;
 }
 
@@ -203,25 +217,32 @@ export async function deleteSession(
 }
 
 function sessionPath(api: string, projectId: string, sessionId: string, action: string): string {
-  return `${base(api)}/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/${action}`;
+  return scopedUrl(
+    api,
+    `/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/${action}`,
+    { projectId: null },
+  );
 }
 
 /** A Project's Runs — the turns of all its Sessions (the result rollup). */
 export async function fetchProjectRuns(api: string, projectId: string): Promise<Run[]> {
-  const body = await request<{ runs: Run[] }>(
-    `${base(api)}/${encodeURIComponent(projectId)}/runs`,
-  );
+  const body = await request<{ runs: Run[] }>(projectPath(api, projectId, "/runs"));
   return body.runs;
 }
 
 /** The Runs of ONE Session (the status bar's metrics source). */
 export async function fetchSessionRuns(
   api: string,
-  projectId: string,
+  scope: ClientScope,
   sessionId: string,
 ): Promise<Run[]> {
   const body = await request<{ runs: Run[] }>(
-    `${base(api)}/${encodeURIComponent(projectId)}/runs?sessionId=${encodeURIComponent(sessionId)}`,
+    scopedUrl(
+      api,
+      `/${encodeURIComponent(scope.projectId ?? "")}/runs`,
+      { projectId: null },
+      { sessionId },
+    ),
   );
   return body.runs;
 }

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fetchCommandCatalog } from "../src/catalog.js";
+import { scopedUrl } from "../src/scope.js";
 
 /** Swap the global fetch for the duration of `fn`, restoring it afterwards. */
 async function withFetch(
@@ -24,15 +25,15 @@ test("the catalog request carries the Project, because the adapter it describes 
       return new Response(JSON.stringify({ commands: [] }), { status: 200 });
     },
     async () => {
-      assert.deepEqual(await fetchCommandCatalog("/api/transport/", "proj a"), []);
-      assert.deepEqual(await fetchCommandCatalog("/api/transport", null), []);
-      assert.deepEqual(await fetchCommandCatalog("/api/transport", "p1", "exp-a"), []);
+      assert.deepEqual(await fetchCommandCatalog("/api/transport/", { projectId: "proj a" }), []);
+      assert.deepEqual(await fetchCommandCatalog("/api/transport", { projectId: null }), []);
+      assert.deepEqual(await fetchCommandCatalog("/api/transport", { projectId: "p1", worktreeId: "exp-a" }), []);
     },
   );
   assert.deepEqual(seen, [
-    "/api/transport/commands?projectId=proj%20a",
-    "/api/transport/commands",
-    "/api/transport/commands?projectId=p1&worktreeId=exp-a",
+    scopedUrl("/api/transport/", "/commands", { projectId: "proj a" }),
+    scopedUrl("/api/transport", "/commands", { projectId: null }),
+    scopedUrl("/api/transport", "/commands", { projectId: "p1", worktreeId: "exp-a" }),
   ]);
 });
 
@@ -40,7 +41,7 @@ test("a failed catalog fetch is an error the caller degrades from, not a silent 
   await withFetch(
     async () => new Response("boom", { status: 500 }),
     async () => {
-      await assert.rejects(fetchCommandCatalog("/api/transport", "p1"), /command catalog request failed: 500/);
+      await assert.rejects(fetchCommandCatalog("/api/transport", { projectId: "p1" }), /command catalog request failed: 500/);
     },
   );
 });

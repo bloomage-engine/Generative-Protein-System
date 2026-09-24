@@ -8,6 +8,7 @@ import {
 import { asAsyncIterableStream } from "assistant-stream/utils";
 import type { ReadonlyJSONValue } from "assistant-stream/utils";
 import type { Message } from "@science-studio/transport";
+import { scopeBody, withScope, type ClientScope } from "./scope.js";
 
 /**
  * The agent state the transport-service streams back as operations.
@@ -38,21 +39,20 @@ export function createInitialRuntimeState(): RuntimeState {
 export async function fetchSessionSnapshot(
   api: string,
   claimed: RuntimeState,
-  threadId: string | null,
-  projectId?: string | null,
-  worktreeId?: string | null,
+  scope: ClientScope,
   signal?: AbortSignal,
 ): Promise<RuntimeState | null> {
   try {
-    const res = await fetch(api, {
+    // The probe carries the scope in BOTH places: the URL (which the service
+    // reads first) and the JSON body (its fallback for clients that scope
+    // nothing in the URL — docs/adr/0009). Both come from the one module.
+    const res = await fetch(withScope(api, scope), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         commands: [],
         state: claimed,
-        threadId,
-        ...(projectId ? { projectId } : {}),
-        ...(worktreeId ? { worktreeId } : {}),
+        ...scopeBody(scope),
       }),
       ...(signal ? { signal } : {}),
     });

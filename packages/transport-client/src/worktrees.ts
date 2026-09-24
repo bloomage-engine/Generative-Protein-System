@@ -11,6 +11,7 @@
  */
 import type { Worktree as RecordWorktree } from "@science-studio/record";
 import { RecordRequestError } from "./projects.js";
+import { scopedUrl } from "./scope.js";
 
 /**
  * The reserved id of a Project's `main` worktree (the Project root). Declared
@@ -33,10 +34,6 @@ export interface Worktree extends RecordWorktree {
 
 export const DEFAULT_WORKTREES_API = "/api/worktrees";
 
-function base(api: string): string {
-  return api.replace(/\/+$/, "");
-}
-
 async function request<T>(input: string, init?: RequestInit): Promise<T> {
   // Only declare a JSON content-type when there IS a body: Fastify rejects an
   // empty body that claims `application/json` (the archive/delete hops).
@@ -56,10 +53,6 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-function query(projectId: string): string {
-  return new URLSearchParams({ projectId }).toString();
-}
-
 /**
  * A Project's Worktrees, in creation order. `main` is always listed (the
  * Project root is its main worktree even before a repository exists); archived
@@ -70,9 +63,9 @@ export async function fetchWorktrees(
   projectId: string,
   opts: { includeArchived?: boolean } = {},
 ): Promise<Worktree[]> {
-  const params = new URLSearchParams({ projectId });
-  if (opts.includeArchived) params.set("includeArchived", "1");
-  const body = await request<{ worktrees: Worktree[] }>(`${base(api)}?${params.toString()}`);
+  const body = await request<{ worktrees: Worktree[] }>(
+    scopedUrl(api, "", { projectId }, { includeArchived: opts.includeArchived }),
+  );
   return body.worktrees;
 }
 
@@ -85,7 +78,7 @@ export async function createWorktree(
   projectId: string,
   input: { name: string; branch?: string; base?: string },
 ): Promise<Worktree> {
-  const body = await request<{ worktree: Worktree }>(`${base(api)}?${query(projectId)}`, {
+  const body = await request<{ worktree: Worktree }>(scopedUrl(api, "", { projectId }), {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -147,5 +140,5 @@ async function worktreeAction(
 }
 
 function worktreePath(api: string, projectId: string, id: string, action: string): string {
-  return `${base(api)}/${encodeURIComponent(id)}/${action}?${query(projectId)}`;
+  return scopedUrl(api, `/${encodeURIComponent(id)}/${action}`, { projectId });
 }

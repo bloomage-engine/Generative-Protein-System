@@ -42,7 +42,7 @@ test("folds a streamed snapshot (set + append-text ops) into RuntimeState", asyn
 
   const snap = (await withFetchStub(
     async () => sseResponse(frames),
-    () => fetchSessionSnapshot("/api/transport", createInitialRuntimeState(), null),
+    () => fetchSessionSnapshot("/api/transport", createInitialRuntimeState(), { projectId: null }),
   )) as Exclude<Awaited<ReturnType<typeof fetchSessionSnapshot>>, null>;
 
   assert.ok(snap);
@@ -57,7 +57,7 @@ test("folds a streamed snapshot (set + append-text ops) into RuntimeState", asyn
 test("returns null when the endpoint answers non-2xx", async () => {
   const snap = await withFetchStub(
     async () => sseResponse("", false),
-    () => fetchSessionSnapshot("/api/transport", createInitialRuntimeState(), null),
+    () => fetchSessionSnapshot("/api/transport", createInitialRuntimeState(), { projectId: null }),
   );
   assert.equal(snap, null);
 });
@@ -66,7 +66,7 @@ test("returns null when the stream never terminates with [DONE] (strict)", async
   const frames = 'data: {"type":"update-state","path":[],"operations":[]}\n\n';
   const snap = await withFetchStub(
     async () => sseResponse(frames),
-    () => fetchSessionSnapshot("/api/transport", createInitialRuntimeState(), null),
+    () => fetchSessionSnapshot("/api/transport", createInitialRuntimeState(), { projectId: null }),
   );
   assert.equal(snap, null);
 });

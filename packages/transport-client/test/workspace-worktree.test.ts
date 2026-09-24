@@ -1,14 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { workspaceFileUrl } from "../src/workspace.js";
+import { withScope } from "../src/scope.js";
 
 test("workspaceFileUrl carries the worktree claim", () => {
-  const url = workspaceFileUrl("/api/workspace", "data/x.csv", { project: "p1", worktree: "exp-a" });
-  assert.match(url, /project=p1/);
-  assert.match(url, /worktreeId=exp-a/);
+  const scope = { projectId: "p1", worktreeId: "exp-a" };
+  const url = workspaceFileUrl("/api/workspace", "data/x.csv", { scope });
+  assert.equal(url, withScope("/api/workspace/file?path=data%2Fx.csv", scope));
 });
 
 test("workspaceFileUrl omits the worktree claim when not scoped", () => {
-  const url = workspaceFileUrl("/api/workspace", "data/x.csv", { project: "p1" });
+  const scope = { projectId: "p1" };
+  const url = workspaceFileUrl("/api/workspace", "data/x.csv", { scope });
+  assert.equal(url, withScope("/api/workspace/file?path=data%2Fx.csv", scope));
   assert.ok(!url.includes("worktreeId="));
 });

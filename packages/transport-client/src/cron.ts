@@ -17,6 +17,7 @@ import {
   type CronTask,
   type SchedulePreset,
 } from "@science-studio/cron";
+import { scopedUrl, type ClientScope } from "./scope.js";
 
 export {
   CRON_DIR,
@@ -54,7 +55,8 @@ export interface CronTaskInput {
 
 export interface UseCronTasksOptions {
   api?: string;
-  projectId: string | null;
+  /** The active Project (cron tasks live at the Project root — main only). */
+  scope: ClientScope;
   enabled: boolean;
   intervalMs?: number;
 }
@@ -80,12 +82,21 @@ async function requestJson<T>(url: string, method: string, body?: unknown): Prom
   return (await res.json()) as T;
 }
 
+/**
+ * The cron surface is PROJECT-level and `main`-only (docs/adr/0017): the task
+ * files live at the Project root and the service always reads them there, so a
+ * Worktree claim is dropped.
+ */
+function projectScope(scope: ClientScope): ClientScope {
+  return { projectId: scope.projectId };
+}
+
 export async function fetchCronTasks(
   api: string,
-  projectId: string,
+  scope: ClientScope,
   signal?: AbortSignal,
 ): Promise<{ tasks: CronTaskSummary[]; invalid: CronInvalidFile[] }> {
-  const res = await fetch(`${api}?${new URLSearchParams({ projectId })}`, {
+  const res = await fetch(scopedUrl(api, "", projectScope(scope)), {
     headers: { accept: "application/json" },
     ...(signal ? { signal } : {}),
   });
@@ -95,7 +106,8 @@ export async function fetchCronTasks(
 }
 
 export function useCronTasks(options: UseCronTasksOptions): CronTasksState {
-  const { api = DEFAULT_CRON_API, projectId, enabled, intervalMs = 2000 } = options;
+  const { api = DEFAULT_CRON_API, scope, enabled, intervalMs = 2000 } = options;
+  const projectId = scope.projectId;
   const [tasks, setTasks] = useState<CronTaskSummary[]>([]);
   const [invalid, setInvalid] = useState<CronInvalidFile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -108,7 +120,7 @@ export function useCronTasks(options: UseCronTasksOptions): CronTasksState {
     const controller = new AbortController();
     const tick = async () => {
       try {
-        const next = await fetchCronTasks(api, projectId, controller.signal);
+        const next = await fetchCronTasks(api, { projectId }, controller.signal);
         if (!active) return;
         setTasks(next.tasks);
         setInvalid(next.invalid);
@@ -134,9 +146,9 @@ export function useCronTasks(options: UseCronTasksOptions): CronTasksState {
   return { tasks, invalid, loading, error, refresh: () => setRevision((n) => n + 1) };
 }
 
-export async function fetchCronTask(api: string, projectId: string, id: string): Promise<CronTask> {
+export async function fetchCronTask(api: string, scope: ClientScope, id: string): Promise<CronTask> {
   const body = await requestJson<{ task: CronTask }>(
-    `${api}/task?${new URLSearchParams({ projectId, id })}`,
+    scopedUrl(api, "/task", projectScope(scope), { id }),
     "GET",
   );
   return body.task;
@@ -144,33 +156,36 @@ export async function fetchCronTask(api: string, projectId: string, id: string):
 
 export async function createCronTask(
   api: string,
-  projectId: string,
+  scope: ClientScope,
   input: CronTaskInput,
 ): Promise<CronTask> {
   const body = await requestJson<{ task: CronTask }>(
-    `${api}/task?${new URLSearchParams({ projectId })}`,
+    scopedUrl(api, "/task", projectScope(scope)),
     "POST",
     input,
   );
   return body.task;
 }
 
-export async function saveCronTask(api: string, projectId: string, task: CronTask): Promise<CronTask> {
+export async function saveCronTask(api: string, scope: ClientScope, task: CronTask): Promise<CronTask> {
   const body = await requestJson<{ task: CronTask }>(
-    `${api}/task?${new URLSearchParams({ projectId, id: task.id })}`,
+    scopedUrl(api, "/task", projectScope(scope), { id: task.id }),
     "PUT",
     task,
   );
   return body.task;
 }
 
-export async function deleteCronTask(api: string, projectId: string, id: string): Promise<void> {
-  await requestJson<{ ok: boolean }>(`${api}/task/delete?${new URLSearchParams({ projectId, id })}`, "POST");
+export async function deleteCronTask(api: string, scope: ClientScope, id: string): Promise<void> {
+  await requestJson<{ ok: boolean }>(
+    scopedUrl(api, "/task/delete", projectScope(scope), { id }),
+    "POST",
+  );
 }
 
-export async function runCronTask(api: string, projectId: string, id: string): Promise<CronRunStatus> {
+export async function runCronTask(api: string, scope: ClientScope, id: string): Promise<CronRunStatus> {
   const body = await requestJson<{ status: CronRunStatus }>(
-    `${api}/task/run?${new URLSearchParams({ projectId, id })}`,
+    scopedUrl(api, "/task/run", projectScope(scope), { id }),
     "POST",
   );
   return body.status;
