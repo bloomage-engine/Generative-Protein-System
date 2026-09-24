@@ -8,7 +8,7 @@ import type { ClientScope } from "./scope.js";
 export interface UseSessionMetricsOptions {
   /** The record API base. Defaults to the same-origin `/api/projects`. */
   api?: string;
-  /** The (Project, Worktree) whose Session this is. */
+  /** The Project whose Session this is (the Runs route is Project-scoped). */
   scope: ClientScope;
   sessionId: string | null;
   /** Bump to refetch (e.g. a run finished); a scope change refetches anyway. */
