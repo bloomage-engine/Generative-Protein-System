@@ -176,6 +176,15 @@ A conversation between a Researcher and an Agent under a Project. Rendered as an
 assistant-ui thread. Each Researcher turn drives one Run.
 _Avoid_: Thread, Chat, Conversation
 
+**Scope**:
+The `(Project, Worktree, Session)` a request acts under: the claim a client
+sends, and the one thing the service resolves it against (the query first, then
+the body — docs/adr/0025). The workbench remembers the last Scope per browser and
+resumes it on load, but only once the record confirms it (docs/adr/0009). An
+address, not a container — the Project, Worktree and Session keep their own
+meanings.
+_Avoid_: Context, Filter, Selection
+
 **Run**:
 The atomic unit of traceability. One Agent execution in a Session, carrying its
 inputs, parameters, tool calls, outputs, duration, and cost. The Runs of a
