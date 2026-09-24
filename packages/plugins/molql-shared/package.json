@@ -13,7 +13,7 @@
     "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
-    "@science-studio/molql-viewer": "workspace:*"
+    "@science-studio/molstar-viewer": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.0.0",

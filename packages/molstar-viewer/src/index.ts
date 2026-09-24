@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * `@science-studio/molql-viewer` — consume the agent's `molql` tool result and
+ * `@science-studio/molstar-viewer` — consume the agent's `molql` tool result and
  * drive a Mol* structure viewer.
  *
  * Layering (deliberate): `formats` and `directive` are molstar-runtime-free and

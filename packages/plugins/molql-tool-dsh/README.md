@@ -19,7 +19,7 @@ returns it as structured JSON:
 ```
 
 The result travels as the ordinary tool-call output; the Science Studio web app
-parses it (via `@science-studio/molql-viewer`) and highlights/focuses the atoms
+parses it (via `@science-studio/molstar-viewer`) and highlights/focuses the atoms
 in the open structure. The tool never touches a structure — semantic validation
 (does the selection match anything) happens in the browser.
 

@@ -19,7 +19,7 @@ returns it as structured JSON:
 ```
 
 The gateway persists the tool result, which reaches the Science Studio web app;
-it parses the JSON (via `@science-studio/molql-viewer`) and highlights/focuses
+it parses the JSON (via `@science-studio/molstar-viewer`) and highlights/focuses
 the atoms in the open structure. The tool never touches a structure — semantic
 validation happens in the browser.
 

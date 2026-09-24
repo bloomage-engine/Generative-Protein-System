@@ -13,7 +13,7 @@ import {
   molqlTargetKey,
   MolqlViewerPanel,
   type MolqlTarget,
-} from "@science-studio/molql-viewer";
+} from "@science-studio/molstar-viewer";
 import { useComposerInsert } from "@/components/assistant-ui/composer-insert";
 import { useStudioStore } from "@/store/studio-store";
 

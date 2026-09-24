@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseMolqlToolResult } from "@science-studio/molql-viewer/directive";
+import { parseMolqlToolResult } from "@science-studio/molstar-viewer/directive";
 import {
   createMolqlResult,
   fetchInteractions,

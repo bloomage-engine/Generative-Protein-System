@@ -1,5 +1,5 @@
 {
-  "name": "@science-studio/molql-viewer",
+  "name": "@science-studio/molstar-viewer",
   "version": "0.0.0",
   "private": true,
   "type": "module",

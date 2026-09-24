@@ -1,6 +1,6 @@
 "use client";
 
-import { MOLQL_MEASUREMENTS_TOOL_NAME } from "@science-studio/molql-viewer/measurement";
+import { MOLQL_MEASUREMENTS_TOOL_NAME } from "@science-studio/molstar-viewer/measurement";
 import { registerAction } from "./registry";
 
 /**
@@ -9,12 +9,12 @@ import { registerAction } from "./registry";
  * Mol* viewer.
  *
  * The numbers were computed by the service where the agent's tool runs;
- * this only redraws the same measurement. `@science-studio/molql-viewer` (and
+ * this only redraws the same measurement. `@science-studio/molstar-viewer` (and
  * molstar with it) is imported DYNAMICALLY so the viewer stays out of the chat
  * bundle until a `measurements` result actually arrives.
  */
 registerAction(MOLQL_MEASUREMENTS_TOOL_NAME, async (payload) => {
-  const { applyMeasurementToolResult } = await import("@science-studio/molql-viewer");
+  const { applyMeasurementToolResult } = await import("@science-studio/molstar-viewer");
   const directive = await applyMeasurementToolResult(payload);
   if (!directive) {
     console.warn("[frontend-actions] measurements result carried no usable directive", payload);

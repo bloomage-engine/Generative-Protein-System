@@ -3,8 +3,8 @@
  * plugins.  Pure functions only — no framework coupling.
  */
 
-export { MOLQL_TOOL_RESULT_TYPE, MOLQL_TOOL_NAME } from "@science-studio/molql-viewer/directive";
-import type { MolqlDirective } from "@science-studio/molql-viewer/directive";
+export { MOLQL_TOOL_RESULT_TYPE, MOLQL_TOOL_NAME } from "@science-studio/molstar-viewer/directive";
+import type { MolqlDirective } from "@science-studio/molstar-viewer/directive";
 
 /** Compact cheat-sheet for the common cases; the skill carries the full manual. */
 export const TOOL_DESCRIPTION = `Select and highlight atoms in the molecular structure currently open in the Science Studio viewer.
@@ -65,7 +65,7 @@ export function stripMentionLabel(molql: string): string {
  *
  * This is the core execute logic shared by both runtime plugins.  The output
  * conforms to the `MolqlDirective` wire contract parsed by
- * `@science-studio/molql-viewer`'s `parseMolqlToolResult`.
+ * `@science-studio/molstar-viewer`'s `parseMolqlToolResult`.
  */
 export function createMolqlResult(args: {
   molql: string;
