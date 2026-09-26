@@ -1,4 +1,4 @@
-import type { CommandDescriptor } from "@science-studio/transport";
+import type { CommandDescriptor, McpServerSettings } from "@science-studio/transport";
 
 /**
  * The dsh runtime command layer (docs/adr/0003, docs/adr/0010, docs/adr/0011):
@@ -37,6 +37,12 @@ export interface DshCommandFacts {
   cwd: string;
   /** The harness session this session talks to, or `null` before its first turn. */
   harnessSessionId: string | null;
+  /**
+   * The deployment MCP servers THIS child mounts (docs/adr/0026) — the
+   * enabled subset written into the launch patch. `/status` reports it; this
+   * is a mount fact, not connectivity.
+   */
+  mcpServers?: readonly McpServerSettings[];
 }
 
 /** What one invocation resolves to. */
@@ -61,6 +67,7 @@ const STATUS: DshCommand = {
     invocationText: "/status",
   },
   run(facts) {
+    const mcp = facts.mcpServers ?? [];
     return {
       reply: [
         `**dsh** · harness profile \`${facts.profile}\` · session \`${facts.sessionKey}\``,
@@ -72,6 +79,10 @@ const STATUS: DshCommand = {
             ? `\`${facts.harnessSessionId}\``
             : "not started yet — the next message starts one"
         }`,
+        // A MOUNT fact from this child's launch patch, not a connectivity
+        // probe — a mounted server whose connection failed is a child-log
+        // story (docs/adr/0026).
+        `- mcp: ${mcp.length === 0 ? "none mounted" : mcp.map((server) => `\`${server.serverName}\` (${server.transport})`).join(", ")}`,
       ].join("\n"),
     };
   },

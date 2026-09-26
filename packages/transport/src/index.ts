@@ -63,10 +63,19 @@ export {
   WorkspaceUnavailableError,
 } from "./seams.js";
 export { RuntimeBindingError } from "./seams.js";
+export { MCP_SERVER_NAME_GRAMMAR } from "./settings.js";
 export type {
   HpcEndpointSettings,
   HpcSettings,
   HpcSettingsPatch,
+  McpServerSettings,
+  McpStdioServerSettings,
+  McpHttpServerSettings,
+  McpServerView,
+  McpSettings,
+  McpSettingsView,
+  McpServerPatch,
+  McpSettingsPatch,
   ModelSettings,
   ModelSettingsPatch,
   RuntimeSettings,

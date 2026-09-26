@@ -13,6 +13,13 @@ import type {
   HpcEndpointSettings,
   HpcSettings,
   HpcSettingsPatch,
+  McpHttpServerSettings,
+  McpServerPatch,
+  McpServerSettings,
+  McpServerView,
+  McpSettings,
+  McpSettingsPatch,
+  McpStdioServerSettings,
   ModelSettings,
   RuntimeSettings,
   RuntimeSettingsPatch,
@@ -22,6 +29,7 @@ import type {
   ThreadSettings,
   ThreadSettingsPatch,
 } from "@science-studio/transport";
+import { MCP_SERVER_NAME_GRAMMAR } from "@science-studio/transport";
 import { isSafeRemotePath, isValidEndpointId } from "@science-studio/hpc";
 
 export function resolveSettingsPath(env: NodeJS.ProcessEnv = process.env): string {
@@ -31,7 +39,15 @@ export function resolveSettingsPath(env: NodeJS.ProcessEnv = process.env): strin
 }
 
 export function emptySettings(): RuntimeSettings {
-  return { model: {}, plugins: {}, agent: {}, subagents: {}, thread: {}, hpc: { endpoints: [] } };
+  return {
+    model: {},
+    plugins: {},
+    agent: {},
+    subagents: {},
+    thread: {},
+    hpc: { endpoints: [] },
+    mcp: { servers: [] },
+  };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -119,6 +135,200 @@ export function validateHpcEndpoints(value: unknown): { endpoints: HpcEndpointSe
   return { endpoints };
 }
 
+/**
+ * A server row as it arrives from a `PUT` or a hand-edited file: the patch
+ * shape, whose secret maps may carry `null` (a delete marker — meaningful on a
+ * PUT, dropped when read back from disk).
+ */
+type McpServerInput = McpServerPatch;
+
+function validateSecretMap(value: unknown): { map?: Record<string, string | null> } | { error: string } {
+  if (value === undefined) return {};
+  if (!isPlainObject(value)) return { error: "must be an object of string keys to string values (null deletes a stored key)" };
+  const map: Record<string, string | null> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === "") return { error: "must not have an empty key" };
+    if (entry === null || typeof entry === "string") map[key] = entry;
+    else return { error: "values must be strings (null deletes a stored key)" };
+  }
+  return { map };
+}
+
+/**
+ * Validate one MCP server row's SHAPE (docs/adr/0026). Unknown fields are a
+ * 400, not a silent drop: a typo'd field means the server will not work and
+ * the author must hear about it at the door. The secret maps keep their
+ * `null` delete markers here — only `mergeMcpServers` resolves them.
+ */
+export function validateMcpServer(raw: unknown, index: number): { server: McpServerInput } | { error: string } {
+  const label = `mcp.servers[${index}]`;
+  if (!isPlainObject(raw)) return { error: `${label} must be an object` };
+  const serverName = raw.serverName;
+  if (typeof serverName !== "string" || !MCP_SERVER_NAME_GRAMMAR.test(serverName)) {
+    return { error: `${label}.serverName must match [A-Za-z0-9_-]{1,32}` };
+  }
+  const transport = raw.transport;
+  if (transport !== "stdio" && transport !== "streamable-http") {
+    return { error: `${label}.transport must be "stdio" or "streamable-http"` };
+  }
+  const enabled = raw.enabled;
+  if (enabled !== undefined && typeof enabled !== "boolean") {
+    return { error: `${label}.enabled must be a boolean` };
+  }
+  if (transport === "stdio") {
+    const command = raw.command;
+    if (typeof command !== "string" || command === "") {
+      return { error: `${label}.command is required for a stdio server` };
+    }
+    const args = raw.args;
+    if (args !== undefined && (!Array.isArray(args) || !args.every((arg) => typeof arg === "string"))) {
+      return { error: `${label}.args must be an array of strings` };
+    }
+    const cwd = raw.cwd;
+    if (cwd !== undefined && (typeof cwd !== "string" || cwd === "")) {
+      return { error: `${label}.cwd must be a non-empty string` };
+    }
+    const env = validateSecretMap(raw.env);
+    if ("error" in env) return { error: `${label}.env ${env.error}` };
+    for (const key of Object.keys(raw)) {
+      if (!["serverName", "transport", "enabled", "command", "args", "cwd", "env"].includes(key)) {
+        return { error: `${label}.${key} is not a stdio server field` };
+      }
+    }
+    return {
+      server: {
+        serverName,
+        transport: "stdio",
+        ...(enabled === undefined ? {} : { enabled }),
+        command,
+        ...(args === undefined ? {} : { args: [...(args as string[])] }),
+        ...(cwd === undefined ? {} : { cwd: cwd as string }),
+        ...(env.map === undefined ? {} : { env: env.map }),
+      },
+    };
+  }
+  const url = raw.url;
+  if (typeof url !== "string" || url === "" || !/^https?:\/\//.test(url)) {
+    return { error: `${label}.url must be an http(s) URL for a streamable-http server` };
+  }
+  const headers = validateSecretMap(raw.headers);
+  if ("error" in headers) return { error: `${label}.headers ${headers.error}` };
+  for (const key of Object.keys(raw)) {
+    if (!["serverName", "transport", "enabled", "url", "headers"].includes(key)) {
+      return { error: `${label}.${key} is not a streamable-http server field` };
+    }
+  }
+  return {
+    server: {
+      serverName,
+      transport: "streamable-http",
+      ...(enabled === undefined ? {} : { enabled }),
+      url,
+      ...(headers.map === undefined ? {} : { headers: headers.map }),
+    },
+  };
+}
+
+/** Validate a `PUT` server list (duplicate serverNames refused — the plugin's namespace is per registration scope). */
+export function validateMcpServerPatches(value: unknown): { servers: McpServerPatch[] } | { error: string } {
+  if (!Array.isArray(value)) return { error: "mcp.servers must be an array" };
+  const servers: McpServerPatch[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < value.length; index += 1) {
+    const parsed = validateMcpServer(value[index], index);
+    if ("error" in parsed) return parsed;
+    if (seen.has(parsed.server.serverName)) {
+      return { error: `duplicate mcp server name: ${parsed.server.serverName}` };
+    }
+    seen.add(parsed.server.serverName);
+    servers.push(parsed.server);
+  }
+  return { servers };
+}
+
+/**
+ * Validate a stored server list read from disk: the same shape rule, with
+ * `null` secret values dropped (they only mean something in a `PUT`).
+ */
+export function validateStoredMcpServers(value: unknown): { servers: McpServerSettings[] } | { error: string } {
+  if (!Array.isArray(value)) return { error: "mcp.servers must be an array" };
+  const servers: McpServerSettings[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < value.length; index += 1) {
+    const parsed = validateMcpServer(value[index], index);
+    if ("error" in parsed) return parsed;
+    if (seen.has(parsed.server.serverName)) {
+      return { error: `duplicate mcp server name: ${parsed.server.serverName}` };
+    }
+    seen.add(parsed.server.serverName);
+    servers.push(toStoredMcpServer(parsed.server, undefined));
+  }
+  return { servers };
+}
+
+/** Resolve a validated input row against its stored predecessor (per-key secret merge, docs/adr/0026). */
+function toStoredMcpServer(
+  row: McpServerInput,
+  stored: McpServerSettings | undefined,
+): McpServerSettings {
+  const enabled = row.enabled ?? stored?.enabled ?? true;
+  const keepSecrets = stored !== undefined && stored.transport === row.transport;
+  if (row.transport === "stdio") {
+    const env = mergeSecretMap(keepSecrets ? (stored as McpStdioServerSettings).env : undefined, row.env);
+    const server: McpStdioServerSettings = {
+      serverName: row.serverName,
+      transport: "stdio",
+      enabled,
+      command: row.command as string,
+    };
+    if (row.args !== undefined) server.args = row.args;
+    if (row.cwd !== undefined) server.cwd = row.cwd;
+    if (env !== undefined) server.env = env;
+    return server;
+  }
+  const headers = mergeSecretMap(keepSecrets ? (stored as McpHttpServerSettings).headers : undefined, row.headers);
+  const server: McpHttpServerSettings = {
+    serverName: row.serverName,
+    transport: "streamable-http",
+    enabled,
+    url: row.url as string,
+  };
+  if (headers !== undefined) server.headers = headers;
+  return server;
+}
+
+/**
+ * The write-only merge rule: an ABSENT key keeps its stored secret, `null`
+ * deletes it, a string replaces it. A patch map that clears every key (or an
+ * absent map over no stored secrets) omits the field entirely.
+ */
+function mergeSecretMap(
+  stored: Record<string, string> | undefined,
+  patch: Record<string, string | null> | undefined,
+): Record<string, string> | undefined {
+  if (patch === undefined) return stored ? { ...stored } : undefined;
+  const next: Record<string, string> = { ...(stored ?? {}) };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) delete next[key];
+    else next[key] = value;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/**
+ * Apply a `PUT` server list to the stored one (docs/adr/0026): the list is a
+ * REPLACE like hpc, but each surviving row merges its secret maps key-by-key
+ * against the stored row of the same `serverName` — a name that disappears
+ * (deleted or renamed) takes its secrets with it.
+ */
+export function mergeMcpServers(
+  current: McpServerSettings[],
+  patch: McpServerPatch[],
+): McpServerSettings[] {
+  const storedByName = new Map(current.map((server) => [server.serverName, server]));
+  return patch.map((row) => toStoredMcpServer(row, storedByName.get(row.serverName)));
+}
+
 export async function loadSettings(path: string): Promise<RuntimeSettings> {
   try {
     const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
@@ -135,6 +345,19 @@ export async function loadSettings(path: string): Promise<RuntimeSettings> {
         hpc = { endpoints: validated.endpoints };
       }
     }
+    // Same rule for MCP servers: a broken row drops the SECTION with a warning,
+    // never the file (docs/adr/0026). Note the loader sees plaintext secret
+    // values; only `viewOf` masks them.
+    let mcp: McpSettings = { servers: [] };
+    const mcpRaw = isPlainObject(parsed.mcp) ? parsed.mcp.servers : undefined;
+    if (Array.isArray(mcpRaw)) {
+      const validated = validateStoredMcpServers(mcpRaw);
+      if ("error" in validated) {
+        console.warn(`[transport-service] ignoring invalid mcp.servers in ${path}: ${validated.error}`);
+      } else {
+        mcp = { servers: validated.servers };
+      }
+    }
     return {
       model: isPlainObject(parsed.model) ? (parsed.model as ModelSettings) : {},
       plugins: isPlainObject(parsed.plugins) ? parsed.plugins : {},
@@ -142,6 +365,7 @@ export async function loadSettings(path: string): Promise<RuntimeSettings> {
       subagents: isPlainObject(parsed.subagents) ? (parsed.subagents as SubagentSettings) : {},
       thread: isPlainObject(parsed.thread) ? (parsed.thread as ThreadSettings) : {},
       hpc,
+      mcp,
     };
   } catch (err) {
     if ((err as { code?: string }).code !== "ENOENT") {
@@ -200,6 +424,14 @@ export function mergeSettings(current: RuntimeSettings, patch: RuntimeSettingsPa
     if (value === null) hpc.endpoints = [];
     else if (value !== undefined) hpc.endpoints = [...value];
   }
+  // The mcp section is also a list replace, but a kept row's secret maps merge
+  // per key (absent = keep, null = delete) — the write-only rule (docs/adr/0026).
+  const mcp: McpSettings = { servers: [...(current.mcp?.servers ?? [])] };
+  if (patch.mcp !== undefined && "servers" in patch.mcp) {
+    const value = patch.mcp.servers;
+    if (value === null) mcp.servers = [];
+    else if (value !== undefined) mcp.servers = mergeMcpServers(current.mcp?.servers ?? [], value);
+  }
   return {
     model,
     plugins: patch.plugins ? { ...current.plugins, ...patch.plugins } : current.plugins,
@@ -207,7 +439,18 @@ export function mergeSettings(current: RuntimeSettings, patch: RuntimeSettingsPa
     subagents,
     thread,
     hpc,
+    mcp,
   };
+}
+
+/** One stored server as the settings view: secret VALUES are never returned, only their key names. */
+export function mcpServerView(server: McpServerSettings): McpServerView {
+  if (server.transport === "stdio") {
+    const { env, ...rest } = server;
+    return { ...rest, envConfigured: Object.keys(env ?? {}) };
+  }
+  const { headers, ...rest } = server;
+  return { ...rest, headersConfigured: Object.keys(headers ?? {}) };
 }
 
 export function viewOf(
@@ -224,6 +467,8 @@ export function viewOf(
     thread: { ...(settings.thread ?? {}) },
     // An endpoint's key is referenced by PATH — show the endpoints as-is.
     hpc: { endpoints: [...(settings.hpc?.endpoints ?? [])] },
+    // An MCP server's secrets are VALUES — show only the configured key names.
+    mcp: { servers: (settings.mcp?.servers ?? []).map(mcpServerView) },
     runtime: env.TRANSPORT_RUNTIME ?? "openclaw",
     settingsPath,
   };
@@ -316,6 +561,21 @@ export function parseSettingsPatch(
       }
     }
     patch.hpc = hpc;
+  }
+  if ("mcp" in body) {
+    if (!isPlainObject(body.mcp)) return { error: "mcp must be an object" };
+    const mcp: McpSettingsPatch = {};
+    if ("servers" in body.mcp) {
+      const value = body.mcp.servers;
+      if (value === null) {
+        mcp.servers = null;
+      } else {
+        const validated = validateMcpServerPatches(value);
+        if ("error" in validated) return { error: validated.error };
+        mcp.servers = validated.servers;
+      }
+    }
+    patch.mcp = mcp;
   }
   return { patch };
 }

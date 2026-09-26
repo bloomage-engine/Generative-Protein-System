@@ -22,6 +22,7 @@ import {
 import { useStudioStore } from "@/store/studio-store";
 import { desktopBridge } from "@/lib/desktop-bridge";
 import { HpcTab } from "@/components/studio/hpc-tab";
+import { McpTab } from "@/components/studio/mcp-tab";
 import { SkillsTab } from "@/components/studio/skills-tab";
 
 export const SETTINGS_API = process.env.NEXT_PUBLIC_SETTINGS_URL ?? DEFAULT_SETTINGS_API;
@@ -150,6 +151,7 @@ export function SettingsDialog() {
             <TabsTrigger value="thread">Thread</TabsTrigger>
             <TabsTrigger value="skills">Skills</TabsTrigger>
             <TabsTrigger value="hpc">HPC</TabsTrigger>
+            <TabsTrigger value="mcp">MCP</TabsTrigger>
           </TabsList>
           <TabsContent value="model" className="min-h-0 space-y-6 overflow-y-auto pr-1">
             {status === "loading" ? (
@@ -346,6 +348,9 @@ export function SettingsDialog() {
           </TabsContent>
           <TabsContent value="hpc" className="min-h-0 overflow-y-auto pr-1">
             <HpcTab projectId={projectId} />
+          </TabsContent>
+          <TabsContent value="mcp" className="min-h-0 overflow-y-auto pr-1">
+            <McpTab />
           </TabsContent>
         </Tabs>
       </DialogContent>

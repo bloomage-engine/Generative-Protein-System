@@ -194,3 +194,13 @@ export {
 export type { ComputeJob, ComputeJobState } from "@science-studio/record";
 export { isOpenComputeJobState } from "./hpc.js";
 export type { HpcEndpointSettings, HpcSettings, HpcSettingsPatch } from "@science-studio/transport";
+export type {
+  McpServerSettings,
+  McpStdioServerSettings,
+  McpHttpServerSettings,
+  McpServerView,
+  McpSettings,
+  McpSettingsView,
+  McpServerPatch,
+  McpSettingsPatch,
+} from "@science-studio/transport";
