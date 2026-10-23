@@ -72,6 +72,8 @@ export interface Backend {
   projectRoot?: string;
   /** Test seam: the git runner (defaults to the real system-git spawner). */
   git?: import("./worktree/git.js").GitRunner;
+  /** Test seam: the MCP connectivity probe (defaults to the real SDK probe). */
+  mcpProbe?: import("./mcp/probe.js").McpProber;
 }
 
 /** The out-of-tree contract a private enterprise module implements. */

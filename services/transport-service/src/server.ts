@@ -32,12 +32,15 @@ import {
   attachmentsFromMentions,
   parseWorkspaceMentions,
 } from "@science-studio/transport";
+import { localWorkspace } from "./composition.js";
 import type { Backend, CorsConfig } from "./composition.js";
 import { registerCronRoutes } from "./cron/routes.js";
 import { createCronScheduler } from "./cron/scheduler.js";
 import { createCronStore } from "./cron/store.js";
 import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS, WorktreeNotFoundError } from "./directory.js";
 import { registerHpcRoutes } from "./hpc/routes.js";
+import { registerMcpRoutes } from "./mcp/routes.js";
+import { removeMcpServersForProject } from "./mcp/store.js";
 import { createHpcPoller } from "./hpc/poller.js";
 import { createSshRunner } from "./hpc/ssh.js";
 import { createGitRunner, GitUnavailableError } from "./worktree/git.js";
@@ -170,6 +173,18 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     return viewOf(next, settingsPath, process.env);
   });
 
+  // -- Deployment MCP servers (docs/adr/0026) --------------------------------
+  // A dedicated per-row surface: the generic settings PUT replaces a whole
+  // section, which would let one Project delete another Project's MCP rows.
+  registerMcpRoutes(app, {
+    settingsPath,
+    records,
+    available: backend.capabilities?.mcp ?? false,
+    ...(backend.mcpProbe ? { probe: backend.mcpProbe } : {}),
+    workspaceRoot: (projectId, worktreeId) =>
+      localWorkspace(process.env, projectId, worktreeId).toAgentPath(""),
+  });
+
   // -- Project / Session / Run record surface --------------------------------
   app.post("/api/projects", async (request, reply) => {
     const body = (request.body ?? {}) as { name?: unknown };
@@ -256,6 +271,12 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       return reply.code(500).send({ error: "failed to recycle the project workspace" });
     }
     await directory.deleteProject(id);
+    try {
+      await removeMcpServersForProject(settingsPath, id);
+    } catch (err) {
+      // Best-effort: deleting the Project must not fail on its MCP config.
+      console.error(`[transport-service] removing MCP servers for project "${id}" failed`, err);
+    }
     try {
       await backend.environments.release?.(principal, id);
     } catch (err) {

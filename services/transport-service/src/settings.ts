@@ -23,6 +23,7 @@ import type {
   ThreadSettingsPatch,
 } from "@science-studio/transport";
 import { isSafeRemotePath, isValidEndpointId } from "@science-studio/hpc";
+import { parseMcpSettings } from "./mcp/codec.js";
 
 export function resolveSettingsPath(env: NodeJS.ProcessEnv = process.env): string {
   if (env.SS_SETTINGS_PATH) return env.SS_SETTINGS_PATH;
@@ -31,7 +32,15 @@ export function resolveSettingsPath(env: NodeJS.ProcessEnv = process.env): strin
 }
 
 export function emptySettings(): RuntimeSettings {
-  return { model: {}, plugins: {}, agent: {}, subagents: {}, thread: {}, hpc: { endpoints: [] } };
+  return {
+    model: {},
+    plugins: {},
+    agent: {},
+    subagents: {},
+    thread: {},
+    hpc: { endpoints: [] },
+    mcp: { servers: [] },
+  };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -135,6 +144,10 @@ export async function loadSettings(path: string): Promise<RuntimeSettings> {
         hpc = { endpoints: validated.endpoints };
       }
     }
+    const mcp = parseMcpSettings(parsed.mcp);
+    for (const error of mcp.errors) {
+      console.warn(`[transport-service] ignoring invalid MCP server in ${path}: ${error}`);
+    }
     return {
       model: isPlainObject(parsed.model) ? (parsed.model as ModelSettings) : {},
       plugins: isPlainObject(parsed.plugins) ? parsed.plugins : {},
@@ -142,6 +155,7 @@ export async function loadSettings(path: string): Promise<RuntimeSettings> {
       subagents: isPlainObject(parsed.subagents) ? (parsed.subagents as SubagentSettings) : {},
       thread: isPlainObject(parsed.thread) ? (parsed.thread as ThreadSettings) : {},
       hpc,
+      mcp: mcp.settings,
     };
   } catch (err) {
     if ((err as { code?: string }).code !== "ENOENT") {
@@ -207,6 +221,7 @@ export function mergeSettings(current: RuntimeSettings, patch: RuntimeSettingsPa
     subagents,
     thread,
     hpc,
+    mcp: current.mcp ?? { servers: [] },
   };
 }
 
@@ -239,6 +254,13 @@ export function applySettingsToEnv(
   if (model) next.DSH_MODEL = model;
   if (endpoint) next.SS_MODEL_ENDPOINT = endpoint;
   if (apiKey) next.SS_MODEL_API_KEY = apiKey;
+  // The full enabled catalog rides the dsh binding; the dsh adapter filters it
+  // to the active Project and passes only that slice to its child. The name
+  // contains SECRET so the harness's subprocess scrub keeps it out of ordinary
+  // tool envs (docs/adr/0026).
+  const enabled = (settings.mcp?.servers ?? []).filter((server) => server.enabled);
+  if (enabled.length > 0) next.SS_MCP_SECRET_CONFIG = JSON.stringify(enabled);
+  else delete next.SS_MCP_SECRET_CONFIG;
   return next;
 }
 

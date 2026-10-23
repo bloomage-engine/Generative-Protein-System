@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@fastify/cors": "11.3.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@science-studio/cron": "*",
     "@science-studio/hpc": "*",
     "@science-studio/transport": "*",

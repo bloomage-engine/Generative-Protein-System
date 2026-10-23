@@ -63,4 +63,6 @@ export const OPENCLAW_CAPABILITIES: RuntimeCapabilities = {
   perSessionCwd: false,
   subagents: false,
   subagentTranscript: false,
+  /** MCP servers are gateway-managed, not consumed from the deployment catalog. */
+  mcp: false,
 };

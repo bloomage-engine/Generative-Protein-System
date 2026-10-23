@@ -35,6 +35,7 @@ test("the settings file wins over the ambient launch env in the binding", async 
         perSessionCwd: false,
         subagents: false,
         subagentTranscript: false,
+        mcp: false,
       },
       create: (): RuntimeAdapter => fakeAdapter(),
     },

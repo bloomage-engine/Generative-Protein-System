@@ -59,6 +59,73 @@ export interface HpcSettings {
   endpoints: HpcEndpointSettings[];
 }
 
+/** A deployment MCP server is global or bound to one Project. */
+export type McpScope = "global" | "project";
+
+/**
+ * ONE deployment MCP server (docs/adr/0026). `env`/`headers` hold credentials
+ * and are WRITE-ONLY: the settings view never returns their values.
+ */
+export interface McpServerSettings {
+  /** Stable namespace and tool prefix (`mcp__<id>__<tool>`), unique across the catalog. */
+  id: string;
+  scope: McpScope;
+  /** Required when `scope` is `"project"`. */
+  projectId?: string;
+  enabled: boolean;
+  transport: "stdio" | "streamable-http";
+  /** stdio: executable (no shell interpolation). */
+  command?: string;
+  /** stdio: arguments. */
+  args?: string[];
+  /** stdio: explicit credentials/env, merged over the scrubbed ambient env. */
+  env?: Record<string, string>;
+  /** stdio: working directory; absent = the agent's worktree root. */
+  cwd?: string;
+  /** Streamable HTTP: endpoint URL. */
+  url?: string;
+  /** Streamable HTTP: request headers (credentials). */
+  headers?: Record<string, string>;
+  /** Per `tools/call` timeout; default 60000 ms. */
+  toolCallTimeoutMs?: number;
+}
+
+export interface McpSettings {
+  servers: McpServerSettings[];
+}
+
+/** The `GET` projection: keys stay visible, credential values never do. */
+export interface McpServerView {
+  id: string;
+  scope: McpScope;
+  projectId?: string;
+  enabled: boolean;
+  transport: "stdio" | "streamable-http";
+  command?: string;
+  args?: string[];
+  cwd?: string;
+  url?: string;
+  toolCallTimeoutMs?: number;
+  envKeys: string[];
+  headerKeys: string[];
+}
+
+/** A create/update body: omitted secret keys keep their stored value, `null` removes one. */
+export interface McpServerDraft {
+  id?: string;
+  scope?: McpScope;
+  projectId?: string;
+  enabled?: boolean;
+  transport?: "stdio" | "streamable-http";
+  command?: string;
+  args?: string[];
+  env?: Record<string, string | null> | null;
+  cwd?: string;
+  url?: string;
+  headers?: Record<string, string | null> | null;
+  toolCallTimeoutMs?: number;
+}
+
 export interface RuntimeSettings {
   model: ModelSettings;
   plugins: Record<string, unknown>;
@@ -66,6 +133,7 @@ export interface RuntimeSettings {
   subagents?: SubagentSettings;
   thread?: ThreadSettings;
   hpc?: HpcSettings;
+  mcp?: McpSettings;
 }
 
 /** The `GET`/`PUT` response: `apiKey` is replaced by a configured flag. */

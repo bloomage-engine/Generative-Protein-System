@@ -115,12 +115,33 @@ export {
   updateSettings,
 } from "./settings.js";
 export type {
+  McpScope,
+  McpServerDraft,
+  McpServerSettings,
+  McpServerView,
+  McpSettings,
   ModelSettings,
   ModelSettingsPatch,
   RuntimeSettings,
   RuntimeSettingsView,
   RuntimeSettingsPatch,
 } from "@science-studio/transport";
+export {
+  DEFAULT_MCP_API,
+  McpRequestError,
+  createMcpServer,
+  deleteMcpServer,
+  fetchMcpServers,
+  probeMcpServer,
+  updateMcpServer,
+} from "./mcp.js";
+export type {
+  McpProbeInput,
+  McpProbeResult,
+  McpProbeTool,
+  McpServerResponse,
+  McpServersView,
+} from "./mcp.js";
 export {
   DEFAULT_SKILLS_API,
   SkillsRequestError,

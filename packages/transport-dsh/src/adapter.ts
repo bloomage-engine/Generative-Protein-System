@@ -45,6 +45,7 @@ import {
 } from "./bridge.js";
 import { createDshBehavior, type DshBehavior } from "./behavior.js";
 import { applyRouteSettings } from "./route-settings.js";
+import { MCP_CONFIG_ENV, dshMcpConfigs, writeMcpPatch } from "./mcp-patch.js";
 import { readChildTranscript } from "./child-transcript.js";
 import {
   PROJECT_SKILL_DIR,
@@ -414,6 +415,28 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       }
     }
 
+    // Deployment MCP servers (docs/adr/0026): the binding carries the whole
+    // catalog; this child gets only the global rows plus ITS Project's rows.
+    // The plugin config is read from the child env (never from the patch file).
+    const mcpServers = (binding.mcpServers ?? []).filter(
+      (server) =>
+        server.enabled &&
+        (server.scope === "global" ||
+          (opts.project !== undefined && server.projectId === opts.project.id)),
+    );
+    let mcpEnv: NodeJS.ProcessEnv | undefined;
+    if (mcpServers.length > 0) {
+      try {
+        const configs = dshMcpConfigs(mcpServers);
+        patches.push(await writeMcpPatch({ dir: this.bridgeDir, configs }));
+        // The patch reads this exact array by index; it carries only the dsh
+        // plugin config (never the catalog's scope/projectId bookkeeping).
+        mcpEnv = { [MCP_CONFIG_ENV]: JSON.stringify(configs) };
+      } catch (err) {
+        console.warn("[dsh] MCP plugin unavailable", err);
+      }
+    }
+
     let routeEnv: NodeJS.ProcessEnv | undefined;
     if (binding.endpoint || binding.apiKey) {
       try {
@@ -437,7 +460,9 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       provider,
       model,
       maxTokens,
-      ...(routeEnv === undefined ? {} : { env: { ...process.env, ...routeEnv } }),
+      ...(routeEnv === undefined && mcpEnv === undefined
+        ? {}
+        : { env: { ...process.env, ...routeEnv, ...mcpEnv } }),
       ...(patches.length > 0 ? { patches } : {}),
     });
     // The subagent ledger is DURABLE through the record (docs/adr/0019): each

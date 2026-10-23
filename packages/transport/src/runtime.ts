@@ -70,6 +70,8 @@ export interface RuntimeCapabilities {
   subagents: boolean;
   /** `RuntimeAdapter.subagentTranscript()` is available (a child-session record read). */
   subagentTranscript: boolean;
+  /** The runtime consumes the deployment MCP server catalog (dsh: true). */
+  mcp: boolean;
 }
 
 /** Thrown when a binding does not match the runtime's expected shape. */
