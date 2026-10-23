@@ -12,6 +12,7 @@
  * asks).
  */
 import { createRequire } from "node:module";
+import { registerMolstarCombinators } from "./molstar-combinators.js";
 
 const require = createRequire(import.meta.url);
 
@@ -63,6 +64,12 @@ export type Molstar = {
   Loci: any;
   StructureElement: any;
   StructureProperties: any;
+  StructureSelection: any;
+  DefaultQueryRuntimeTable: any;
+  QuerySymbolRuntime: any;
+  MolScriptSymbolTable: any;
+  combinators: any;
+  checkStructureMinMaxDistance: any;
   InteractionsProvider: any;
   computeInteractions: any;
   interactionTypeLabel: any;
@@ -85,6 +92,13 @@ export function loadMolstar(): Molstar {
     Unit: m("mol-model/structure.js").Unit,
     StructureElement: m("mol-model/structure.js").StructureElement,
     StructureProperties: m("mol-model/structure.js").StructureProperties,
+    StructureSelection: m("mol-model/structure.js").StructureSelection,
+    DefaultQueryRuntimeTable: m("mol-script/runtime/query/base.js").DefaultQueryRuntimeTable,
+    QuerySymbolRuntime: m("mol-script/runtime/query/base.js").QuerySymbolRuntime,
+    MolScriptSymbolTable: m("mol-script/language/symbol-table.js").MolScriptSymbolTable,
+    combinators: m("mol-model/structure/query/queries/combinators.js"),
+    checkStructureMinMaxDistance: m("mol-model/structure/query/utils/structure-distance.js")
+      .checkStructureMinMaxDistance,
     OrderedSet: m("mol-data/int.js").OrderedSet,
     Vec3: m("mol-math/linear-algebra.js").Vec3,
     Script: m("mol-script/script.js").Script,
@@ -98,6 +112,7 @@ export function loadMolstar(): Molstar {
       .interactionTypeLabel,
     InteractionFlag: m("mol-model-props/computed/interactions/common.js").InteractionFlag,
   };
+  registerMolstarCombinators(cachedMolstar);
   return cachedMolstar;
 }
 

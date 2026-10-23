@@ -1,4 +1,4 @@
-import { Script } from "molstar/lib/mol-script/script";
+import { Script } from "molstar/lib/mol-script/script.js";
 import type { Structure, StructureElement } from "molstar/lib/mol-model/structure";
 import {
   MolqlError,
@@ -6,8 +6,11 @@ import {
   type MolqlDirective,
   type MolqlSelectionMode,
 } from "./directive.js";
+import { registerMissingMolstarCombinators } from "./molstar-combinators.js";
 import { getActiveMolqlViewer } from "./registry.js";
 import type { MolqlSelectionTarget } from "./target.js";
+
+registerMissingMolstarCombinators();
 
 /**
  * Compile/apply boundary for Mol*.
@@ -67,7 +70,9 @@ function isInternalStructureError(err: unknown): boolean {
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => {
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => resolve());
+    const raf = (globalThis as { requestAnimationFrame?: (callback: () => void) => unknown })
+      .requestAnimationFrame;
+    if (typeof raf === "function") raf.call(globalThis, () => resolve());
     else setTimeout(resolve, 16);
   });
 }
