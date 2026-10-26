@@ -55,11 +55,12 @@ Build: `tsc -b` like its siblings; tests: `node --import tsx --test test/*.test.
 ### Data model (`./formats`)
 
 ```ts
+type MsaSequence = { id: number; name: string; seq: string };
 type MsaParseResult =
-  | { kind: "aligned";   sequences: { name: string; seq: string }[];
+  | { kind: "aligned";   sequences: MsaSequence[];
                             columns: number; annotations: { label: string; chars: string }[];
                             insertionsStripped?: boolean }
-  | { kind: "unaligned"; sequences: { name: string; seq: string }[] }
+  | { kind: "unaligned"; sequences: MsaSequence[] }
   | { kind: "mmseqs";    fields: string[]; rows: (string | number)[][] };
 ```
 
@@ -71,10 +72,10 @@ type MsaParseResult =
 
 - Content sniffing decides the parser first, the (declared) extension second: a `# STOCKHOLM 1.0` header or a line starting `#=GS`/`#=GC`/`#=PC` → Stockholm; a line matching `^CLUSTAL` → ClustalW; a `>` record header → FASTA; a whitespace row of ≥ 10 fields with numeric columns 3–10 → mmseqs. Unrecognized content is a typed parse error (the renderer catches it), never a crash.
 - ClustalW: name + wrapped sequence lines (re-wrapped to any width are re-joined); the line(s) following each sequence block, present for every block, are consensus annotations, with the block's name-field indent stripped (a space for an unmarked column survives) and the per-block fragments **merged per label**; sequences may be interleaved (multi-block).
-- FASTA: the sequence `name` is the first whitespace-delimited token of the `>` header (a description part in the header is dropped in v1); a repeated header is a typed error (interleaving is a Clustal/Stockholm concept — concatenating two records would corrupt the data). **a3m**: when the records are ragged and at least one carries lowercase letters, and removing those lowercase letters makes every record the same length, the result is that reduced alignment with `insertionsStripped: true`. An already-uniform file is left alone (its lowercase is not treated as insertion), and a ragged file without lowercase stays `unaligned`.
+- FASTA: the sequence `name` is the first whitespace-delimited token of the `>` header (a description part in the header is dropped in v1). A repeated header starts a distinct record — real ColabFold/UniRef a3m files carry the same accession more than once — so `name` is not assumed unique; `id` is the record's position and is the viewer's row identity. **a3m**: when the records are ragged and at least one carries lowercase letters, and removing those lowercase letters makes every record the same length, the result is that reduced alignment with `insertionsStripped: true`. An already-uniform file is left alone (its lowercase is not treated as insertion), and a ragged file without lowercase stays `unaligned`.
 - Stockholm: sequence lines `NAME  SEQ...`; `#=GS NAME VALUE` are kept as sequence metadata (name only in v1); `#=GC LABEL SEQ...` (the real per-column annotation tag: `#=GC RF`, `#=GC ss_cons`) and the legacy `#=PC LABEL SEQ...` become `annotations`; parsing runs until `//` **or end-of-file** (a missing terminator is tolerated, since some tools omit it).
 - mmseqs `.result`: split on runs of whitespace; a row needs **11 or 12** fields; fields 3–11 (`pident`…`evalue`) are numbers, and the optional 12th (`score`) is a number too — non-numeric where a number is required is a typed error, never `NaN` cells; > 12 fields is a typed error (a `convertalis` detail column is not supported).
-- BOM and CRLF are normalized; blank lines are skipped; parsers are pure (`text` in, value out) and total over the recognized set (recognized content never throws; it is either parsed or classified as unrecognized).
+- BOM and CRLF are normalized; NUL and other control bytes are stripped (tab/newline preserved) so a stray junk byte cannot count as a residue and defeat the a3m length check; blank lines are skipped; parsers are pure (`text` in, value out) and total over the recognized set (recognized content never throws; it is either parsed or classified as unrecognized).
 
 ### Statistics (`./stats`)
 
@@ -231,3 +232,20 @@ independent reasons — all fixed:
 
 Name detection learned `.a3m` in both `isMsaFile` and `kindFor`; the web regression suite
 covers it.
+
+### Amendment 3 — real a3m record names and control bytes (2026-10-26)
+
+Found by opening a real ColabFold/UniRef `uniref.a3m`: it repeats a record name
+(`UniRef100_A0A371H0J5`), which the FASTA parser rejected with a typed error. A repeated
+`>` header is a distinct record, not Clustal/Stockholm-style interleaving, and refusing the
+whole file is disproportionate for a viewer. FASTA parsing now keeps every record in file
+order; `MsaSequence.id` (the record's position) is the viewer's row identity, so duplicate
+names no longer collide on hover, drag-selection or React keys. Clustal/Stockholm keep their
+name-based block merging, and the mention codec remains name-based
+(`@<project>/<path>/<seqName>@<col>`): a duplicated name refers to every row sharing it.
+
+The same investigation found a second real-file failure: a generated
+`bfd.mgnify30.metaeuk30.smag30.a3m` (2937 records × 485 match states) had one record with a
+trailing NUL, making its stripped length 486 and forcing the whole file into the unaligned
+list. NUL and other control bytes are now stripped during normalization (tab/newline
+preserved), so the file renders as an aligned grid without altering the source.

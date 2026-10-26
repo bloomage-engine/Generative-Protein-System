@@ -12,6 +12,12 @@
  */
 
 export interface MsaSequence {
+  /**
+   * Stable row identity within a parsed result: the record's position in the
+   * source. `name` is NOT unique — real a3m files (e.g. ColabFold/UniRef) can
+   * repeat a record name and those are distinct records.
+   */
+  id: number;
   name: string;
   seq: string;
 }
@@ -83,7 +89,9 @@ export function isMsaFile(name: string): boolean {
 
 function normalize(text: string): string {
   const t = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-  return t.replace(/\r\n?/g, "\n");
+  // Strip control bytes except tab/newline: a trailing NUL or similar junk would
+  // otherwise count as a residue and defeat the a3m length-uniformity check.
+  return t.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
 }
 
 function contentLines(text: string): string[] {
@@ -155,22 +163,21 @@ export function mergeAnnotations(annotations: MsaAnnotation[]): MsaAnnotation[] 
 }
 
 function alignOrUnalign(
-  names: string[],
-  chunks: Map<string, string>,
+  records: MsaSequence[],
   annotations: MsaAnnotation[] = [],
 ): MsaAligned | MsaUnaligned {
-  if (names.length === 0) throw new MsaParseError("<none>", "no sequences found");
-  const firstLen = chunks.get(names[0]!)?.length ?? 0;
-  if (names.every((n) => (chunks.get(n) ?? "").length === firstLen && firstLen > 0)) {
+  if (records.length === 0) throw new MsaParseError("<none>", "no sequences found");
+  const firstLen = records[0]!.seq.length;
+  if (records.every((r) => r.seq.length === firstLen && firstLen > 0)) {
     return {
       kind: "aligned",
-      sequences: names.map((n) => ({ name: n, seq: chunks.get(n) ?? "" })),
+      sequences: records,
       columns: firstLen,
       annotations,
     };
   }
   // Uneven lengths: still renderable as rows — degrade instead of crashing.
-  return { kind: "unaligned", sequences: names.map((n) => ({ name: n, seq: chunks.get(n) ?? "" })) };
+  return { kind: "unaligned", sequences: records };
 }
 
 function parseClustal(raw: string): MsaParseResult {
@@ -223,7 +230,8 @@ function parseClustal(raw: string): MsaParseResult {
     chunks.set(name, (chunks.get(name) ?? "") + seq);
   }
   flushBlock();
-  return alignOrUnalign(names, chunks, mergeAnnotations(annotations));
+  const records = names.map((name, i) => ({ id: i, name, seq: chunks.get(name) ?? "" }));
+  return alignOrUnalign(records, mergeAnnotations(annotations));
 }
 
 function parseStockholm(raw: string): MsaParseResult {
@@ -264,36 +272,32 @@ function parseStockholm(raw: string): MsaParseResult {
     }
     seqs.set(name, (seqs.get(name) ?? "") + seq);
   }
-  return alignOrUnalign(names, seqs, mergeAnnotations(annotations));
+  const records = names.map((name, i) => ({ id: i, name, seq: seqs.get(name) ?? "" }));
+  return alignOrUnalign(records, mergeAnnotations(annotations));
 }
 
 function parseFasta(raw: string): MsaParseResult {
-  const names: string[] = [];
-  const chunks = new Map<string, string>();
+  const records: MsaSequence[] = [];
   for (const line of raw.split("\n")) {
     const t = line.trim();
     if (t === "") continue;
     if (t.startsWith(">")) {
       const name = t.slice(1).trim().split(/\s+/)[0] ?? "";
       if (name === "") throw new MsaParseError("fasta", "a record header has no name");
-      if (chunks.has(name)) {
-        // Interleaved block continuation is a Clustal/Stockholm concept; in FASTA a
-        // repeated header means two distinct records. Concatenating them would
-        // silently corrupt the record (and can even fake a length match).
-        throw new MsaParseError("fasta", `duplicate record name: ${name}`);
-      }
-      chunks.set(name, "");
-      names.push(name);
+      // Every header starts a NEW record. A repeated name is not interleaved
+      // FASTA — real ColabFold/UniRef a3m files carry the same accession more
+      // than once — so the rows stay distinct (identity is `id`, not `name`).
+      records.push({ id: records.length, name, seq: "" });
       continue;
     }
-    if (chunks.size === 0) {
+    if (records.length === 0) {
       throw new MsaParseError("fasta", "sequence data before any '>' record header");
     }
-    const name = names[names.length - 1]!;
-    chunks.set(name, (chunks.get(name) ?? "") + t);
+    const last = records[records.length - 1]!;
+    last.seq += t;
   }
-  const a3m = a3mAligned(names, chunks);
-  return a3m ?? alignOrUnalign(names, chunks);
+  const a3m = a3mAligned(records);
+  return a3m ?? alignOrUnalign(records);
 }
 
 /**
@@ -304,10 +308,10 @@ function parseFasta(raw: string): MsaParseResult {
  * whose lowercase letters are soft-masking rather than insertions, is left as
  * it is.
  */
-function a3mAligned(names: string[], chunks: Map<string, string>): MsaAligned | null {
-  if (names.length < 2) return null;
-  if (!names.some((n) => /[a-z]/.test(chunks.get(n) ?? ""))) return null;
-  const raw = names.map((n) => chunks.get(n) ?? "");
+function a3mAligned(records: MsaSequence[]): MsaAligned | null {
+  if (records.length < 2) return null;
+  if (!records.some((r) => /[a-z]/.test(r.seq))) return null;
+  const raw = records.map((r) => r.seq);
   const rawLen = raw[0]!.length;
   if (raw.every((s) => s.length === rawLen)) return null; // already uniform: not ours to interpret
   const stripped = raw.map((s) => s.replace(/[a-z]/g, ""));
@@ -315,7 +319,7 @@ function a3mAligned(names: string[], chunks: Map<string, string>): MsaAligned | 
   if (columns === 0 || !stripped.every((s) => s.length === columns)) return null;
   return {
     kind: "aligned",
-    sequences: names.map((n, i) => ({ name: n, seq: stripped[i]! })),
+    sequences: records.map((r, i) => ({ ...r, seq: stripped[i]! })),
     columns,
     annotations: [],
     insertionsStripped: true,

@@ -484,7 +484,13 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   record the same length (the file came in at 52 distinct raw lengths and exactly one after
   stripping); the aligned result reports `insertionsStripped`, and the grid says so instead
   of silently showing something other than the file ("Raw text" shows it as written). An
-  already-uniform file is left alone — its lowercase is not read as insertion.
+  already-uniform file is left alone — its lowercase is not read as insertion. NUL and
+  other control bytes are stripped before parsing, so a stray `\0` from a generator
+  cannot count as a residue and defeat the length check.
+  A repeated `>` header is a distinct record, not interleaving: real ColabFold/UniRef
+  a3m files repeat a UniRef id, so `MsaSequence.name` is not unique; its `id` (the
+  record's position) is the grid's row identity (selection/hover/React keys), and a
+  mention keeps the name as written in the file.
 - **The package is the boundary (zero molstar).** MSA is a text grid, not a 3D
   scene, and Mol\* 5.9.0 ships no MSA component (verified against the installed
   tree) — so `@science-studio/msa-viewer` owns the parsing/stats/mention/grid math

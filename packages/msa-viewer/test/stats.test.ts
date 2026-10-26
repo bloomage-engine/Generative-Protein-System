@@ -12,9 +12,9 @@ import type { MsaAligned } from "../src/formats.js";
 const ALIGNED: MsaAligned = {
   kind: "aligned",
   sequences: [
-    { name: "a", seq: "MK--" },
-    { name: "b", seq: "MK-M" },
-    { name: "c", seq: "MKMM" },
+    { id: 0, name: "a", seq: "MK--" },
+    { id: 1, name: "b", seq: "MK-M" },
+    { id: 2, name: "c", seq: "MKMM" },
   ],
   columns: 4,
   annotations: [],
@@ -61,7 +61,7 @@ test("stats are total over every MsaParseResult shape", () => {
   assert.deepEqual(sequenceStats(mmseqs), []);
   const t0 = tableStats(mmseqs);
   assert.equal(t0.sequences, 0);
-  const unaligned = { kind: "unaligned" as const, sequences: [{ name: "x", seq: "ABC" }] };
+  const unaligned = { kind: "unaligned" as const, sequences: [{ id: 0, name: "x", seq: "ABC" }] };
   assert.deepEqual(sequenceStats(unaligned)[0], { name: "x", length: 3, gapFraction: 0 });
 });
 

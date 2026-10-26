@@ -10,7 +10,7 @@ import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import type { MsaAligned } from "../formats.js";
+import type { MsaAligned, MsaSequence } from "../formats.js";
 import { DEFAULT_CONSERVED, columnStats, isConservedCol, tableStats } from "../stats.js";
 import type { MsaTarget } from "../mention.js";
 import {
@@ -57,8 +57,12 @@ export interface MsaGridProps {
 }
 
 interface Drag {
-  seqName: string;
+  rowId: number;
   anchor: number; // 0-based ORIGINAL column index
+}
+
+interface RowSelection extends MsaTarget {
+  rowId: number;
 }
 
 export function MsaGrid({ data, className, onMention }: MsaGridProps) {
@@ -66,8 +70,8 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewport, setViewport] = useState(0);
-  const [hover, setHover] = useState<{ row: string; col: number } | null>(null);
-  const [selection, setSelection] = useState<MsaTarget | null>(null);
+  const [hover, setHover] = useState<{ rowId: number; seqName: string; col: number } | null>(null);
+  const [selection, setSelection] = useState<RowSelection | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [query, setQuery] = useState("");
   const [conservedOnly, setConservedOnly] = useState(false);
@@ -123,19 +127,19 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
   const visible = rows.slice(windowed.start, windowed.start + windowed.count);
 
   const inSelection = useCallback(
-    (seqName: string, col: number) =>
+    (rowId: number, col: number) =>
       selection !== null &&
-      selection.seqName === seqName &&
+      selection.rowId === rowId &&
       col >= selection.start - 1 &&
       col <= selection.end - 1,
     [selection],
   );
 
-  const cellClass = (char: string, seqName: string, col: number): CellClass => {
-    if (inSelection(seqName, col)) return "selected";
+  const cellClass = (char: string, rowId: number, col: number): CellClass => {
+    if (inSelection(rowId, col)) return "selected";
     if (hover !== null) {
-      if (hover.row === seqName && hover.col === col) return "hoverCell";
-      if (hover.row === seqName) return "hoverRow";
+      if (hover.rowId === rowId && hover.col === col) return "hoverCell";
+      if (hover.rowId === rowId) return "hoverRow";
       if (hover.col === col) return "hoverCol";
     }
     if (char === "-" || char === undefined) return "gap";
@@ -149,7 +153,7 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
     return columnAtOffset(e.clientX - rect.left - NAME_WIDTH, charWidth, keep);
   };
 
-  const onRowMouseDown = (e: ReactMouseEvent<HTMLDivElement>, seqName: string): void => {
+  const onRowMouseDown = (e: ReactMouseEvent<HTMLDivElement>, seq: MsaSequence): void => {
     if (plain) return; // plain mode: the notice promises no selection
     const col = columnFromEvent(e, e.currentTarget);
     if (col < 0) return;
@@ -157,37 +161,37 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
     // preventDefault suppresses the browser's focus-on-mousedown; focus the grid
     // ourselves so the Esc handler reliably receives the key.
     rootRef.current?.focus({ preventScroll: true });
-    if (inSelection(seqName, col)) {
+    if (inSelection(seq.id, col)) {
       setSelection(null); // a second click on the selected cell clears it
       return;
     }
-    setDrag({ seqName, anchor: col });
-    setSelection({ seqName, start: col + 1, end: col + 1 });
+    setDrag({ rowId: seq.id, anchor: col });
+    setSelection({ rowId: seq.id, seqName: seq.name, start: col + 1, end: col + 1 });
   };
 
-  const onRowMouseMove = (e: ReactMouseEvent<HTMLDivElement>, seqName: string): void => {
+  const onRowMouseMove = (e: ReactMouseEvent<HTMLDivElement>, seq: MsaSequence): void => {
     if (plain) return;
     const col = columnFromEvent(e, e.currentTarget);
     if (col < 0) {
       setHover(null);
       return;
     }
-    setHover({ row: seqName, col });
-    if (drag !== null && drag.seqName === seqName && e.buttons === 1) {
+    setHover({ rowId: seq.id, seqName: seq.name, col });
+    if (drag !== null && drag.rowId === seq.id && e.buttons === 1) {
       const start = Math.min(drag.anchor, col);
       const end = Math.max(drag.anchor, col);
-      setSelection({ seqName, start: start + 1, end: end + 1 });
+      setSelection({ rowId: seq.id, seqName: seq.name, start: start + 1, end: end + 1 });
     }
   };
 
-  const onRowDoubleClick = (e: ReactMouseEvent<HTMLDivElement>, seqName: string): void => {
+  const onRowDoubleClick = (e: ReactMouseEvent<HTMLDivElement>, seq: MsaSequence): void => {
     if (plain || !onMention) return; // no mention at a size whose columns are not selectable
     const col = columnFromEvent(e, e.currentTarget);
     const target =
-      col >= 0 && selection !== null && inSelection(seqName, col)
-        ? { seqName, start: selection.start, end: selection.end }
-        : { seqName, start: col + 1, end: col + 1 };
-    setSelection({ seqName, start: target.start, end: target.end });
+      col >= 0 && selection !== null && inSelection(seq.id, col)
+        ? { seqName: seq.name, start: selection.start, end: selection.end }
+        : { seqName: seq.name, start: col + 1, end: col + 1 };
+    setSelection({ rowId: seq.id, seqName: target.seqName, start: target.start, end: target.end });
     onMention(target);
   };
 
@@ -340,11 +344,11 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
             const y = (windowed.start + i) * ROW_HEIGHT;
             return (
               <div
-                key={`${s.name}-${windowed.start + i}`}
+                key={s.id}
                 style={{ position: "absolute", top: y, left: 0, width: "100%", height: ROW_HEIGHT, whiteSpace: "pre" }}
-                onMouseDown={(e) => onRowMouseDown(e, s.name)}
-                onMouseMove={(e) => onRowMouseMove(e, s.name)}
-                onDoubleClick={(e) => onRowDoubleClick(e, s.name)}
+                onMouseDown={(e) => onRowMouseDown(e, s)}
+                onMouseMove={(e) => onRowMouseMove(e, s)}
+                onDoubleClick={(e) => onRowDoubleClick(e, s)}
               >
                 <span
                   style={{
@@ -367,7 +371,7 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
                 ) : (
                   groupSpans(
                     keep.map((c) => s.seq[c] ?? "-").join(""),
-                    (i) => cellClass(keep[i] === undefined ? "-" : s.seq[keep[i]!] ?? "-", s.name, keep[i] ?? -1),
+                    (i) => cellClass(keep[i] === undefined ? "-" : s.seq[keep[i]!] ?? "-", s.id, keep[i] ?? -1),
                   ).map((sp, k) => (
                     <span key={k} style={{ color: CELL_COLOR[sp.cls as CellClass], background: CELL_BG[sp.cls as CellClass] }}>
                       {sp.text}
@@ -384,7 +388,7 @@ export function MsaGrid({ data, className, onMention }: MsaGridProps) {
       <div style={{ fontSize: 11, padding: "3px 8px", opacity: 0.85, display: "flex", gap: 12, alignItems: "center" }}>
         {hover !== null && hoverStat !== undefined ? (
           <span>
-            {hover.row}:{hover.col + 1} · identity {(hoverStat.identity * 100).toFixed(0)}% · gap{" "}
+            {hover.seqName}:{hover.col + 1} · identity {(hoverStat.identity * 100).toFixed(0)}% · gap{" "}
             {(hoverStat.gapFraction * 100).toFixed(0)}%
           </span>
         ) : (

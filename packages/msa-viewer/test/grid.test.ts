@@ -93,8 +93,8 @@ test("shouldUsePlainText: a cost-based guard — real ColabFold MSAs stay a grid
 
 test("filterRowsByQuery: case-insensitive name substring; empty query is identity", () => {
   const seqs = [
-    { name: "Seq1", seq: "ABC" },
-    { name: "myseq2", seq: "DEF" },
+    { id: 0, name: "Seq1", seq: "ABC" },
+    { id: 1, name: "myseq2", seq: "DEF" },
   ];
   assert.equal(filterRowsByQuery(seqs, ""), seqs);
   assert.deepEqual(filterRowsByQuery(seqs, "SEQ").map((s) => s.name), ["Seq1", "myseq2"]);
@@ -103,8 +103,8 @@ test("filterRowsByQuery: case-insensitive name substring; empty query is identit
 
 test("columnsToKeep: conserved-only and hide-gaps, over the ORIGINAL columns", () => {
   const seqs = [
-    { name: "a", seq: "A--B" },
-    { name: "b", seq: "CD--" },
+    { id: 0, name: "a", seq: "A--B" },
+    { id: 1, name: "b", seq: "CD--" },
   ];
   // col1 (A,C): identity .5, gap 0 · col2 (-,D): identity .5, gap .5
   // col3 (-,-): identity 0,  gap 1 · col4 (B,-): identity .5, gap .5
