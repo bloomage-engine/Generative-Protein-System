@@ -60,11 +60,6 @@ export function apply(ctx: Context): void {
           type: "boolean",
           description: "Move the camera to the selection. Defaults to true.",
         },
-        mode: {
-          type: "string",
-          description:
-            'How to show the selection: "select" (persistent, default) or "highlight" (transient).',
-        },
       },
       output: {
         schema: {

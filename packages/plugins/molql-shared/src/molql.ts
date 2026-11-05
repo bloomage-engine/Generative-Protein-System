@@ -124,7 +124,6 @@ export async function executeMolqlTool(args: {
   molql: string;
   description?: string;
   focus?: boolean;
-  mode?: string;
 }): Promise<MolqlDirective & { type: string }> {
   const active = await fetchActiveStructure();
   if (active && !active.path) {

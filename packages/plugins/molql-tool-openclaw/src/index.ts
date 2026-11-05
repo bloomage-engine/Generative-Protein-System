@@ -47,12 +47,6 @@ export default defineToolPlugin({
             description: "Move the camera to the selection. Defaults to true.",
           }),
         ),
-        mode: Type.Optional(
-          Type.Union([Type.Literal("select"), Type.Literal("highlight")], {
-            description:
-              'How to show the selection: "select" (persistent, default) or "highlight" (transient).',
-          }),
-        ),
       }),
       execute: (args) => executeMolqlTool(args),
     }),

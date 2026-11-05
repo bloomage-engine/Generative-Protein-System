@@ -58,8 +58,6 @@ Trigger this skill when users:
    - `molql` (required): the MolQL expression, e.g. `(sel.atom.res (in-range atom.resno 10 20))`
    - `description` (optional): a short explanation shown alongside the call
    - `focus` (optional, default `true`): whether to move the camera to the selection
-   - `mode` (optional, default `"select"`): `"select"` keeps a persistent selection;
-     `"highlight"` applies a transient emphasis
 
    Then, in your reply, give the expression and a one-line explanation as plain
    text for the user. Do not use the tool until you are confident the expression
