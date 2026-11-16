@@ -34,7 +34,7 @@ import {
 } from "./paths.js";
 
 export interface FsWorkspaceOptions {
-  /** Path as the AGENT sees the root (e.g. `/home/node/.openclaw/workspace`). */
+  /** Path as the AGENT sees the root (e.g. `/home/node/workspace` or `C:/projects/x`). */
   agentRoot: string;
   /** Default inline-read cap when `open` is called without `maxBytes`. */
   maxInlineBytes?: number;

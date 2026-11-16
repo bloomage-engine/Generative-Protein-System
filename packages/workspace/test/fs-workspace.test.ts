@@ -9,6 +9,7 @@ import {
   WorkspaceEscapeError,
   WorkspaceNotFoundError,
   WorkspacePathError,
+  normalizeAgentRoot,
 } from "../src/index.js";
 
 const AGENT_ROOT = "/home/node/.openclaw/workspace";
@@ -174,6 +175,17 @@ test("toAgentPath / toWorkspacePath round-trip and refuse paths outside the root
   assert.equal(ws.toWorkspacePath("/etc/passwd"), null);
   assert.equal(ws.toWorkspacePath(`${AGENT_ROOT}-sibling/x`), null);
   assert.equal(ws.toWorkspacePath(""), null);
+});
+
+test("a Windows drive agent root stays a launchable Windows path", () => {
+  assert.equal(normalizeAgentRoot("C:\\projects\\alpha\\"), "C:/projects/alpha");
+  assert.equal(normalizeAgentRoot("C:\\"), "C:/");
+
+  const ws = new FsWorkspace("C:\\projects\\alpha", { agentRoot: "C:\\projects\\alpha" });
+  assert.equal(ws.toAgentPath(""), "C:/projects/alpha");
+  assert.equal(ws.toAgentPath("analysis/notes.md"), "C:/projects/alpha/analysis/notes.md");
+  assert.equal(ws.toWorkspacePath("C:/projects/alpha/analysis/notes.md"), "analysis/notes.md");
+  assert.equal(ws.toWorkspacePath("/C:/projects/alpha/analysis/notes.md"), null);
 });
 
 test("write stores bytes (creating parents) and returns the new stat", async () => {

@@ -19,7 +19,7 @@ apps/web                          Next.js frontend (assistant-ui Thread UI, port
   components/workspace              workspace browser/viewer panel
   components/ui + hooks + lib       shadcn/ui base, registry helpers
   (Tailwind v4 + shadcn/ui styling stack: postcss.config.mjs, components.json)
-apps/desktop                      Electron desktop app (docs/adr/0013, 0015). Main owns window/menu/lifecycle and forks `build/host/host.mjs` — one Node child that runs the transport-service (dsh runtime, plugins INJECTED into createBackend so the esbuild bundle needs no dynamic import) and spawns the Next standalone server as a grandchild, both loopback/ephemeral, reporting ports over IPC. The standalone Settings window is RETIRED: the workbench dialog (Model/Plugins/Agent/Subagents/Thread/Skills/HPC/MCP — the Subagents tab sets the recent-window `visibleWindowHours`, the Skills tab manages dsh skills, docs/adr/0020; the MCP tab manages dsh MCP servers, docs/adr/0026) is the one editor, persisting to the service settings file (`SS_SETTINGS_PATH` = `<userData>/settings.json`, docs/adr/0015); `<userData>/config.env` is narrowed to paths/extra env vars and main turns it into the child env. Its `test/*.ts` ARE type-checked by the root build's last step (`tsconfig.tests.json`), but the app is not in the root `build` chain; `apps/desktop` has its own build/test/pack scripts.
+apps/desktop                      Electron desktop app (docs/adr/0013, 0015). Main owns window/menu/lifecycle and forks `build/host/host.mjs` — one Node child that runs the transport-service (dsh runtime, plugins INJECTED into createBackend so the esbuild bundle needs no dynamic import) and spawns the Next standalone server as a grandchild, both loopback/ephemeral, reporting ports over IPC. The standalone Settings window is RETIRED: the workbench dialog (Model/Plugins/Agent/Subagents/Thread/Skills/HPC/MCP — the Subagents tab sets the recent-window `visibleWindowHours`, the Skills tab manages dsh skills, docs/adr/0020; the MCP tab manages dsh MCP servers, docs/adr/0026) is the one editor, persisting to the service settings file (`SS_SETTINGS_PATH` = `<userData>/settings.json`, docs/adr/0015); `<userData>/config.env` is narrowed to paths/extra env vars and main turns it into the child env. Its `test/*.ts` ARE type-checked by the root build's last step (`tsconfig.tests.json`), but the app is not in the root `build` chain; `apps/desktop` has its own build/test/pack scripts. The desktop also ships on Windows x64 (per-user NSIS, built on Windows natively; docs/adr/0027): `build:host` discovers every `packages/transport-dsh/dist/*-plugin.js`, the dev/start/service launchers are Node scripts (no POSIX shell syntax), and `stopHost` sends an IPC shutdown before the Windows `taskkill /T /F` fallback.
 packages/record                   RECORD SEAM PACKAGE: v1 vocabulary is Project/Session/Run only (Study/Task/Artifact/Evidence/Conclusion/AgentBlueprint deferred — docs/adr/0007) + the RecordStore contract + implementations (in-memory for tests; dependency-free JSONL used by default via RECORD_STORE_PATH). transport depends on it for Id/Run/RunStatus
 packages/transport                SEAM PACKAGE, two entries. `./seams` = the contract only: every RUNTIME seam interface (RuntimeAdapter/StateDelta, RuntimeBinding/RuntimeFactory/RuntimePlugin/RuntimeCapabilities, Principal/PrincipalResolver, Environment/EnvironmentProvider, Workspace + limits + QuotaPolicy) plus their error classes and limit constants. `.` = that contract + the shared adapter kit (`SessionRuntime` + its `SessionBehavior` / `RunFlow` queue / `foldState` / attachment helpers / `createApplyContext`, the constructor for the transcript primitives so a behavior test drives the SAME merge rules the runtime does) + pure single-user defaults (LocalPrincipalResolver, LocalEnvironmentProvider, NullWorkspace, NoopQuotaPolicy). Exports are explicit (no `export *`); pinned by test/seams.test.ts
 packages/workspace                Workspace implementations (FsWorkspace + containment/symlink/size invariants); depends on transport
@@ -41,7 +41,7 @@ examples/transport-dsh-example     minimal assistant-ui example app over the dsh
 scripts/                          dev smoke tools (smoke-openclaw-adapter, replay-sse-frames)
 docs/architecture.md              system architecture
 docs/design/                      design specs (research-agent-framework EN/ZH + implementation-plan)
-docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Worktree/Session/Run + file store, 0008 runtime provisioning is per worktree, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete, 0015 deployment settings are service-owned, 0016 subagent activity is an optional adapter surface (dsh keeps a durable ledger; addendum), 0017 cron scheduling is service-owned and a task is a workspace file, 0018 a dsh plugin instructs the parent to report subagent results, 0019 durable session and subagent transcript belongs to the record, 0020 dsh skills are configured through the workbench, 0021 the `/api` hop relays and the client surface owns failure policy, 0022 dsh live assistant streaming, 0023 the composer is a Lexical rich-text input, 0024 HPC remote execution is service-owned and a Compute Job is a record entity, 0025 a Worktree is a record-scoped environment dimension)
+docs/adr/                         ADRs (0001 backend transport, 0002 record ownership, 0003 slash commands, 0004 dsh harness, 0005 shared SessionRuntime, 0006 Project is the workspace/sharing unit, 0007 v1 record layer = Project/Worktree/Session/Run + file store, 0008 runtime provisioning is per worktree, 0009 the workbench resumes the remembered scope, 0010 the dsh command catalog is adapter-owned, 0011 dsh commands ride a launch patch bridge, 0012 a dsh plugin scaffolds each Project Workspace and keeps its Brief, 0013 the Desktop App is Electron with embedded servers, 0014 Project/Session lifecycle: rename, reversible archive, irreversible delete, 0015 deployment settings are service-owned, 0016 subagent activity is an optional adapter surface (dsh keeps a durable ledger; addendum), 0017 cron scheduling is service-owned and a task is a workspace file, 0018 a dsh plugin instructs the parent to report subagent results, 0019 durable session and subagent transcript belongs to the record, 0020 dsh skills are configured through the workbench, 0021 the `/api` hop relays and the client surface owns failure policy, 0022 dsh live assistant streaming, 0023 the composer is a Lexical rich-text input, 0024 HPC remote execution is service-owned and a Compute Job is a record entity, 0025 a Worktree is a record-scoped environment dimension, 0026 MCP is a dsh deployment capability, 0027 the desktop app ships on Windows)
 CONTEXT.md                        domain glossary (authoritative vocabulary)
 ```
 
@@ -66,20 +66,23 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   `OLLAMA_LOCAL_API_KEY`) is a legal `.env` line and is inherited by the child.
 - `npm run dev:desktop` — the Electron shell against the already-running dev pair
   (`DESKTOP_DEV_URL`, default http://localhost:3000). The packaged app instead
-  builds `apps/web` with `NEXT_OUTPUT=standalone` (`npm run build:web:standalone`)
-  and hosts both servers itself. Packaging: `npm run pack -w @science-studio/desktop`
-  (electron-builder; `dmg` on macOS, `AppImage`/`deb` on Linux). In dev the shell
+  builds `apps/web` with `NEXT_OUTPUT=standalone` (`npm run build:web:standalone`,
+  which uses `cross-env` so it works in cmd.exe too) and hosts both servers
+  itself. Packaging: `npm run pack -w @science-studio/desktop` (electron-builder;
+  `dmg` on macOS, `AppImage`/`deb` on Linux, per-user x64 `NSIS` on Windows —
+  build on the target OS, there is no Wine/cross-build path). In dev the shell
   only loads `DESKTOP_DEV_URL`, so a real turn depends on the already-running dev
   pair's own `.env` route — the workbench settings dialog reaches the service on
   3001 through the web proxy in dev too. In the packaged app the dialog persists
   to `<userData>/settings.json` (`SS_SETTINGS_PATH`), and `<userData>/config.env`
   now carries only paths/extra env vars (docs/adr/0015). The packaged app needs
-  `dsh` on PATH and a route configured in the dialog. On a host whose setuid `chrome-sandbox` helper is not
-  root-owned (containers, most CI/dev boxes), Electron aborts with
-  "The SUID sandbox helper binary ... is not configured correctly"; the `dev`/
-  `start` scripts default to `--no-sandbox` for this (`DESKTOP_ELECTRON_FLAGS=`
-  opts out, and the secure alternative is
+  `dsh` on PATH and a route configured in the dialog. On a Linux host whose setuid
+  `chrome-sandbox` helper is not root-owned (containers, most CI/dev boxes),
+  Electron aborts with "The SUID sandbox helper binary ... is not configured
+  correctly"; `scripts/run-electron.mjs` adds `--no-sandbox` ONLY on Linux for
+  this (`DESKTOP_ELECTRON_FLAGS=` opts out, and the secure alternative is
   `sudo chown root:root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 ...`).
+  Electron 44 requires Node >= 22.12 for the build toolchain.
 - Record layer: the v1 record is `Project` → `Worktree` → `Session` → `Run`
   (docs/adr/0007, extended by docs/adr/0025). Project/Session/Worktree routes
   live on the same service (`/api/projects*`, `/api/worktrees*`), and the store

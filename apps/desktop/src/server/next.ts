@@ -49,6 +49,7 @@ export async function startNextServer(input: {
       ELECTRON_RUN_AS_NODE: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
   });
   child.stdout?.on("data", (d: Buffer) => input.log?.(d.toString()));
   child.stderr?.on("data", (d: Buffer) => input.log?.(d.toString()));

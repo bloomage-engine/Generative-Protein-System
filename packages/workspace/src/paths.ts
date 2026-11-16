@@ -42,11 +42,22 @@ export function normalizeWorkspacePath(relPath: string): string {
   return normalized === "." ? "" : normalized;
 }
 
-/** Normalize the agent-visible root: absolute POSIX, no trailing slash. */
+/**
+ * Normalize the agent-visible root: absolute, forward-slash, no trailing slash.
+ * A Windows drive root keeps its prefix (`C:/projects/x`) instead of gaining a
+ * leading slash — the dsh child uses this string as its working directory, and
+ * `/C:\...` is not launchable on Windows.
+ */
 export function normalizeAgentRoot(agentRoot: string): string {
   if (typeof agentRoot !== "string" || agentRoot.length === 0) {
     throw new WorkspacePathError("agentRoot must be a non-empty string");
   }
-  const normalized = posix.normalize(agentRoot.startsWith("/") ? agentRoot : `/${agentRoot}`);
-  return normalized === "/" ? normalized : normalized.replace(/\/+$/, "");
+  if (agentRoot.includes("\0")) {
+    throw new WorkspacePathError("agentRoot must not contain NUL");
+  }
+  const forward = agentRoot.replaceAll("\\", "/");
+  const absolute = forward.startsWith("/") || /^[A-Za-z]:\//.test(forward);
+  const normalized = posix.normalize(absolute ? forward : `/${forward}`);
+  if (normalized === "/" || /^[A-Za-z]:\/$/.test(normalized)) return normalized;
+  return normalized.replace(/\/+$/, "");
 }

@@ -27,6 +27,16 @@ linux:
     - AppImage
     - deb
   category: Science
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: science-studio_${version}_${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
 deb:
   packageName: science-studio
   maintainer: zhonghua-wang <zhonghua.wang@outlook.com>

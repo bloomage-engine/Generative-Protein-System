@@ -12,4 +12,7 @@ test("builder config ships the host bundle and the next standalone tree", async 
   assert.match(text, /to: next\/apps\/web\/public/);
   assert.match(text, /mac:\s*\n\s*target:\s*\n\s*- dmg/);
   assert.match(text, /linux:\s*\n\s*target:\s*\n\s*- AppImage\s*\n\s*- deb/);
+  assert.match(text, /win:\s*\n\s*target:\s*\n\s*- target: nsis\s*\n\s*arch:\s*\n\s*- x64/);
+  assert.match(text, /artifactName: science-studio_\$\{version\}_\$\{arch\}\.\$\{ext\}/);
+  assert.match(text, /nsis:\s*\n\s*oneClick: false\s*\n\s*perMachine: false/);
 });

@@ -1,4 +1,5 @@
 import { fork, type ChildProcess } from "node:child_process";
+import { killTree } from "../shared/process-tree.js";
 
 export interface HostPorts {
   webPort: number;
@@ -37,7 +38,7 @@ export function forkHost(input: {
     };
     const onError = (err: Error) => {
       cleanup();
-      if (child.pid !== undefined) child.kill("SIGTERM");
+      killTree(child);
       reject(err);
     };
     const onExit = (code: number | null) => {
@@ -45,7 +46,7 @@ export function forkHost(input: {
       reject(new Error(`desktop host exited (${code ?? "signal"})`));
     };
     timer = setTimeout(() => {
-      child.kill("SIGTERM");
+      killTree(child);
       cleanup();
       reject(new Error("desktop host did not become ready within 60s"));
     }, 60_000);

@@ -10,12 +10,14 @@ import { detectDsh } from "../shared/dsh.js";
 import { runtimeStatus } from "../shared/runtime-status.js";
 import { singleFlight } from "../shared/single-flight.js";
 import { augmentPath } from "../shared/env-path.js";
+import { killTree } from "../shared/process-tree.js";
 import { forkHost, type HostPorts } from "./host-child.js";
 import { resolveResourcePaths } from "./resource-paths.js";
 import { createWorkbenchWindow } from "./windows.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(here, "..", "..");
+if (process.platform === "win32") app.setAppUserModelId("ss.hx-engine.com");
 
 let workbench: BrowserWindow | null = null;
 let host: ChildProcess | null = null;
@@ -81,10 +83,13 @@ async function stopHost(): Promise<void> {
       resolve();
     };
     child.once("exit", onExit);
-    killTimer = setTimeout(() => {
-      child.kill("SIGKILL");
-    }, 5_000);
-    child.kill("SIGTERM");
+    killTimer = setTimeout(() => killTree(child), 5_000);
+    try {
+      if (child.connected) child.send({ type: "shutdown" });
+      else child.kill("SIGTERM");
+    } catch {
+      killTree(child);
+    }
   });
 }
 

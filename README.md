@@ -87,6 +87,8 @@ npm run smoke:dsh      # drive the dsh harness (needs build + the route's creden
                        #   examples/transport-dsh-example/.env; export DSH_PROVIDER/DSH_MODEL
                        #   to drive a non-default route)
 npm run smoke:replay -- <frames-file>     # fold captured SSE frames through the client decoder
+npm run dev:desktop                        # Electron against the running dev pair
+npm run pack -w @science-studio/desktop    # dmg / AppImage+deb / per-user x64 NSIS (build on the target OS)
 ```
 
 > `npm run typecheck` is **known-broken** in transport-service (pre-existing

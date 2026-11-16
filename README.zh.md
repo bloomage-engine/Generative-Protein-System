@@ -82,6 +82,8 @@ npm run smoke:adapter  # 对真实 openclaw 网关驱动一次 chat.send（需�
 npm run smoke:dsh      # 驱动 dsh harness（需先 build，且 examples/transport-dsh-example/.env
                        #   中有该路由的凭据；换路由时导出 DSH_PROVIDER/DSH_MODEL）
 npm run smoke:replay -- <frames-file>     # 用客户端解码器折叠录制的 SSE 帧
+npm run dev:desktop                        # Electron 连接已运行的 dev 服务
+npm run pack -w @science-studio/desktop    # dmg / AppImage+deb / 每用户 x64 NSIS（在目标系统上构建）
 ```
 
 > `npm run typecheck` 在 transport-service 中是**已知损坏**的（历史遗留的

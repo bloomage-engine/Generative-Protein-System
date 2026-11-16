@@ -149,6 +149,20 @@ export interface BridgePluginConfig {
 const MAX_BODY_BYTES = 64 * 1024;
 
 /**
+ * A stale POSIX socket file would make listen fail EADDRINUSE. Windows named
+ * pipes are not filesystem entries and vanish with the server, so removing
+ * `\\.\pipe\...` there is wrong (and can throw EPERM).
+ */
+function removeSocketFile(socket: string): void {
+  if (process.platform === "win32") return;
+  try {
+    rmSync(socket, { force: true });
+  } catch {
+    // already gone
+  }
+}
+
+/**
  * One stderr line. NEVER stdout: it carries the JSON-RPC frames.
  */
 function warn(message: string, error?: unknown): void {
@@ -479,8 +493,7 @@ export function apply(ctx: BridgeHost, config: BridgePluginConfig | undefined): 
     } catch (err) {
       warn("command-prompt interception unavailable", err);
     }
-    // A socket file left by a crashed child would make listen fail EADDRINUSE.
-    rmSync(socket, { force: true });
+    removeSocketFile(socket);
     const server = createServer((req, res) => {
       void dispatch(ctx, req, res).catch((err: unknown) => {
         warn("request failed", err);
@@ -503,11 +516,7 @@ export function apply(ctx: BridgeHost, config: BridgePluginConfig | undefined): 
       } catch {
         // already closed
       }
-      try {
-        rmSync(socket, { force: true });
-      } catch {
-        // already gone
-      }
+      removeSocketFile(socket);
       try {
         offCommands?.();
       } catch {

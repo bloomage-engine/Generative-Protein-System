@@ -15,8 +15,8 @@
     "build": "tsc -b",
     "typecheck": "tsc -b --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
-    "dev": "DSH_PROVIDER=${DSH_PROVIDER:-ollama-local} DSH_MODEL=${DSH_MODEL:-qwen3.8:latest} DSH_WORKSPACE=${DSH_WORKSPACE:-$HOME/workspace/dsh-workspace} DSH_DEFAULT_SESSION=${DSH_DEFAULT_SESSION:-science-studio} tsx src/index.ts",
-    "dev:dsh": "TRANSPORT_RUNTIME=dsh npm run dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:dsh": "node scripts/dev.mjs --dsh",
     "start": "node dist/index.js"
   },
   "dependencies": {
