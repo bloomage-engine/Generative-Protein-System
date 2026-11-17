@@ -56,3 +56,26 @@ does not finish.
   shims still assume POSIX and need Windows skips/adaptation; HPC multiplexing
   on Windows is a separate follow-up. None of these blocks packaging or the
   desktop's core turn loop.
+
+## Addendum (2026-11-17)
+
+The first Windows package could not start. The esbuild host bundle declared
+`createRequire` twice — once in its banner and once from the bundled
+`services/transport-service/src/structure.ts` — so `host.mjs` failed to parse.
+Even with that fixed, the host was shipped in `resources/host`, where its ESM
+externals (`@deepseek-ai/dsh-sdk-client`, `dotenv`) could not resolve: ESM
+ignores the `NODE_PATH` the main process sets. The host and its six child
+plugins now ship inside `app.asar` (`build/host/...`), so they resolve
+`app.asar/node_modules` through normal module resolution; the banner aliases its
+`createRequire`, and `build:host` runs `node --check` over every output. A boot
+failure now also surfaces as an Electron error dialog, and the host's stderr
+tail is included in the error instead of disappearing into a GUI process's
+stderr.
+
+Booting the dsh child then exposed two more packaging gaps: sharp's libvips
+shared library sat inside `app.asar` (the native loader cannot read it), and the
+SDK's `@deepseek-ai/dsh-sdk-protocol` peer was not collected because
+electron-builder only walks declared dependencies. `asarUnpack:
+node_modules/@img/**` now keeps sharp's native runtime outside the archive, and
+`@deepseek-ai/transport-dsh` declares the protocol package so it ships in
+`app.asar/node_modules`.

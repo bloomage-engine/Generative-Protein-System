@@ -6,10 +6,11 @@ directories:
   output: release
 files:
   - dist/**/*
+  - build/host/**/*
   - package.json
+asarUnpack:
+  - node_modules/@img/**
 extraResources:
-  - from: build/host
-    to: host
   - from: ../web/.next/standalone
     to: next
   - from: ../web/.next/standalone/node_modules

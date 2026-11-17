@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import { mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -33,6 +33,13 @@ function pathEnv(): string {
   return augmentPath(process.env.PATH, homedir());
 }
 
+/** A packaged GUI has no console: surface boot failures instead of failing silently. */
+function reportFailure(context: string, err: unknown): void {
+  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+  process.stderr.write(`[desktop] ${context}: ${detail}\n`);
+  if (app.isReady()) dialog.showErrorBox("Science Studio failed to start", detail);
+}
+
 async function readConfig(): Promise<DesktopConfig> {
   try {
     return parseConfigEnv(await readFile(paths().configPath, "utf8"));
@@ -49,7 +56,12 @@ async function boot(): Promise<HostPorts> {
   if (app.isPackaged) {
     env.NODE_PATH = join(app.getAppPath(), "node_modules");
   }
-  const resources = resolveResourcePaths({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appRoot });
+  const resources = resolveResourcePaths({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appRoot,
+    appPath: app.getAppPath(),
+  });
   const { ports, child } = await forkHost({
     hostEntry: resources.hostEntry,
     nextDir: process.env.DESKTOP_NEXT_DIR ?? resources.nextDir,
@@ -166,7 +178,7 @@ function restart(): Promise<HostPorts | null> {
   if (restartInFlight) return restartInFlight;
   const inFlight = doRestart()
     .catch((err) => {
-      console.error("[desktop] restart failed", err);
+      reportFailure("restart failed", err);
       return null;
     })
     .finally(() => {
@@ -257,12 +269,10 @@ void app
         showWorkbench(localUrl(hostPorts));
         return;
       }
-      void openWorkbench().catch((err) => console.error("[desktop] openWorkbench failed", err));
+      void openWorkbench().catch((err) => reportFailure("openWorkbench failed", err));
     });
   })
-  .catch((err) => {
-    process.stderr.write(`[desktop] startup failed: ${err instanceof Error ? err.stack : String(err)}\n`);
-  });
+  .catch((err) => reportFailure("startup failed", err));
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

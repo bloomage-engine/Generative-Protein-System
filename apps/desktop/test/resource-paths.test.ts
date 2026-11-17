@@ -7,8 +7,9 @@ test("packaged resources live under resourcesPath", () => {
     isPackaged: true,
     resourcesPath: "/app/resources",
     appRoot: "/app/resources/app.asar",
+    appPath: "/app/resources/app.asar",
   });
-  assert.equal(paths.hostEntry, "/app/resources/host/host.mjs");
+  assert.equal(paths.hostEntry, "/app/resources/app.asar/build/host/host.mjs");
   assert.equal(paths.nextDir, "/app/resources/next/apps/web");
 });
 
@@ -17,6 +18,7 @@ test("dev resources come from the build and the web app", () => {
     isPackaged: false,
     resourcesPath: "/unused",
     appRoot: "/repo/apps/desktop",
+    appPath: "/repo/apps/desktop",
   });
   assert.equal(paths.hostEntry, "/repo/apps/desktop/build/host/host.mjs");
   assert.equal(paths.nextDir, "/repo/apps/web/.next/standalone/apps/web");

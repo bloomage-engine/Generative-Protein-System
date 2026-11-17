@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { build } from "esbuild";
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
@@ -37,7 +38,7 @@ await build({
   outfile: join(outDir, "host.mjs"),
   external,
   banner: {
-    js: "import { createRequire } from 'module'; process.argv[1]=''; const require = createRequire(import.meta.url);",
+    js: "import { createRequire as __ssCreateRequire } from 'module'; process.argv[1]=''; const require = __ssCreateRequire(import.meta.url);",
   },
 });
 for (const name of plugins) {
@@ -49,5 +50,8 @@ for (const name of plugins) {
     target: "node20",
     outfile: join(outDir, name),
   });
+}
+for (const name of ["host.mjs", ...plugins]) {
+  execFileSync(process.execPath, ["--check", join(outDir, name)], { stdio: "inherit" });
 }
 console.log(`[desktop] host bundle + ${plugins.length} child plugins -> ${outDir}`);
