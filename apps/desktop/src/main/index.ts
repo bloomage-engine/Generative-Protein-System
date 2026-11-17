@@ -10,8 +10,10 @@ import { detectDsh } from "../shared/dsh.js";
 import { runtimeStatus } from "../shared/runtime-status.js";
 import { singleFlight } from "../shared/single-flight.js";
 import { augmentPath } from "../shared/env-path.js";
+import { prependPathEntry } from "../shared/git-discovery.js";
 import { killTree } from "../shared/process-tree.js";
 import { forkHost, type HostPorts } from "./host-child.js";
+import { resolveWindowsGit } from "./win-env.js";
 import { resolveResourcePaths } from "./resource-paths.js";
 import { createWorkbenchWindow } from "./windows.js";
 
@@ -53,6 +55,14 @@ async function boot(): Promise<HostPorts> {
   await mkdir(p.userDataDir, { recursive: true });
   const env = buildChildEnv({ base: process.env, config: await readConfig(), paths: p });
   env.PATH = pathEnv();
+  if (process.platform === "win32") {
+    // A GUI process inherits a PATH snapshot; the registry is the source of
+    // truth for a Git added later or installed outside the standard roots.
+    const resolved = resolveWindowsGit({ basePath: env.PATH, env });
+    env.PATH = resolved.path;
+    if (!env.GIT_BINARY && resolved.git) env.GIT_BINARY = resolved.git;
+    if (env.GIT_BINARY) env.PATH = prependPathEntry(dirname(env.GIT_BINARY), env.PATH, "win32");
+  }
   if (app.isPackaged) {
     env.NODE_PATH = join(app.getAppPath(), "node_modules");
   }

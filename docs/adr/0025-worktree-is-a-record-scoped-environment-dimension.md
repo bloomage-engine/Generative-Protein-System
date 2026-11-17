@@ -99,3 +99,18 @@ tool plugin and the workbench scope are separate plans over this backend.
   first worktree creation lazily initializes it. The dsh `worktree_*` tool plugin
   and the workbench's Worktree scope are the next plans; they add no record or
   environment vocabulary beyond this ADR.
+
+## Addendum (2026-11-17)
+
+A fresh Project has no workspace directory until something first writes to it.
+`GET /api/worktrees` decorates the record rows with on-disk state, but running
+`git` with that missing directory as its cwd also fails as `spawn git ENOENT` —
+the same shape as a missing Git binary. The route now checks the directory first
+and skips git decoration when it does not exist. When Git itself is unavailable,
+the list still returns the record rows with `gitAvailable: false`; create/delete
+remain 503 because those operations genuinely cannot run. Opening the workbench
+therefore no longer depends on Git, only the git-backed Worktree actions do.
+The Windows desktop resolves `git.exe` from the persisted User/Machine PATH (a
+GUI inherits a PATH snapshot) and pins `GIT_BINARY`; `GIT_LFS_PATH` beside a
+portable `Git\cmd` is used as a fallback, and `config.env` can override the
+binary explicitly.

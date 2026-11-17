@@ -79,3 +79,12 @@ electron-builder only walks declared dependencies. `asarUnpack:
 node_modules/@img/**` now keeps sharp's native runtime outside the archive, and
 `@deepseek-ai/transport-dsh` declares the protocol package so it ships in
 `app.asar/node_modules`.
+
+A Windows GUI process receives a PATH snapshot at launch, so a Git installed or
+added to the environment after Explorer started is invisible to the packaged
+app; a PATH near the environment-block limit can also arrive truncated. The
+desktop now reads the persisted User and Machine PATH from the registry, merges
+it with the process PATH, resolves `git.exe` (including a `Git\cmd` directory
+beside a `Git LFS` PATH entry or `GIT_LFS_PATH`), and pins `GIT_BINARY` in the
+host env. A missing Git no longer blocks startup: the worktree list degrades to
+`gitAvailable: false` and only its write actions answer 503.
