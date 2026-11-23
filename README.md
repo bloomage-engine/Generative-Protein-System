@@ -2,167 +2,119 @@
 
 > 中文: [README.zh.md](./README.zh.md)
 
-A research-agent platform for computational life-science R&D. Researchers and
-managers run and observe agent-driven work with full traceability: every agent
-action lands as a reproducible, attributable research record.
+## Overview
 
-Science Studio owns the **research record** — in v1, `Project` → `Session` → `Run`:
-a Project owns one shared workspace and any number of Sessions, and each research
-turn is a `Run` (`Study`/`Task`/`Artifact`/`Evidence`/`Conclusion` are deferred,
-see CONTEXT.md). Agent runtimes are swappable adapters behind a single transport
-seam. The frontend only ever speaks assistant-ui's assistant-transport protocol,
-so swapping a runtime never touches the UI.
+Science Studio is an agentic research workbench for protein design. It brings structure and sequence analysis, scientific tools, remote computation, and research records into a shared project environment. Researchers can conduct analyses through conversation, inspect evidence in structure and sequence views, and retain files and analytical histories for subsequent work.
 
-## Status
+It supports browser access and desktop clients for Windows, macOS, and Linux.
 
-Early framework, with the core conversation loop working end to end:
+## Installation and quick start
 
-- **Live assistant-ui Thread** (`apps/web`, :3000) ↔ **transport-service**
-  (:3001) ↔ a runtime (**openclaw** gateway or a local **dsh** harness). SSE
-  streaming with client-safe `set` / `append-text` state ops. The Thread is the
-  component registered from the assistant-ui registry (Tailwind v4 + shadcn/ui).
-- **History loads on page open** — the web app fires a mount-time probe and the
-  service reconciles every client against its canonical transcript, so prior
-  messages render on first load and after reloads.
-- **Standing watch** — remote turns (e.g. from the openclaw UI) and native
-  command replies (`/status`) settle into the transcript and render without a
-  refresh, via a long-lived watch channel behind a guarded-import interlock.
-- **Two runtimes behind one seam** (`transport-openclaw`, `transport-dsh`),
-  loaded DYNAMICALLY by the service's composition root: the default module list
-  is data in the service's `package.json` and `SS_RUNTIME_MODULES` overrides it,
-  so adding a runtime edits no core code. A private enterprise module
-  (`SS_ENTERPRISE_MODULE`) swaps in the multi-user backend.
-- **Runtime slash commands** — the composer's "/" menu is built from the
-  adapter's command catalog (`GET /api/transport/commands`); executing one appends
-  its invocation text as an ordinary user message and is never recorded as a `Run`.
-- **Project-scoped workspace Files panel** — browse/preview/download plus raw
-  upload, with containment/symlink/size invariants; one workspace per Project,
-  shared by all its Sessions. Opt-in: a deployment without `PROJECT_ROOT` disables
-  the affordance instead of opening into a 503.
-- **Project → Session → Run record** — Projects own their Sessions and share what
-  they produce; each research turn is persisted as a `Run` (in a dependency-free
-  JSONL store by default), rolled up per Project.
+### Web deployment
 
-The implementation packages and both examples each have a test suite
-(`npm test`); the web app adds a browser regression test guarding the runtime
-re-render invariant (`npm run test:e2e -w @science-studio/web`).
+You need Node.js, npm, and DSH with a configured model provider. Node.js 22.12 or later is recommended for compatibility with desktop builds.
 
-## Repository layout
-
-```
-science-studio/
-├── apps/
-│   └── web/                          Next.js 15 frontend (assistant-ui Thread + Files panel, :3000)
-├── packages/
-│   ├── record/                       record seam: Project/Session/Run + RecordStore (memory & JSONL)
-│   ├── transport/                    SEAM package, two entries: ./seams (contract) + . (kit + defaults)
-│   ├── workspace/                    Workspace implementations (FsWorkspace + invariants)
-│   ├── contract-tests/               shared seam conformance suites every implementation runs
-│   ├── transport-client/             assistant-ui client boundary (useTransport, workspace, catalog)
-│   ├── transport-openclaw/           openclaw runtime adapter (+ its own launch surface)
-│   └── transport-dsh/                dsh runtime adapter (local harness child)
-├── services/
-│   └── transport-service/            backend assistant-transport service (Fastify, :3001)
-├── examples/                         minimal apps over each adapter (Vite, dev-only)
-├── scripts/                          dev smoke tools
-├── docs/                             architecture + ADRs + design specs (EN/ZH)
-├── CONTEXT.md                        domain glossary (authoritative vocabulary)
-└── AGENTS.md                         repo & wire-contract operational notes
-```
-
-## Commands
-
-```bash
-npm install            # install all workspaces
-npm run build          # build record → transport → workspace → contract-tests → transport-client
-                       #   → transport-openclaw → transport-dsh → transport-service (the real type gate)
-npm run dev            # transport-service (:3001) + web (:3000) together
-npm run dev:dsh        # the same pair, with the service forced onto the dsh runtime
-npm run dev:service    # transport-service only
-npm run dev:web        # web only
-npm test               # every workspace's suite
-npm run test:e2e -w @science-studio/web   # browser regression (Chromium auto-detected; skips without one)
-npm run smoke:adapter  # drive one chat.send against a live openclaw gateway (needs build + .env)
-npm run smoke:dsh      # drive the dsh harness (needs build + the route's credential in
-                       #   examples/transport-dsh-example/.env; export DSH_PROVIDER/DSH_MODEL
-                       #   to drive a non-default route)
-npm run smoke:replay -- <frames-file>     # fold captured SSE frames through the client decoder
-npm run dev:desktop                        # Electron against the running dev pair
-npm run pack -w @science-studio/desktop    # dmg / AppImage+deb / per-user x64 NSIS (build on the target OS)
-```
-
-> `npm run typecheck` is **known-broken** in transport-service (pre-existing
-> TS6310: composite refs + `--noEmit`); other workspaces pass. Use `npm run
-> build` for the service.
-
-## Getting started
+Install dependencies and build from the repository root:
 
 ```bash
 npm install
 npm run build
-npm run dev
 ```
 
-Open http://localhost:3000. The web app streams from `/api/transport`, served by
-a streaming Route Handler that pipes the transport-service body through
-(`app/api/transport/route.ts`) so the UI stays same-origin and SSE token streams
-survive. Runtime-specific setup:
+Create `services/transport-service/.env` using the [configuration example](./services/transport-service/.env.example), and set the project directory and credentials required by your model provider:
 
-- **openclaw**: a reachable gateway, configured via
-  `OPENCLAW_GATEWAY_URL` / `OPENCLAW_GATEWAY_TOKEN` in
-  `services/transport-service/.env` (see its `.env.example`), plus a working LLM
-  provider — the configured provider must be up or runs stall at `starting_model`.
-- **dsh**: a local harness child (`dsh --profile sdk`, spawned by the adapter),
-  selected with `TRANSPORT_RUNTIME=dsh` in `services/transport-service/.env`. Its
-  LAUNCH environment — `DSH_PROVIDER`/`DSH_MODEL` (the harness route),
-  `DSH_WORKSPACE` (the agent's working directory), `DSH_HOME`, `DSH_PROFILE`,
-  `DSH_DEFAULT_SESSION`, `DSH_TRANSCRIPT_DIR` — can NOT be spelled in that
-  `.env`: the harness child reads `.env` from the launcher's cwd as its project
-  layer and hard-refuses any `DSH_*` key. The service's `dev` script exports them
-  instead (defaults: route `ollama-local`/`qwen3.8:latest`, workspace
-  `$HOME/workspace/dsh-workspace`, session `science-studio`; an exported `DSH_*`
-  wins), so every dev launch — root `npm run dev` included — lands on the
-  intended route, while `npm run dev:dsh` only adds the runtime selector.
-  Leaving them unset falls back to `deepseek-official`/`deepseek-v4-flash` with
-  the agent's cwd at the launcher's cwd (this package's source directory). The route itself — endpoint, models, credential name — is harness-side
-  in `~/.dsh/settings.yaml`, and that route's `apiKeyEnv` name must be set to a
-  non-empty value in the `.env` (e.g. `OLLAMA_LOCAL_API_KEY`); unlike `DSH_*`, a
-  credential line there is legal and inherited by the child. See
-  `examples/transport-dsh-example` for the full env surface.
+```dotenv
+PROJECT_ROOT=/absolute/path/to/projects
+```
 
-Workspace file access is opt-in: set `PROJECT_ROOT` (the host-side parent of every
-project directory; plus optional `PROJECT_AGENT_ROOT`, `WORKSPACE_MAX_INLINE_BYTES`,
-`WORKSPACE_MAX_UPLOAD_BYTES`, `WORKSPACE_QUOTA_BYTES`) to expose the Files panel.
-Each Project's workspace is `<PROJECT_ROOT>/<projectId>/`, shared by all its
-Sessions.
+Replace the path with a local directory; on Windows, a path such as `D:/ScienceStudio/projects` works. Configure the model provider in DSH's `settings.yaml` first, and supply its required credentials in `.env`.
 
-The record layer is persistent by default: the service writes
-`$XDG_DATA_HOME/science-studio/record.jsonl` (override with `RECORD_STORE_PATH`;
-`RECORD_STORE=memory` opts out).
-
-Verify the service without the browser:
+The development launcher defaults to the `ollama-local` provider and `qwen3.8:latest` model. To use another configuration, set `DSH_PROVIDER` and `DSH_MODEL` in the launch environment; do not put `DSH_*` variables in `.env`. See the [DSH example](./examples/transport-dsh-example/README.md) for configuration details.
 
 ```bash
-curl -sN -X POST http://localhost:3001/api/transport \
-  -H 'content-type: application/json' \
-  -d '{"commands":[],"state":{"status":"idle","messages":{}},"threadId":null}'
+npm run dev:dsh
 ```
 
-A session with history streams a full state snapshot (one `set` on `messages`)
-and must terminate with `data: [DONE]`.
+Open [http://localhost:3000](http://localhost:3000), create a project and a session, and start working.
 
-## Documentation
+Natural-language structure analysis also requires the [MolQL tool plugin](./packages/plugins/molql-tool-dsh/README.md). Configure external scientific services and remote computation in the workbench's MCP and HPC settings, respectively.
 
-- `CONTEXT.md` — the authoritative domain glossary.
-- `AGENTS.md` — repo layout, commands, the transport wire contract and the
-  architecture rules (the operational companion to this README).
-- `docs/architecture.md` — the system architecture.
-- `docs/adr/` — hard-to-reverse decisions (0001 backend transport, 0002 record
-  ownership, 0003 runtime commands, 0004 dsh harness).
-- `docs/design/` — the research-agent framework and implementation plan (EN/ZH).
+### Desktop client
 
-## Domain vocabulary
+The desktop client starts and manages its local services automatically; no separate Web service is required. The `dsh` executable must be available on PATH, and Git must be installed to use worktrees.
 
-See `CONTEXT.md` (`Project`, `Project Workspace`, `Session`, `Run`, `Runtime
-Command`, `Command Catalog`, `Workflow`; `Study`/`Task`/`Artifact`/`Evidence`/
-`Conclusion`/`AgentBlueprint` are listed there as deferred).
+After installing dependencies and building as above, build and launch the client from source:
+
+```bash
+npm run start -w @science-studio/desktop
+```
+
+Configure the model provider in the workbench settings. Projects are stored under `Documents/Science Studio/projects` in your home directory by default.
+
+To create an installer, run this command on the target operating system:
+
+```bash
+npm run pack -w @science-studio/desktop
+```
+
+Supported formats are Windows x64 NSIS, macOS DMG, and Linux AppImage and DEB.
+
+## Features
+
+### Research dashboard
+
+The workbench brings agent conversations, file viewing, and research activities into one interface. Central tabs display molecular structures, sequence alignments, and analysis files, while the side panel provides access to project files, subagents, scheduled tasks, and Compute Jobs. Researchers can inspect data, track execution progress, and review results alongside the conversation.
+
+![Research dashboard with conversation, sequence alignment, and activity panels](./images/fig-dashboard.png)
+
+*Figure 1. Research dashboard with the agent conversation on the left, a sequence alignment in the centre, and project files and research activities on the right.*
+
+### Projects and research records
+
+Each project brings together data, scripts, analytical outputs, and sessions. Worktrees separate alternative analyses into independent checkouts; sessions in the same worktree use a common working directory.
+
+Sessions preserve messages and tool calls, subagent records retain delegated activities and results, and remote Compute Jobs are stored at the project level. The agent can also maintain a `PROJECT.md` brief with research objectives, progress, findings, and open questions to support continuity across sessions.
+
+### Structure and sequence analysis
+
+The integrated Mol* structure viewer supports natural-language selection, highlighting, and focusing. For example, ask the agent to show residues within 4 Å of a ligand or analyse non-covalent interactions involving a selected region.
+
+![Natural-language requests and the MolQL structure analysis workflow](./images/figure-molql.png)
+
+*Figure 2. MolQL interaction workflow: the agent translates natural-language requests into selection expressions for structure visualisation and geometric measurements.*
+
+You can also select residues or atoms directly in the 3D view, insert their references into the conversation, and request distance, angle, or dihedral measurements. Results appear in both the conversation and the structure view.
+
+![Selecting residues in the structure viewer and measuring their distance](./images/fig-molql.png)
+
+*Figure 3. Interactive distance measurement: residues selected in the structure viewer are referenced in a request, with the result shown in both the conversation and the 3D view.*
+
+The multiple-sequence-alignment viewer supports formats including Clustal, Stockholm, FASTA, and A3M. It displays conservation and gap patterns and lets you reference sequence positions in the conversation for analysis alongside structural evidence. These statistics describe sequence variation in the alignment and do not directly predict mutation tolerance.
+
+### Skills and MCP
+
+Skills provide reusable procedural guidance for tasks such as input preparation, tool use, and result checking. Global Skills can be shared across projects, while project Skills retain conventions for a particular investigation.
+
+![Retrieving the SMILES representation of UDP-glucose with a PubChem search Skill](./images/fig-skill.png)
+
+*Figure 4. Skill example: the agent follows PubChem search guidance to retrieve the SMILES representation of UDP-glucose and save the results.*
+
+MCP connects external tools and data services, such as literature search, database queries, and prediction services. Available capabilities depend on the configured servers. Both Skills and MCP can be managed through the workbench settings.
+
+![Retrieving glycosyltransferase literature through an MCP service](./images/fig-mcp.png)
+
+*Figure 5. MCP example: the agent calls a literature search service to retrieve publications related to glycosyltransferases.*
+
+### Remote computation
+
+Science Studio connects to Slurm clusters and remote Linux hosts. The agent can submit scripts or commands, inspect execution status and logs, request cancellation, and transfer input and output files as needed. Scientific software must be prepared on the remote system.
+
+Each submission creates a persistent Compute Job record containing the submitted computation, remote identifier, and execution state. Researchers can inspect jobs in the workbench after the initiating session has ended.
+
+![Remote Boltz structure prediction with job records, logs, and results](./images/fig2d.png)
+
+*Figure 6. Remote computation example: a Boltz structure prediction with its Compute Job record, execution logs, and retrieved output files.*
+
+## License
+
+Science Studio is licensed under the [Apache License 2.0](./LICENSE). Third-party dependencies retain their respective licenses.
