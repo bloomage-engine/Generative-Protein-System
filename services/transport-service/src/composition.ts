@@ -81,7 +81,7 @@ export interface EnterpriseModule {
   createBackend(env: NodeJS.ProcessEnv): Promise<Backend>;
 }
 
-const DEFAULT_RUNTIME = "openclaw";
+const DEFAULT_RUNTIME = "dsh";
 
 /**
  * The runtime modules the DEFAULT single-user install loads, read from this

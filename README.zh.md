@@ -12,32 +12,71 @@ Generative Protein System 是面向蛋白质设计的智能体科研工作台，
 
 ### Web 部署
 
-需要 Node.js、npm 和已配置模型服务的 DSH。建议使用 Node.js 22.12 或更高版本，以兼容桌面端构建。
+需要 Node.js 22.12+、npm、Git，以及与项目锁定的
+`@deepseek-ai/dsh-sdk-client`（`0.1.5-alpha.1`）兼容的 `dsh` CLI。模型 route
+在 harness 侧 `~/.dsh/settings.yaml` 中声明。
 
-在仓库根目录安装依赖并构建：
+在仓库根目录安装依赖并构建 workspace 包和 service：
 
 ```bash
 npm install
 npm run build
 ```
 
-参考 [配置示例](./services/transport-service/.env.example)，创建 `services/transport-service/.env`，设置项目目录和模型服务所需的凭据：
+开发模式下这样已经够用：`next dev` 会按需编译 Web 应用。
+
+参考 [配置示例](./services/transport-service/.env.example)，创建
+`services/transport-service/.env`：
 
 ```dotenv
+TRANSPORT_RUNTIME=dsh
 PROJECT_ROOT=/absolute/path/to/projects
+OLLAMA_LOCAL_API_KEY=ollama
 ```
 
-将路径替换为本机目录；Windows 可使用 `D:/GPS/projects`。模型服务需预先在 DSH 的 `settings.yaml` 中配置，并在 `.env` 中填写该服务要求的凭据。
+- `PROJECT_ROOT` 是所有 Project workspace 的父目录；default 项目位于
+  `<PROJECT_ROOT>/project-default`。Windows 使用 `D:/GPS/projects`，路径含
+  空格时加引号；WSL 使用 `/mnt/d/GPS/projects`。
+- 示例使用默认的 `ollama-local` route。Ollama 会忽略凭据内容，但 harness
+  要求 `OLLAMA_LOCAL_API_KEY` 非空。
+- 如果改用 DeepSeek，在 `.env` 中填 `DEEPSEEK_API_KEY`，并这样启动：
+  `DSH_PROVIDER=deepseek-official DSH_MODEL=deepseek-v4-flash`。
+- `OPENCLAW_*` 变量是 legacy，dsh 模式不需要。
+- `DSH_*` 变量只能放在启动环境里，不能写进 `.env`：harness 子进程会读取
+  该目录的 `.env`，并拒绝这些名字。
 
-开发启动默认使用 `ollama-local` 服务和 `qwen3.8:latest` 模型。使用其他配置时，通过启动环境中的 `DSH_PROVIDER`、`DSH_MODEL` 指定；不要将 `DSH_*` 变量写入 `.env`。详细配置见 [DSH 示例](./examples/transport-dsh-example/README.md)。
+provider route 本身写在 `~/.dsh/settings.yaml`，例如：
+
+```yaml
+llm-pi-ai:
+  providers:
+    ollama-local:
+      api: openai-completions
+      baseURL: http://localhost:11434/v1
+      models: [{ id: qwen3.8:latest }]
+      apiKeyEnv: OLLAMA_LOCAL_API_KEY
+```
+
+启动 service 和 Web：
 
 ```bash
-npm run dev:dsh
+npm run dev
 ```
 
-打开 [http://localhost:3000](http://localhost:3000)，创建项目和会话，即可开始使用。
+`npm run dev:dsh` 也可以，并且会额外强制使用 dsh runtime。打开
+[http://localhost:3000](http://localhost:3000)，创建项目和会话，即可开始使用。
 
-自然语言结构分析还需要部署 [MolQL 工具插件](./packages/plugins/molql-tool-dsh/README.md)。外部科学服务和远程计算分别在工作台的 MCP、HPC 设置中配置。
+生产 Web 需要单独构建 `apps/web`；根目录的 `npm run build` 只构建 workspace
+包和 service：
+
+```bash
+npm run build -w @gps/web
+npm start -w @gps/web
+```
+
+自然语言结构分析还需要部署
+[MolQL 工具插件](./packages/plugins/molql-tool-dsh/README.md)。外部科学服务和
+远程计算分别在工作台的 MCP、HPC 设置中配置。
 
 ### 桌面客户端
 

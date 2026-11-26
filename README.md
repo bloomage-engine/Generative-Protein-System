@@ -12,32 +12,76 @@ It supports browser access and desktop clients for Windows, macOS, and Linux.
 
 ### Web deployment
 
-You need Node.js, npm, and DSH with a configured model provider. Node.js 22.12 or later is recommended for compatibility with desktop builds.
+You need Node.js 22.12+, npm, Git, and a `dsh` CLI compatible with the pinned
+`@deepseek-ai/dsh-sdk-client` (`0.1.5-alpha.1`). The model route is declared
+harness-side in `~/.dsh/settings.yaml`.
 
-Install dependencies and build from the repository root:
+Install dependencies and build the workspace packages and service:
 
 ```bash
 npm install
 npm run build
 ```
 
-Create `services/transport-service/.env` using the [configuration example](./services/transport-service/.env.example), and set the project directory and credentials required by your model provider:
+For development the root build is enough: `next dev` compiles the web app on
+demand.
+
+Create `services/transport-service/.env` from the
+[configuration example](./services/transport-service/.env.example):
 
 ```dotenv
+TRANSPORT_RUNTIME=dsh
 PROJECT_ROOT=/absolute/path/to/projects
+OLLAMA_LOCAL_API_KEY=ollama
 ```
 
-Replace the path with a local directory; on Windows, a path such as `D:/GPS/projects` works. Configure the model provider in DSH's `settings.yaml` first, and supply its required credentials in `.env`.
+- `PROJECT_ROOT` is the parent of every Project workspace; the default Project
+  lives at `<PROJECT_ROOT>/project-default`. On Windows use
+  `D:/GPS/projects` and quote paths with spaces. In WSL use
+  `/mnt/d/GPS/projects`.
+- The example uses the default `ollama-local` route. Any non-empty
+  `OLLAMA_LOCAL_API_KEY` works for Ollama; the harness only requires it to be
+  set.
+- For DeepSeek instead, put `DEEPSEEK_API_KEY` in `.env` and start with
+  `DSH_PROVIDER=deepseek-official DSH_MODEL=deepseek-v4-flash`.
+- `OPENCLAW_*` variables are legacy and are not used by the dsh setup.
+- `DSH_*` variables must be set in the launch environment, never in `.env`:
+  the harness child reads `.env` from its cwd and refuses those names.
 
-The development launcher defaults to the `ollama-local` provider and `qwen3.8:latest` model. To use another configuration, set `DSH_PROVIDER` and `DSH_MODEL` in the launch environment; do not put `DSH_*` variables in `.env`. See the [DSH example](./examples/transport-dsh-example/README.md) for configuration details.
+The provider route itself lives in `~/.dsh/settings.yaml`, for example:
+
+```yaml
+llm-pi-ai:
+  providers:
+    ollama-local:
+      api: openai-completions
+      baseURL: http://localhost:11434/v1
+      models: [{ id: qwen3.8:latest }]
+      apiKeyEnv: OLLAMA_LOCAL_API_KEY
+```
+
+Start the service and web app:
 
 ```bash
-npm run dev:dsh
+npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), create a project and a session, and start working.
+`npm run dev:dsh` also works and additionally forces the dsh runtime. Open
+[http://localhost:3000](http://localhost:3000), create a project and a session,
+and start working.
 
-Natural-language structure analysis also requires the [MolQL tool plugin](./packages/plugins/molql-tool-dsh/README.md). Configure external scientific services and remote computation in the workbench's MCP and HPC settings, respectively.
+For a production web build, build `apps/web` separately; the root
+`npm run build` only builds the workspace packages and service:
+
+```bash
+npm run build -w @gps/web
+npm start -w @gps/web
+```
+
+Natural-language structure analysis also requires the
+[MolQL tool plugin](./packages/plugins/molql-tool-dsh/README.md). Configure
+external scientific services and remote computation in the workbench's MCP and
+HPC settings, respectively.
 
 ### Desktop client
 
