@@ -13,13 +13,13 @@
 ## Global Constraints
 
 - **No new runtime dependencies.** zstd decoding uses Node's built-in `zlib` (`zstdDecompressSync`).
-- **Structural payloads in `@science-studio/transport-dsh` modules that read harness data** — no `@deepseek-ai/*` *value* imports (type-only imports are fine); unknown shapes degrade to unlabeled/absent, never throw.
+- **Structural payloads in `@gps/transport-dsh` modules that read harness data** — no `@deepseek-ai/*` *value* imports (type-only imports are fine); unknown shapes degrade to unlabeled/absent, never throw.
 - **Record layer untouched** — no new record entity; `SubagentRun` stays best-effort live state (docs/adr/0002, 0007, 0016 addendum).
 - **Fail-soft reads** — a missing/unreadable child log resolves to `null` (route → 404, UI → friendly state), never an error throw into a route.
 - **Artifacts (code comments, docs, ADR) are written in English.**
 - **Type gate is the root build:** `npm run build` (package `tsc -b` chain + `tsconfig.tests.json`). `npm run typecheck` is known-broken for the service — do not use it.
 - **Per-package tests:** `node --test` via the package's `npm run test -w <workspace>` (tsx strips types; the root `npm run build` is the real type check).
-- **Web e2e** (`apps/web/test/*.mjs`) needs a pre-built client (`npm run build -w @science-studio/transport-client`) and a Chromium (they SKIP without one); they run their own `next dev` under a private dist dir.
+- **Web e2e** (`apps/web/test/*.mjs`) needs a pre-built client (`npm run build -w @gps/transport-client`) and a Chromium (they SKIP without one); they run their own `next dev` under a private dist dir.
 - **The `useSubagents` hook's host must never re-render** and the panel must keep polling nothing while collapsed (existing invariants, pinned by `apps/web/test/subagents-panel.test.mjs`).
 - Commit messages and artifacts in English; each task ends in a commit (skip the Steps that say "Commit" only if the operator overrides).
 
@@ -64,7 +64,7 @@
 
 **Interfaces:**
 - Consumes: `Id`, `RunStatus`, `Message` (all already in `packages/transport`).
-- Produces: `SubagentTranscript` (importable from `@science-studio/transport`), `RuntimeAdapter.subagentTranscript?(sessionKey: string, childId: string): Promise<SubagentTranscript | null>`, `RuntimeCapabilities.subagentTranscript: boolean` (required field — every capability literal in the repo compiles against it, so ALL of them are updated in THIS task).
+- Produces: `SubagentTranscript` (importable from `@gps/transport`), `RuntimeAdapter.subagentTranscript?(sessionKey: string, childId: string): Promise<SubagentTranscript | null>`, `RuntimeCapabilities.subagentTranscript: boolean` (required field — every capability literal in the repo compiles against it, so ALL of them are updated in THIS task).
 
 - [ ] **Step 1: Add the seam type and optional member**
 
@@ -92,7 +92,7 @@ After the `SubagentRun` interface (L174), add:
 export interface SubagentTranscript {
   /** The child session id — the same identity as `SubagentRun.id`. */
   id: Id;
-  /** The Science Studio Session this run was delegated from. */
+  /** The Generative Protein System Session this run was delegated from. */
   parentId: Id;
   /** The child's descriptor label, when one exists. */
   label?: string;
@@ -184,7 +184,7 @@ Expected: full chain green (record → transport → … → service, then `type
 
 - [ ] **Step 5: Run the conformance + dsh tests**
 
-Run: `npm run test -w @science-studio/contract-tests && npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/contract-tests && npm run test -w @gps/transport-dsh`
 Expected: PASS (dsh capability `false` matches its absent method; openclaw `false` likewise).
 
 - [ ] **Step 6: Commit**
@@ -294,7 +294,7 @@ test("a live entry wins over a restored duplicate", async () => {
 
 - [ ] **Step 2: Run to verify the new tests fail**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: the four new subagents tests FAIL (`attachStore is not a function` / property absent); the pre-existing registry tests PASS.
 
 - [ ] **Step 3: Implement the durable registry**
@@ -305,7 +305,7 @@ Replace `packages/transport-dsh/src/subagents.ts` with:
 /**
  * The adapter-side subagent ledger. It folds the harness child's
  * `subagent.started` / `subagent.finished` notifications and its child-session
- * `subagent/descriptor` events into one live view per Science Studio Session.
+ * `subagent/descriptor` events into one live view per Generative Protein System Session.
  *
  * DURABLE (optional): without a store the ledger is live-only and dropped
  * with the adapter — and keying never mutates one (there is no file to place
@@ -313,7 +313,7 @@ Replace `packages/transport-dsh/src/subagents.ts` with:
  * not and returns once it resolves (the live-only invariant, pinned by the
  * pre-existing registry tests). When the adapter attaches a
  * `SubagentLedgerStore` (it does, in `init`), entries are stamped with their
- * resolved Science Studio session key and saved per key, so finished runs survive the adapter
+ * resolved Generative Protein System session key and saved per key, so finished runs survive the adapter
  * generation — the panel's history across service restarts (ADR 0016
  * addendum). A restored entry that was still `running` is settled to
  * `aborted`: its harness child died with the previous process, so listing it
@@ -327,7 +327,7 @@ Replace `packages/transport-dsh/src/subagents.ts` with:
  * harness pin that moves a payload shape degrades to an unlabeled entry rather
  * than a crash (the same rule as the child bridge plugin).
  */
-import type { SubagentRun } from "@science-studio/transport";
+import type { SubagentRun } from "@gps/transport";
 
 export interface SubagentDescriptorInfo {
   label?: string;
@@ -410,7 +410,7 @@ export class SubagentRegistry {
   private restoring: Promise<void> | null = null;
 
   constructor(
-    /** Map a ROOT harness session id back to its Science Studio session key. */
+    /** Map a ROOT harness session id back to its Generative Protein System session key. */
     private readonly resolveSessionKey: (rootHarnessId: string) => string | undefined,
     /** Clock seam for deterministic tests. */
     private readonly now: () => string = () => new Date().toISOString(),
@@ -587,7 +587,7 @@ import { dirname, join, resolve } from "node:path";
 import type { SubagentLedgerEntry, SubagentLedgerStore } from "./subagents.js";
 
 /**
- * The file-backed subagent ledger: one JSON file per Science Studio Session
+ * The file-backed subagent ledger: one JSON file per Generative Protein System Session
  * key under one directory — the same one-file-per-session placement as the
  * transcript mirror, so a shared transcript dir never mixes two Projects'
  * rows into one file. Writes are atomic (a temp file renamed into place),
@@ -665,12 +665,12 @@ export type { SubagentLedgerEntry, SubagentLedgerStore } from "./subagents.js";
 
 - [ ] **Step 6: Run the registry tests**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: ALL subagents tests pass, including the four new ones; pre-existing tests (stop-reason mapping, grandchild walk, unresolvable-root skip) still pass.
 
 - [ ] **Step 7: Type-check the package**
 
-Run: `npm run build -w @science-studio/transport-dsh`
+Run: `npm run build -w @gps/transport-dsh`
 Expected: PASS.
 
 - [ ] **Step 8: Commit**
@@ -747,7 +747,7 @@ test("a finished subagent run belongs to the session's ledger across an adapter 
 
 - [ ] **Step 2: Verify it fails**
 
-Run: `npm run test -w @science-studio/transport-dsh -- adapter.test.ts`
+Run: `npm run test -w @gps/transport-dsh -- adapter.test.ts`
 Expected: FAIL — `flushSubagents is not a function` (and, once that is added, the restored list would be empty without the attach).
 
 - [ ] **Step 3: Wire the adapter**
@@ -806,7 +806,7 @@ import { FileSubagentLedger } from "./ledger.js";
 
 - [ ] **Step 4: Run the adapter tests**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: ALL pass, including the two pre-existing live-subagent tests (no store-attach regression) and the new restart test.
 
 - [ ] **Step 5: Commit**
@@ -958,7 +958,7 @@ test("absences and malformed content all answer null, never throw", async () => 
 
 - [ ] **Step 2: Verify they fail**
 
-Run: `npm run test -w @science-studio/transport-dsh -- child-transcript.test.ts`
+Run: `npm run test -w @gps/transport-dsh -- child-transcript.test.ts`
 Expected: FAIL — module `../src/child-transcript.js` not found.
 
 - [ ] **Step 3: Implement the reader**
@@ -970,7 +970,7 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import * as zlib from "node:zlib";
 import type { ContentBlock } from "@deepseek-ai/dsh-llm";
-import type { Message, SubagentTranscript } from "@science-studio/transport";
+import type { Message, SubagentTranscript } from "@gps/transport";
 import { contentToParts, extractResultText, findToolCallMessage } from "./mapping.js";
 
 // `zstdDecompressSync` is present at runtime (Node >= 23.8) but not yet declared in
@@ -1014,7 +1014,7 @@ export interface ChildTranscriptSource {
   home: string;
   /** The launch working directory recorded on the child's session header. */
   cwd: string;
-  /** The Science Studio Session key the child was delegated from. */
+  /** The Generative Protein System Session key the child was delegated from. */
   sessionKey: string;
   /** The child (harness) session id. */
   childId: string;
@@ -1202,7 +1202,7 @@ export type { ChildTranscriptSource } from "./child-transcript.js";
 
 - [ ] **Step 5: Run the reader tests**
 
-Run: `npm run test -w @science-studio/transport-dsh -- child-transcript.test.ts`
+Run: `npm run test -w @gps/transport-dsh -- child-transcript.test.ts`
 Expected: ALL pass — including the real-machine `projectKey` vector and the zstd fold.
 
 - [ ] **Step 6: Commit**
@@ -1298,7 +1298,7 @@ Add BEFORE the `client.emit` line (inside the same test):
 
 - [ ] **Step 2: Verify it fails**
 
-Run: `npm run test -w @science-studio/transport-dsh -- adapter.test.ts`
+Run: `npm run test -w @gps/transport-dsh -- adapter.test.ts`
 Expected: FAIL — `bindingDshHome is not an option` / `subagentTranscript is not a function` / capability mismatch in conformance once flipped.
 
 - [ ] **Step 3: Implement on the adapter**
@@ -1354,7 +1354,7 @@ and change the two later uses of the local `dshHome` to `this.dshHome!`:
   }
 ```
 
-6. Imports: `SubagentTranscript` into the `@science-studio/transport` import list (L4-18) and from `./child-transcript.js` only `readChildTranscript` (projectKey is internal to that module, not re-exported):
+6. Imports: `SubagentTranscript` into the `@gps/transport` import list (L4-18) and from `./child-transcript.js` only `readChildTranscript` (projectKey is internal to that module, not re-exported):
 
 ```ts
 import { readChildTranscript } from "./child-transcript.js";
@@ -1364,7 +1364,7 @@ import { readChildTranscript } from "./child-transcript.js";
 
 - [ ] **Step 4: Run the dsh + conformance tests**
 
-Run: `npm run test -w @science-studio/transport-dsh && npm run test -w @science-studio/contract-tests`
+Run: `npm run test -w @gps/transport-dsh && npm run test -w @gps/contract-tests`
 Expected: ALL pass — the factory conformance assertion now sees `subagentTranscript: true` matching the implemented method.
 
 - [ ] **Step 5: Build (type gate)**
@@ -1393,7 +1393,7 @@ git commit -m "feat(dsh): serve child-session transcripts and advertise the capa
 
 - [ ] **Step 1: Write the route tests (fail first)**
 
-Append to `services/transport-service/test/subagents.test.ts` (adding `SubagentTranscript` to the file's existing `@science-studio/transport` import):
+Append to `services/transport-service/test/subagents.test.ts` (adding `SubagentTranscript` to the file's existing `@gps/transport` import):
 
 ```ts
 test("GET /api/transport/subagents/:childId/transcript serves the adapter's record", async () => {
@@ -1424,7 +1424,7 @@ test("GET .../transcript answers 404 when the runtime has no surface and 400 on 
 
 - [ ] **Step 2: Verify they fail**
 
-Run: `npm run test -w @science-studio/transport-service -- subagents.test.ts`
+Run: `npm run test -w @gps/transport-service -- subagents.test.ts`
 Expected: FAIL — the 200 case gets 404 (no route), the surface-less case passes vacuously.
 
 - [ ] **Step 3: Add the route**
@@ -1463,7 +1463,7 @@ Expected: FAIL — the 200 case gets 404 (no route), the surface-less case passe
 
 - [ ] **Step 4: Run the service tests**
 
-Run: `npm run test -w @science-studio/transport-service`
+Run: `npm run test -w @gps/transport-service`
 Expected: ALL pass (including the two new transcript tests and the pre-existing subagents tests).
 
 - [ ] **Step 5: Commit**
@@ -1482,8 +1482,8 @@ git commit -m "feat(service): serve subagent child-session records over one GET 
 - Test: `packages/transport-client/test/subagents.test.ts` (create)
 
 **Interfaces:**
-- Consumes: `SubagentTranscript` from `@science-studio/transport` (Task 1).
-- Produces: `fetchSubagentTranscript(api, project, childId, threadId?, signal?): Promise<SubagentTranscript>`; `useSubagentTranscript({ api?, project, threadId?, childId, enabled }): { transcript, isLoading, error }`; index re-exports the two functions (the `SubagentTranscript` seam type stays imported by consumers from `@science-studio/transport`, like `SubagentRun`).
+- Consumes: `SubagentTranscript` from `@gps/transport` (Task 1).
+- Produces: `fetchSubagentTranscript(api, project, childId, threadId?, signal?): Promise<SubagentTranscript>`; `useSubagentTranscript({ api?, project, threadId?, childId, enabled }): { transcript, isLoading, error }`; index re-exports the two functions (the `SubagentTranscript` seam type stays imported by consumers from `@gps/transport`, like `SubagentRun`).
 
 - [ ] **Step 1: Write the hook test (fail first)**
 
@@ -1527,7 +1527,7 @@ test("fetchSubagentTranscript throws on a 404 (a missing record)", async () => {
 
 - [ ] **Step 2: Verify it fails**
 
-Run: `npm run test -w @science-studio/transport-client`
+Run: `npm run test -w @gps/transport-client`
 Expected: the new file FAILS (function missing); existing client tests pass.
 
 - [ ] **Step 3: Implement**
@@ -1620,16 +1620,16 @@ export function useSubagentTranscript(options: UseSubagentTranscriptOptions): {
 And at the top of `subagents.ts`, extend the type import:
 
 ```ts
-import type { SubagentRun, SubagentTranscript } from "@science-studio/transport";
+import type { SubagentRun, SubagentTranscript } from "@gps/transport";
 ```
 
 - [ ] **Step 4: Export**
 
-`packages/transport-client/src/index.ts` — in the existing `./subagents.js` export block (L95-101) insert `fetchSubagentTranscript` and `useSubagentTranscript` next to `fetchSubagents`/`useSubagents` and `type UseSubagentTranscriptOptions` next to `type UseSubagentsOptions`. Do NOT re-export the `SubagentTranscript` seam type: the house pattern (see `SubagentRun` — index never re-exports it; `apps/web/components/studio/subagents-view.tsx:5` imports it from `@science-studio/transport`) is that consumers take seam types from `@science-studio/transport` directly.
+`packages/transport-client/src/index.ts` — in the existing `./subagents.js` export block (L95-101) insert `fetchSubagentTranscript` and `useSubagentTranscript` next to `fetchSubagents`/`useSubagents` and `type UseSubagentTranscriptOptions` next to `type UseSubagentsOptions`. Do NOT re-export the `SubagentTranscript` seam type: the house pattern (see `SubagentRun` — index never re-exports it; `apps/web/components/studio/subagents-view.tsx:5` imports it from `@gps/transport`) is that consumers take seam types from `@gps/transport` directly.
 
 - [ ] **Step 5: Run the client tests + build the package**
 
-Run: `npm run test -w @science-studio/transport-client && npm run build -w @science-studio/transport-client`
+Run: `npm run test -w @gps/transport-client && npm run build -w @gps/transport-client`
 Expected: pass (the build emits the dist the web app imports).
 
 - [ ] **Step 6: Commit**
@@ -1700,7 +1700,7 @@ And replace the render assertions (L93-98) with:
 
 - [ ] **Step 2: Verify it fails**
 
-Run (from the repo root; targeting the ONE test file — the `-- subagents-panel` positional does NOT filter, it runs the whole suite because `node --test` treats positionals as file paths): `npm run build -w @science-studio/transport-client` then `cd apps/web && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-concurrency=1 test/subagents-panel.test.mjs`
+Run (from the repo root; targeting the ONE test file — the `-- subagents-panel` positional does NOT filter, it runs the whole suite because `node --test` treats positionals as file paths): `npm run build -w @gps/transport-client` then `cd apps/web && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-concurrency=1 test/subagents-panel.test.mjs`
 Expected: FAIL (toggle button absent, hidden-default assertion fails) — or SKIP if no Chromium (in which case the later assertions are the gate on a machine that has one).
 
 - [ ] **Step 3: Store**
@@ -1797,8 +1797,8 @@ Replace `apps/web/components/studio/subagents-view.tsx` with:
 "use client";
 
 import { Bot, History } from "lucide-react";
-import { useSubagents } from "@science-studio/transport-client";
-import type { SubagentRun } from "@science-studio/transport";
+import { useSubagents } from "@gps/transport-client";
+import type { SubagentRun } from "@gps/transport";
 import { Button } from "@/components/ui/button";
 import { ModuleEmptyState, SidebarSection } from "./sidebar-section";
 import { useStudioStore } from "@/store/studio-store";
@@ -1987,7 +1987,7 @@ export async function GET(
         </TabPanel>
 ```
 
-(imports: `isSubagentTab`, `subagentTabChildId` from `./file-utils`; add `useSubagentTranscript` and `useTransportApi` to the existing `@science-studio/transport-client` import block at L6-11. `useTransportApi()` — NOT `useWorkspaceApi()` — hands out `{ api: "/api/transport", project }` (the transcript route lives under the TRANSPORT base; the workspace hook would produce `/api/workspace/subagents/…`, a path that exists nowhere — the e2e mock in Step 1 targets `/api/transport/…`). The existing `Preview` component keeps its `useWorkspaceApi()` call unchanged; the file imports both hooks. Also add `TranscriptBody` from `./renderers/SubagentRenderer` to the imports.)
+(imports: `isSubagentTab`, `subagentTabChildId` from `./file-utils`; add `useSubagentTranscript` and `useTransportApi` to the existing `@gps/transport-client` import block at L6-11. `useTransportApi()` — NOT `useWorkspaceApi()` — hands out `{ api: "/api/transport", project }` (the transcript route lives under the TRANSPORT base; the workspace hook would produce `/api/workspace/subagents/…`, a path that exists nowhere — the e2e mock in Step 1 targets `/api/transport/…`). The existing `Preview` component keeps its `useWorkspaceApi()` call unchanged; the file imports both hooks. Also add `TranscriptBody` from `./renderers/SubagentRenderer` to the imports.)
 
 Below `FilePreviewPane`, add the subagent preview (own header — NO download affordance):
 
@@ -2045,7 +2045,7 @@ Create `apps/web/components/studio/renderers/SubagentRenderer.tsx`:
 "use client";
 
 import { Bot } from "lucide-react";
-import type { Message, MessagePart, SubagentTranscript } from "@science-studio/transport";
+import type { Message, MessagePart, SubagentTranscript } from "@gps/transport";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
@@ -2138,17 +2138,17 @@ function TranscriptPart({ part }: { part: MessagePart }) {
 
 - [ ] **Step 8: Build the web app**
 
-Run: `npm run build -w @science-studio/web`
+Run: `npm run build -w @gps/web`
 Expected: Next build PASSES (catches the new route, store, and component wiring).
 
 - [ ] **Step 9: Run the web e2e panel test**
 
-Run (single test file — see Step 2's note on why not the positional form): `npm run build -w @science-studio/transport-client` (repo root) then `cd apps/web && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-concurrency=1 test/subagents-panel.test.mjs`
+Run (single test file — see Step 2's note on why not the positional form): `npm run build -w @gps/transport-client` (repo root) then `cd apps/web && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-concurrency=1 test/subagents-panel.test.mjs`
 Expected: PASS (on a Chromium host) — default-running view, toggle reveal, friendly name, double-click tab with the mocked transcript body; on a Chromium-less host: SKIP (record it and move on).
 
 - [ ] **Step 10: Run the other panel-pinned e2e tests**
 
-Run: `npm run test:e2e -w @science-studio/web`
+Run: `npm run test:e2e -w @gps/web`
 Expected: PASS/SKIP across the board — `right-panel-sections` (collapse/empty-state invariants), `tab-state`, `scope-switch-sockets` all still green.
 
 - [ ] **Step 11: Commit**

@@ -4,7 +4,7 @@
 
 **Goal:** Add a settings button at the far left of the workbench's bottom status bar that opens a tabbed dialog (Model / Plugins / Agent), persisted by the service and applied to the dsh runtime after a restart.
 
-**Architecture:** A deployment settings file owned by `transport-service` (`SS_SETTINGS_PATH`, mode `0600`) is exposed as `GET/PUT /api/settings`; the composition root layers it over the launch env (`settings > env > default`) before `plugin.localBinding`, and `transport-dsh` applies the model route (Endpoint + API Key) to `<dshHome>/settings.yaml` plus the child launch env. The web app reaches it through one `service-proxy` hop. Spec: `docs/superpowers/specs/2026-09-16-workbench-settings-dialog-design.md`.
+**Architecture:** A deployment settings file owned by `transport-service` (`GPS_SETTINGS_PATH`, mode `0600`) is exposed as `GET/PUT /api/settings`; the composition root layers it over the launch env (`settings > env > default`) before `plugin.localBinding`, and `transport-dsh` applies the model route (Endpoint + API Key) to `<dshHome>/settings.yaml` plus the child launch env. The web app reaches it through one `service-proxy` hop. Spec: `docs/superpowers/specs/2026-09-16-workbench-settings-dialog-design.md`.
 
 **Tech Stack:** TypeScript, Node `node:test`, Fastify, Next.js (App Router, Tailwind v4 + shadcn/ui, Radix `Tabs`/`Dialog`), Zustand, Playwright (`apps/web` e2e), `yaml@2.9.0`, the `@deepseek-ai/dsh-sdk-client@0.1.5-alpha.1` harness.
 
@@ -17,7 +17,7 @@
 - Settings precedence is `settings file > env > built-in default`.
 - The component that calls `useTransport` must never re-render (opening the settings dialog must NOT remount `SessionView`).
 - The dsh harness is pinned at `0.1.5-alpha.1`; `llm-pi-ai.providers.<route>` is a harness-version fact.
-- `apps/web/test/*.mjs` are plain JS and NOT part of the root `npm test`; run them with `npm run test:e2e -w @science-studio/web` (needs a Chromium or they skip, and `npm run build -w @science-studio/transport-client` first).
+- `apps/web/test/*.mjs` are plain JS and NOT part of the root `npm test`; run them with `npm run test:e2e -w @gps/web` (needs a Chromium or they skip, and `npm run build -w @gps/transport-client` first).
 - The real type gate is `npm run build` (it ends with `npm run typecheck:tests`).
 - Do not add comments to code unless a task's code block includes them.
 - Commit after each task with the shown message. Never commit secrets.
@@ -35,7 +35,7 @@ Create:
 - `services/transport-service/test/composition-settings.test.ts` — precedence integration test.
 - `packages/transport-client/src/settings.ts` — `fetchSettings` / `updateSettings`.
 - `packages/transport-client/test/settings.test.ts` — helper tests.
-- `apps/web/lib/desktop-bridge.ts` — the ONE `window.scienceStudioDesktop` declaration.
+- `apps/web/lib/desktop-bridge.ts` — the ONE `window.gpsDesktop` declaration.
 - `apps/web/app/api/settings/route.ts` — the proxy hop.
 - `apps/web/components/studio/settings-dialog.tsx` — the dialog.
 - `apps/web/test/settings-dialog.test.mjs` — the e2e guard.
@@ -159,7 +159,7 @@ export type {
 
 - [ ] **Step 2: Run the type gate**
 
-Run: `npm run build -w @science-studio/transport`
+Run: `npm run build -w @gps/transport`
 Expected: PASS (the type proof for the contract).
 
 - [ ] **Step 3: Commit**
@@ -209,14 +209,14 @@ import {
 } from "../src/settings.js";
 
 async function tempDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "ss-settings-"));
+  return mkdtemp(join(tmpdir(), "gps-settings-"));
 }
 
-test("resolveSettingsPath prefers SS_SETTINGS_PATH, else XDG_DATA_HOME", () => {
-  assert.equal(resolveSettingsPath({ SS_SETTINGS_PATH: "/tmp/x.json" }), "/tmp/x.json");
+test("resolveSettingsPath prefers GPS_SETTINGS_PATH, else XDG_DATA_HOME", () => {
+  assert.equal(resolveSettingsPath({ GPS_SETTINGS_PATH: "/tmp/x.json" }), "/tmp/x.json");
   assert.equal(
     resolveSettingsPath({ XDG_DATA_HOME: "/data" }),
-    join("/data", "science-studio", "settings.json"),
+    join("/data", "gps", "settings.json"),
   );
 });
 
@@ -277,8 +277,8 @@ test("applySettingsToEnv layers settings over env without mutating the input", (
   });
   assert.equal(next.DSH_PROVIDER, "from-file");
   assert.equal(next.DSH_MODEL, "m1");
-  assert.equal(next.SS_MODEL_ENDPOINT, "http://x/v1");
-  assert.equal(next.SS_MODEL_API_KEY, "k");
+  assert.equal(next.GPS_MODEL_ENDPOINT, "http://x/v1");
+  assert.equal(next.GPS_MODEL_API_KEY, "k");
   assert.equal(next.KEEP, "1");
   assert.equal(env.DSH_PROVIDER, "ambient", "the input env is not mutated");
   assert.equal(applySettingsToEnv(env, emptySettings()).DSH_PROVIDER, "ambient");
@@ -303,7 +303,7 @@ test("parseSettingsPatch validates and normalizes", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/transport-service`
+Run: `npm run test -w @gps/transport-service`
 Expected: FAIL — cannot resolve `../src/settings.js`.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -327,12 +327,12 @@ import type {
   RuntimeSettings,
   RuntimeSettingsPatch,
   RuntimeSettingsView,
-} from "@science-studio/transport";
+} from "@gps/transport";
 
 export function resolveSettingsPath(env: NodeJS.ProcessEnv = process.env): string {
-  if (env.SS_SETTINGS_PATH) return env.SS_SETTINGS_PATH;
+  if (env.GPS_SETTINGS_PATH) return env.GPS_SETTINGS_PATH;
   const base = env.XDG_DATA_HOME ?? join(homedir(), ".local", "share");
-  return join(base, "science-studio", "settings.json");
+  return join(base, "gps", "settings.json");
 }
 
 export function emptySettings(): RuntimeSettings {
@@ -408,8 +408,8 @@ export function applySettingsToEnv(
   const { provider, model, endpoint, apiKey } = settings.model;
   if (provider) next.DSH_PROVIDER = provider;
   if (model) next.DSH_MODEL = model;
-  if (endpoint) next.SS_MODEL_ENDPOINT = endpoint;
-  if (apiKey) next.SS_MODEL_API_KEY = apiKey;
+  if (endpoint) next.GPS_MODEL_ENDPOINT = endpoint;
+  if (apiKey) next.GPS_MODEL_API_KEY = apiKey;
   return next;
 }
 
@@ -455,7 +455,7 @@ export function parseSettingsPatch(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/transport-service`
+Run: `npm run test -w @gps/transport-service`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -486,13 +486,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-import { createInMemoryRecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore } from "@gps/record";
 import {
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
   NullWorkspace,
   type RuntimeAdapter,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 
@@ -530,7 +530,7 @@ async function withServer(
 const json = { "content-type": "application/json" };
 
 test("PUT /api/settings merges and GET redacts the key", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-settings-routes-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-settings-routes-"));
   try {
     await withServer(join(dir, "settings.json"), async (base) => {
       const put = await fetch(`${base}/api/settings`, {
@@ -573,7 +573,7 @@ test("PUT /api/settings merges and GET redacts the key", async () => {
 });
 
 test("PUT /api/settings rejects a bad body with 400", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-settings-routes-bad-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-settings-routes-bad-"));
   try {
     await withServer(join(dir, "settings.json"), async (base) => {
       const res = await fetch(`${base}/api/settings`, {
@@ -592,7 +592,7 @@ test("PUT /api/settings rejects a bad body with 400", async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/transport-service`
+Run: `npm run test -w @gps/transport-service`
 Expected: FAIL — `GET /api/settings` returns 404.
 
 - [ ] **Step 3: Add `settingsPath` to `Backend`**
@@ -644,7 +644,7 @@ Before the `// -- Project / Session / Run record surface` comment, add:
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/transport-service`
+Run: `npm run test -w @gps/transport-service`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -674,7 +674,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RuntimeAdapter, RuntimePlugin } from "@science-studio/transport";
+import type { RuntimeAdapter, RuntimePlugin } from "@gps/transport";
 import { createBackend } from "../src/index.js";
 
 function fakeAdapter(): RuntimeAdapter {
@@ -682,7 +682,7 @@ function fakeAdapter(): RuntimeAdapter {
 }
 
 test("the settings file wins over the ambient launch env in the binding", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-composition-settings-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-composition-settings-"));
   const settingsPath = join(dir, "settings.json");
   await writeFile(
     settingsPath,
@@ -717,7 +717,7 @@ test("the settings file wins over the ambient launch env in the binding", async 
       {
         TRANSPORT_RUNTIME: "fake",
         RECORD_STORE: "memory",
-        SS_SETTINGS_PATH: settingsPath,
+        GPS_SETTINGS_PATH: settingsPath,
         DSH_PROVIDER: "ambient",
         DSH_MODEL: "ambient-model",
       },
@@ -726,8 +726,8 @@ test("the settings file wins over the ambient launch env in the binding", async 
     assert.ok(seen, "localBinding was called");
     assert.equal(seen!.DSH_PROVIDER, "from-file");
     assert.equal(seen!.DSH_MODEL, "file-model");
-    assert.equal(seen!.SS_MODEL_ENDPOINT, "http://file/v1");
-    assert.equal(seen!.SS_MODEL_API_KEY, "file-key");
+    assert.equal(seen!.GPS_MODEL_ENDPOINT, "http://file/v1");
+    assert.equal(seen!.GPS_MODEL_API_KEY, "file-key");
     assert.equal(backend.settingsPath, settingsPath);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -737,7 +737,7 @@ test("the settings file wins over the ambient launch env in the binding", async 
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/transport-service`
+Run: `npm run test -w @gps/transport-service`
 Expected: FAIL — `backend.settingsPath` is undefined and the binding saw the ambient env.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -751,7 +751,7 @@ import { applySettingsToEnv, loadSettings, resolveSettingsPath } from "./setting
 In `localBackend`, replace `const binding = plugin.localBinding(env);` with:
 
 ```ts
-  const settingsPath = env.SS_SETTINGS_PATH ?? resolveSettingsPath(env);
+  const settingsPath = env.GPS_SETTINGS_PATH ?? resolveSettingsPath(env);
   const settings = await loadSettings(settingsPath);
   const runtimeEnv = applySettingsToEnv(env, settings);
   const binding = plugin.localBinding(runtimeEnv);
@@ -770,7 +770,7 @@ import { applySettingsToEnv, loadSettings, resolveSettingsPath } from "./setting
 In `backendFromAdapters`, after the `const workspace = localWorkspace(...)` line, add:
 
 ```ts
-  const settingsPath = env.SS_SETTINGS_PATH ?? resolveSettingsPath(env);
+  const settingsPath = env.GPS_SETTINGS_PATH ?? resolveSettingsPath(env);
   const runtimeEnv = applySettingsToEnv(env, await loadSettings(settingsPath));
 ```
 
@@ -780,7 +780,7 @@ Change `plugin.localBinding(env)` → `plugin.localBinding(runtimeEnv)`, and
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/transport-service`
+Run: `npm run test -w @gps/transport-service`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -878,7 +878,7 @@ test("a failed request throws with the upstream error text", async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run build -w @science-studio/transport && npm run test -w @science-studio/transport-client`
+Run: `npm run build -w @gps/transport && npm run test -w @gps/transport-client`
 Expected: FAIL — cannot resolve `../src/settings.js`.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -888,7 +888,7 @@ Create `packages/transport-client/src/settings.ts`:
 ```ts
 "use client";
 
-import type { RuntimeSettingsPatch, RuntimeSettingsView } from "@science-studio/transport";
+import type { RuntimeSettingsPatch, RuntimeSettingsView } from "@gps/transport";
 
 export const DEFAULT_SETTINGS_API = "/api/settings";
 
@@ -950,12 +950,12 @@ export type {
   RuntimeSettings,
   RuntimeSettingsView,
   RuntimeSettingsPatch,
-} from "@science-studio/transport";
+} from "@gps/transport";
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run build -w @science-studio/transport-client && npm run test -w @science-studio/transport-client`
+Run: `npm run build -w @gps/transport-client && npm run test -w @gps/transport-client`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1023,7 +1023,7 @@ export async function PUT(request: Request): Promise<NextResponse> {
 
 - [ ] **Step 3: Verify**
 
-Run: `npm run typecheck -w @science-studio/web`
+Run: `npm run typecheck -w @gps/web`
 Expected: PASS.
 
 - [ ] **Step 4: Commit**
@@ -1072,7 +1072,7 @@ Add near `toggleRight`:
 
 - [ ] **Step 2: Verify**
 
-Run: `npm run typecheck -w @science-studio/web`
+Run: `npm run typecheck -w @gps/web`
 Expected: PASS.
 
 - [ ] **Step 3: Commit**
@@ -1100,7 +1100,7 @@ Create `apps/web/lib/desktop-bridge.ts`:
 "use client";
 
 /**
- * The ONE `window.scienceStudioDesktop` declaration. Two components (the status
+ * The ONE `window.gpsDesktop` declaration. Two components (the status
  * bar's runtime chip and the settings dialog) read it, and two global
  * augmentations of the same `Window` property with different shapes is a TS
  * error — so the shape and the cast live here.
@@ -1112,12 +1112,12 @@ export interface DesktopBridge {
 
 declare global {
   interface Window {
-    scienceStudioDesktop?: DesktopBridge;
+    gpsDesktop?: DesktopBridge;
   }
 }
 
 export function desktopBridge(): DesktopBridge | undefined {
-  return typeof window === "undefined" ? undefined : window.scienceStudioDesktop;
+  return typeof window === "undefined" ? undefined : window.gpsDesktop;
 }
 ```
 
@@ -1146,7 +1146,7 @@ import {
   updateSettings,
   type RuntimeSettingsPatch,
   type RuntimeSettingsView,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { useStudioStore } from "@/store/studio-store";
 import { desktopBridge } from "@/lib/desktop-bridge";
 
@@ -1351,10 +1351,10 @@ import { desktopBridge } from "@/lib/desktop-bridge";
 (merge `Settings` into the existing `lucide-react` import).
 
 2. Delete the local `interface DesktopBridge { runtimeStatus?... }` and the
-   `declare global { interface Window { scienceStudioDesktop?: DesktopBridge } }`
+   `declare global { interface Window { gpsDesktop?: DesktopBridge } }`
    block.
 
-3. In `RuntimeChip`'s effect, change `const bridge = window.scienceStudioDesktop;`
+3. In `RuntimeChip`'s effect, change `const bridge = window.gpsDesktop;`
    to `const bridge = desktopBridge();`.
 
 4. In the footer's left section:
@@ -1391,7 +1391,7 @@ function SettingsButton() {
 
 - [ ] **Step 4: Verify**
 
-Run: `npm run build -w @science-studio/transport-client && npm run typecheck -w @science-studio/web`
+Run: `npm run build -w @gps/transport-client && npm run typecheck -w @gps/web`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1421,7 +1421,7 @@ Create `apps/web/test/settings-dialog.test.mjs`:
  * remount the runtime owner (it lives in the StatusBar, not in `SessionView`),
  * which the transcript marker check covers.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`. Needs a Chromium
+ * Prereq: `npm run build -w @gps/transport-client`. Needs a Chromium
  * (SKIPs without one).
  */
 import { test } from "node:test";
@@ -1508,8 +1508,8 @@ test(
 
 - [ ] **Step 2: Run the test**
 
-Run: `npm run build -w @science-studio/transport-client`
-Run: `npm run test:e2e -w @science-studio/web`
+Run: `npm run build -w @gps/transport-client`
+Run: `npm run test:e2e -w @gps/web`
 Expected: PASS, or SKIP when no Chromium is present.
 
 - [ ] **Step 3: Commit**
@@ -1530,7 +1530,7 @@ git commit -m "test(web): guard the settings dialog flow"
 - Test: `packages/transport-dsh/test/route-settings.test.ts`
 
 **Interfaces:**
-- Consumes: the service-owned env names `SS_MODEL_ENDPOINT` / `SS_MODEL_API_KEY` (Task 2).
+- Consumes: the service-owned env names `GPS_MODEL_ENDPOINT` / `GPS_MODEL_API_KEY` (Task 2).
 - Produces: `DshBinding.endpoint?`, `DshBinding.apiKey?`; `dshLocalBinding` maps them.
 
 - [ ] **Step 1: Write the failing test**
@@ -1546,8 +1546,8 @@ test("dshLocalBinding maps the service-owned endpoint/apiKey env names", () => {
   const binding = dshLocalBinding({
     DSH_PROVIDER: "ollama-local",
     DSH_MODEL: "qwen3.8:latest",
-    SS_MODEL_ENDPOINT: "http://10.0.0.1:11434/v1",
-    SS_MODEL_API_KEY: "secret",
+    GPS_MODEL_ENDPOINT: "http://10.0.0.1:11434/v1",
+    GPS_MODEL_API_KEY: "secret",
   });
   const parsed = parseDshBinding(binding);
   assert.equal(parsed.provider, "ollama-local");
@@ -1559,7 +1559,7 @@ test("dshLocalBinding maps the service-owned endpoint/apiKey env names", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: FAIL — `parsed.endpoint` is undefined.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -1583,13 +1583,13 @@ In `parseDshBinding`'s returned object (after `model`):
 In `dshLocalBinding` (after the `model` copy):
 
 ```ts
-  copy("endpoint", "SS_MODEL_ENDPOINT");
-  copy("apiKey", "SS_MODEL_API_KEY");
+  copy("endpoint", "GPS_MODEL_ENDPOINT");
+  copy("apiKey", "GPS_MODEL_API_KEY");
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1646,7 +1646,7 @@ other:
 `;
 
 test("applyRouteSettings updates baseURL and preserves the rest", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-route-settings-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-route-settings-"));
   try {
     const file = join(dir, "settings.yaml");
     await writeFile(file, ROUTE_FIXTURE);
@@ -1670,7 +1670,7 @@ test("applyRouteSettings updates baseURL and preserves the rest", async () => {
 });
 
 test("applyRouteSettings creates a route when the file is absent", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-route-settings-new-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-route-settings-new-"));
   try {
     const result = await applyRouteSettings({
       home: dir,
@@ -1697,7 +1697,7 @@ test("applyRouteSettings is a no-op without an endpoint or key", async () => {
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: FAIL — cannot resolve `../src/route-settings.js`.
 
 - [ ] **Step 4: Write the minimal implementation**
@@ -1786,7 +1786,7 @@ export type { RouteSettingsInput } from "./route-settings.js";
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -1813,7 +1813,7 @@ Add to `packages/transport-dsh/test/adapter.test.ts` (the file already imports
 
 ```ts
 test("a saved route credential reaches the launch client env", async () => {
-  const home = await mkdtemp(join(tmpdir(), "ss-route-env-"));
+  const home = await mkdtemp(join(tmpdir(), "gps-route-env-"));
   try {
     let seenEnv: NodeJS.ProcessEnv | undefined;
     const adapter = new DshRuntimeAdapter({
@@ -1821,7 +1821,7 @@ test("a saved route credential reaches the launch client env", async () => {
         seenEnv = options.env;
         return { start: async () => {}, close: async () => {}, runTurn: async () => {} };
       },
-      transcriptDir: join(tmpdir(), "science-studio-route-env-test"),
+      transcriptDir: join(tmpdir(), "gps-route-env-test"),
     });
     await adapter.init({
       binding: {
@@ -1848,7 +1848,7 @@ test("a saved route credential reaches the launch client env", async () => {
 test("a failing route write does not fail init", async () => {
   const adapter = new DshRuntimeAdapter({
     createClient: (): DshTurnClient => ({ start: async () => {}, close: async () => {}, runTurn: async () => {} }),
-    transcriptDir: join(tmpdir(), "science-studio-route-fail-test"),
+    transcriptDir: join(tmpdir(), "gps-route-fail-test"),
   });
   await adapter.init({
     binding: {
@@ -1862,7 +1862,7 @@ test("a failing route write does not fail init", async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: FAIL — `seenEnv?.OLLAMA_LOCAL_API_KEY` is undefined.
 
 - [ ] **Step 3: Add the launch env option**
@@ -1929,7 +1929,7 @@ import { homedir, tmpdir } from "node:os";
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `npm run build -w @science-studio/transport-dsh && npm run test -w @science-studio/transport-dsh`
+Run: `npm run build -w @gps/transport-dsh && npm run test -w @gps/transport-dsh`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -1950,7 +1950,7 @@ git commit -m "feat(dsh): apply saved route settings during init"
 - Test: `apps/desktop/test/config.test.ts`, `apps/desktop/test/paths.test.ts`, `apps/desktop/test/runtime-status.test.ts`
 
 **Interfaces:**
-- Produces: `DesktopConfig` without provider/model; `DesktopPaths.settingsPath`; `RuntimeStatus = { dshPath: string | null; ready: boolean }`; `buildChildEnv` sets `SS_SETTINGS_PATH`.
+- Produces: `DesktopConfig` without provider/model; `DesktopPaths.settingsPath`; `RuntimeStatus = { dshPath: string | null; ready: boolean }`; `buildChildEnv` sets `GPS_SETTINGS_PATH`.
 
 - [ ] **Step 1: Update the failing test**
 
@@ -1979,7 +1979,7 @@ test("an empty config round-trips through parseConfigEnv", () => {
 test("buildChildEnv pins dsh and the app's directories", () => {
   const paths = resolveDesktopPaths({ userDataDir: "/ud", homeDir: "/home/me" });
   const env = buildChildEnv({
-    base: { PATH: "/bin", SS_ENTERPRISE_MODULE: "x" },
+    base: { PATH: "/bin", GPS_ENTERPRISE_MODULE: "x" },
     config: { vars: { OLLAMA_LOCAL_API_KEY: "k" } },
     paths,
   });
@@ -1988,13 +1988,13 @@ test("buildChildEnv pins dsh and the app's directories", () => {
   assert.equal(env.DSH_PROVIDER, undefined);
   assert.equal(env.DSH_MODEL, undefined);
   assert.equal(env.OLLAMA_LOCAL_API_KEY, "k");
-  assert.equal(env.SS_SETTINGS_PATH, "/ud/settings.json");
-  assert.equal(env.DSH_DEFAULT_SESSION, "science-studio");
+  assert.equal(env.GPS_SETTINGS_PATH, "/ud/settings.json");
+  assert.equal(env.DSH_DEFAULT_SESSION, "gps");
   assert.equal(env.DSH_HOME, "/ud/dsh");
   assert.equal(env.DSH_TRANSCRIPT_DIR, "/ud/transcripts");
-  assert.equal(env.PROJECT_ROOT, "/home/me/Documents/Science Studio/projects");
+  assert.equal(env.PROJECT_ROOT, "/home/me/Documents/Generative Protein System/projects");
   assert.equal(env.RECORD_STORE_PATH, "/ud/record.jsonl");
-  assert.equal(env.SS_ENTERPRISE_MODULE, undefined);
+  assert.equal(env.GPS_ENTERPRISE_MODULE, undefined);
 });
 ```
 
@@ -2025,7 +2025,7 @@ test("is not ready when dsh is missing", () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `npm run test -w @science-studio/desktop`
+Run: `npm run test -w @gps/desktop`
 Expected: FAIL — the old `config.test.ts` asserts provider/model, and `RuntimeStatus` still has them.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -2067,15 +2067,15 @@ export function buildChildEnv(input: {
 }): NodeJS.ProcessEnv {
   const { base, config, paths } = input;
   const env: NodeJS.ProcessEnv = { ...base, ...(config.vars ?? {}) };
-  delete env.SS_ENTERPRISE_MODULE;
+  delete env.GPS_ENTERPRISE_MODULE;
   env.NODE_ENV = "production";
   env.TRANSPORT_RUNTIME = "dsh";
   env.PROJECT_ROOT = paths.projectRoot;
   env.RECORD_STORE_PATH = paths.recordStorePath;
   env.DSH_HOME = paths.dshHome;
   env.DSH_TRANSCRIPT_DIR = paths.transcriptDir;
-  env.DSH_DEFAULT_SESSION = "science-studio";
-  env.SS_SETTINGS_PATH = paths.settingsPath;
+  env.DSH_DEFAULT_SESSION = "gps";
+  env.GPS_SETTINGS_PATH = paths.settingsPath;
   return env;
 }
 ```
@@ -2103,14 +2103,14 @@ In `apps/desktop/src/main/index.ts`, update the `desktop:runtimeStatus` handler:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `npm run test -w @science-studio/desktop && npm run typecheck -w @science-studio/desktop`
+Run: `npm run test -w @gps/desktop && npm run typecheck -w @gps/desktop`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add apps/desktop/src/shared/config.ts apps/desktop/src/shared/paths.ts apps/desktop/src/shared/runtime-status.ts apps/desktop/src/main/index.ts apps/desktop/test/config.test.ts apps/desktop/test/paths.test.ts apps/desktop/test/runtime-status.test.ts
-git commit -m "refactor(desktop): narrow config.env to paths, add SS_SETTINGS_PATH"
+git commit -m "refactor(desktop): narrow config.env to paths, add GPS_SETTINGS_PATH"
 ```
 
 ## Task 14: Retire the standalone Settings window
@@ -2143,7 +2143,7 @@ test("the standalone config window is retired", async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/desktop`
+Run: `npm run test -w @gps/desktop`
 Expected: FAIL — the files still exist.
 
 - [ ] **Step 3: Remove the window and its wiring**
@@ -2166,7 +2166,7 @@ Expected: FAIL — the files still exist.
 
 - [ ] **Step 4: Run test + type gate**
 
-Run: `npm run test -w @science-studio/desktop && npm run typecheck -w @science-studio/desktop`
+Run: `npm run test -w @gps/desktop && npm run typecheck -w @gps/desktop`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -2200,7 +2200,7 @@ const api = {
 - [ ] **Step 2: Read the route from the settings service**
 
 In `apps/web/components/studio/status-bar.tsx`, add `fetchSettings` to the
-`@science-studio/transport-client` import, and replace the whole `RuntimeChip`
+`@gps/transport-client` import, and replace the whole `RuntimeChip`
 function with:
 
 ```tsx
@@ -2275,8 +2275,8 @@ function RuntimeChip() {
 
 - [ ] **Step 3: Verify**
 
-Run: `npm run typecheck -w @science-studio/desktop`
-Run: `npm run build -w @science-studio/transport-client && npm run typecheck -w @science-studio/web`
+Run: `npm run typecheck -w @gps/desktop`
+Run: `npm run build -w @gps/transport-client && npm run typecheck -w @gps/web`
 Expected: PASS.
 
 - [ ] **Step 4: Commit**
@@ -2302,12 +2302,12 @@ Expected: PASS.
 
 - [ ] **Step 3: Web e2e**
 
-Run: `npm run build -w @science-studio/transport-client && npm run test:e2e -w @science-studio/web`
+Run: `npm run build -w @gps/transport-client && npm run test:e2e -w @gps/web`
 Expected: PASS (or SKIP where no Chromium).
 
 - [ ] **Step 4: Desktop suite**
 
-Run: `npm run test -w @science-studio/desktop`
+Run: `npm run test -w @gps/desktop`
 Expected: PASS.
 
 ## Self-review notes (resolved inline)
@@ -2320,8 +2320,8 @@ Expected: PASS.
   key is pinned by T2/T3/T5/T8.
 - **Type consistency:** `ModelSettingsPatch` exists because
   `Partial<ModelSettings> & { apiKey?: string | null }` would intersect `null`
-  away; T1 defines it, T2 uses it, T5 re-exports it. `SS_MODEL_ENDPOINT` /
-  `SS_MODEL_API_KEY` are written in T2 and read in T10. `DshClientLaunchOptions.env`
+  away; T1 defines it, T2 uses it, T5 re-exports it. `GPS_MODEL_ENDPOINT` /
+  `GPS_MODEL_API_KEY` are written in T2 and read in T10. `DshClientLaunchOptions.env`
   is defined and consumed in T12 (one deliverable, so no red task).
 - **Existing-file corrections:** `apps/desktop/test/config.test.ts` already
   exists — T13 rewrites it instead of creating it; `runtime-status.ts` and its

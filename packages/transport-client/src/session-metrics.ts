@@ -11,7 +11,7 @@
  * openclaw records neither `provider`/`model` nor `usage`, so its Sessions
  * summarize to zero usage and no model — the UI renders that as `—`.
  */
-import type { Run, RunStatus } from "@science-studio/record";
+import type { Run, RunStatus } from "@gps/record";
 
 export interface TokenUsage {
   inputTokens: number;

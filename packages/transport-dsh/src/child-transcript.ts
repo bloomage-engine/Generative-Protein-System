@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import * as zlib from "node:zlib";
 import type { ContentBlock } from "@deepseek-ai/dsh-llm";
-import type { Message, SubagentTranscript } from "@science-studio/transport";
+import type { Message, SubagentTranscript } from "@gps/transport";
 import { contentToParts, extractResultText, findToolCallMessage } from "./mapping.js";
 
 // The `zstd*` API is present at runtime (Node >= 23.8) but not yet declared in
@@ -149,7 +149,7 @@ export interface ChildTranscriptSource {
   home: string;
   /** The launch working directory recorded on the child's session header. */
   cwd: string;
-  /** The Science Studio Session key the child was delegated from. */
+  /** The Generative Protein System Session key the child was delegated from. */
   sessionKey: string;
   /** The child (harness) session id. */
   childId: string;

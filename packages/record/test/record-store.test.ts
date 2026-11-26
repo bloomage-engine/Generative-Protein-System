@@ -136,7 +136,7 @@ test("in-memory store satisfies the RecordStore contract", async () => {
 });
 
 test("jsonl store satisfies the RecordStore contract", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-record-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-record-"));
   try {
     await sharedContract(await createJsonlRecordStore(join(dir, "record.jsonl")));
   } finally {
@@ -145,7 +145,7 @@ test("jsonl store satisfies the RecordStore contract", async () => {
 });
 
 test("jsonl store restores projects, sessions and runs after a restart", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-record-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-record-"));
   const path = join(dir, "record.jsonl");
   try {
     const first = await createJsonlRecordStore(path);
@@ -172,7 +172,7 @@ test("jsonl store restores projects, sessions and runs after a restart", async (
 });
 
 test("jsonl store drops deleted rows across a restart", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-record-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-record-"));
   const path = join(dir, "record.jsonl");
   try {
     const first = await createJsonlRecordStore(path);
@@ -197,7 +197,7 @@ test("jsonl store drops deleted rows across a restart", async () => {
 });
 
 test("jsonl store survives a torn final line", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-record-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-record-"));
   const path = join(dir, "record.jsonl");
   try {
     const first = await createJsonlRecordStore(path);

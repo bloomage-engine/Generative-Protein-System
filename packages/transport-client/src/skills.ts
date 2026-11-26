@@ -1,6 +1,6 @@
 "use client";
 
-import type { SkillInfo, SkillInstallInput } from "@science-studio/transport";
+import type { SkillInfo, SkillInstallInput } from "@gps/transport";
 import { scopedUrl, type ClientScope } from "./scope.js";
 
 export const DEFAULT_SKILLS_API = "/api/skills";

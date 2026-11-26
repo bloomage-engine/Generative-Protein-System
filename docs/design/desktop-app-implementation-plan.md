@@ -2,19 +2,19 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship Science Studio as a distributable Electron desktop app that launches the Next workbench and the transport-service itself, on loopback ephemeral ports, against a user-configured `dsh` model route.
+**Goal:** Ship Generative Protein System as a distributable Electron desktop app that launches the Next workbench and the transport-service itself, on loopback ephemeral ports, against a user-configured `dsh` model route.
 
 **Architecture:** A new `apps/desktop` workspace. Electron's main process owns only the window, menus, and lifecycle; a forked Node child (the "desktop host") starts the Fastify transport-service in-process and spawns the Next standalone server as a grandchild, then reports both ports back over IPC. The renderer is the existing Next app, unmodified. A small Electron-rendered config window writes `<userData>/config.env`, which the main process turns into the `DSH_*`/`PROJECT_ROOT`/`RECORD_STORE_PATH` env the host inherits. Packaging bundles the host with esbuild and ships the Next standalone tree via `electron-builder` `extraResources`. See `docs/adr/0013-desktop-app-is-electron-with-embedded-servers.md`.
 
-**Tech Stack:** Electron 38+, `electron-builder`, esbuild, TypeScript (ESM), `node:test` + `tsx`, Next 15.5.25 standalone output, Fastify 5 (via `@science-studio/transport-service`).
+**Tech Stack:** Electron 38+, `electron-builder`, esbuild, TypeScript (ESM), `node:test` + `tsx`, Next 15.5.25 standalone output, Fastify 5 (via `@gps/transport-service`).
 
 ## Global Constraints
 
 - `save-exact=true` is set in the root `.npmrc`: every new dependency must be installed with an exact version (never a `^`/`~` range).
 - The desktop app lives in `apps/desktop` and is OUTSIDE the root `npm run build` gate. It has its own `build`/`test`/`pack` scripts; do NOT add it to the root `build` chain.
-- Product name is `Science Studio`; bundle id / `appId` is `ss.hx-engine.com`; window title `Science Studio`.
+- Product name is `Generative Protein System`; bundle id / `appId` is `gps.hx-engine.com`; window title `Generative Protein System`.
 - Both servers bind `127.0.0.1` only, on ephemeral ports (`0`). They must never use 3000/3001. The app must run alongside a developer's `npm run dev`.
-- Single-user only: never set `SS_ENTERPRISE_MODULE`. Default `TRANSPORT_RUNTIME=dsh`.
+- Single-user only: never set `GPS_ENTERPRISE_MODULE`. Default `TRANSPORT_RUNTIME=dsh`.
 - Do NOT bundle the `dsh` binary or any model weights. The app probes `dsh` on `PATH` and degrades to a setup window when it is absent.
 - All artifacts (code, ADR, docs, commit messages) are in English. Never add code comments unless surrounding code comments. Match the repo's `node:test` + `assert/strict` style.
 - `apps/desktop` is `"type": "module"`; TypeScript compiles with the root `tsconfig.base.json` (`module: ESNext`, `moduleResolution: Bundler`, `strict`, `noUncheckedIndexedAccess`).
@@ -30,7 +30,7 @@
 - Test: `services/transport-service/test/injected-plugins.test.ts`
 
 **Interfaces:**
-- Consumes: `RuntimePlugin` from `@science-studio/transport`; `resolveRuntimePlugins(env)` (existing).
+- Consumes: `RuntimePlugin` from `@gps/transport`; `resolveRuntimePlugins(env)` (existing).
 - Produces: `createBackend(env?: NodeJS.ProcessEnv, plugins?: readonly RuntimePlugin[]): Promise<Backend>` — when `plugins` is non-empty it is used verbatim; otherwise behavior is unchanged.
 
 - [ ] **Step 1: Write the failing test**
@@ -40,7 +40,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createBackend } from "../src/composition.js";
-import type { RuntimePlugin } from "@science-studio/transport";
+import type { RuntimePlugin } from "@gps/transport";
 
 const stubPlugin: RuntimePlugin = {
   runtime: "dsh",
@@ -68,8 +68,8 @@ test("createBackend throws when the selected runtime has no preloaded plugin", a
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/transport-service -- --test-name-pattern="preloaded plugins"`
-Expected: FAIL — `createBackend` ignores the second argument and tries to import `@science-studio/transport-dsh`, so the second test's message differs / the first uses the real adapter.
+Run: `npm run test -w @gps/transport-service -- --test-name-pattern="preloaded plugins"`
+Expected: FAIL — `createBackend` ignores the second argument and tries to import `@gps/transport-dsh`, so the second test's message differs / the first uses the real adapter.
 
 - [ ] **Step 3: Implement the injection**
 
@@ -80,7 +80,7 @@ export async function createBackend(
   env: NodeJS.ProcessEnv = process.env,
   plugins?: readonly RuntimePlugin[],
 ): Promise<Backend> {
-  const specifier = env.SS_ENTERPRISE_MODULE;
+  const specifier = env.GPS_ENTERPRISE_MODULE;
   if (specifier) {
     const mod = (await import(specifier)) as EnterpriseModule;
     return mod.createBackend(env);
@@ -101,12 +101,12 @@ Update the `docs/adr/0013` reference in the header comment of `composition.ts` o
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/transport-service`
+Run: `npm run test -w @gps/transport-service`
 Expected: PASS (all suites), including the two new tests.
 
 - [ ] **Step 5: Type-check the change**
 
-Run: `npm run build -w @science-studio/transport-service`
+Run: `npm run build -w @gps/transport-service`
 Expected: exits 0, `dist/composition.js` rewritten.
 
 - [ ] **Step 6: Commit**
@@ -126,7 +126,7 @@ git commit -m "feat(service): allow createBackend to accept preloaded runtime pl
 - Create: `apps/desktop/src/index.ts`
 
 **Interfaces:**
-- Produces: workspace name `@science-studio/desktop`; `dist/` ESM output; scripts `build`, `test`, `start`, `pack`.
+- Produces: workspace name `@gps/desktop`; `dist/` ESM output; scripts `build`, `test`, `start`, `pack`.
 
 - [ ] **Step 1: Create the package manifest**
 
@@ -134,7 +134,7 @@ git commit -m "feat(service): allow createBackend to accept preloaded runtime pl
 
 ```json
 {
-  "name": "@science-studio/desktop",
+  "name": "@gps/desktop",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -147,9 +147,9 @@ git commit -m "feat(service): allow createBackend to accept preloaded runtime pl
     "pack": "npm run build && npm run build:desktop && electron-builder"
   },
   "dependencies": {
-    "@science-studio/transport-dsh": "*",
-    "@science-studio/transport-service": "*",
-    "@science-studio/transport": "*"
+    "@gps/transport-dsh": "*",
+    "@gps/transport-service": "*",
+    "@gps/transport": "*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
@@ -188,13 +188,13 @@ export {};
 
 - [ ] **Step 3: Install dependencies (exact versions)**
 
-Run: `npm install -w @science-studio/desktop`
-Then: `npm install -w @science-studio/desktop --save-dev electron electron-builder esbuild`
+Run: `npm install -w @gps/desktop`
+Then: `npm install -w @gps/desktop --save-dev electron electron-builder esbuild`
 Expected: `apps/desktop/package.json` gains exact versions under `devDependencies`; root `package-lock.json` updates.
 
 - [ ] **Step 4: Verify the empty workspace builds**
 
-Run: `npm run build -w @science-studio/desktop`
+Run: `npm run build -w @gps/desktop`
 Expected: exits 0; `apps/desktop/dist/index.js` exists.
 
 - [ ] **Step 5: Commit**
@@ -246,9 +246,9 @@ test("internal state lives under userData", () => {
   assert.equal(p.transcriptDir, "/ud/transcripts");
 });
 
-test("Projects default to ~/Documents/Science Studio/projects", () => {
+test("Projects default to ~/Documents/Generative Protein System/projects", () => {
   const p = resolveDesktopPaths({ userDataDir: "/ud", homeDir: "/home/me" });
-  assert.equal(p.projectRoot, "/home/me/Documents/Science Studio/projects");
+  assert.equal(p.projectRoot, "/home/me/Documents/Generative Protein System/projects");
 });
 
 test("an explicit PROJECT_ROOT wins", () => {
@@ -259,7 +259,7 @@ test("an explicit PROJECT_ROOT wins", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/desktop -- --test-name-pattern="userData"`
+Run: `npm run test -w @gps/desktop -- --test-name-pattern="userData"`
 Expected: FAIL — `Cannot find module '../src/shared/paths.js'`.
 
 - [ ] **Step 3: Implement**
@@ -287,7 +287,7 @@ export function resolveDesktopPaths(input: {
     userDataDir: input.userDataDir,
     configPath: join(input.userDataDir, "config.env"),
     recordStorePath: join(input.userDataDir, "record.jsonl"),
-    projectRoot: env.PROJECT_ROOT ?? join(input.homeDir, "Documents", "Science Studio", "projects"),
+    projectRoot: env.PROJECT_ROOT ?? join(input.homeDir, "Documents", "Generative Protein System", "projects"),
     dshHome: join(input.userDataDir, "dsh"),
     transcriptDir: join(input.userDataDir, "transcripts"),
   };
@@ -296,7 +296,7 @@ export function resolveDesktopPaths(input: {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/desktop`
+Run: `npm run test -w @gps/desktop`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
@@ -327,7 +327,7 @@ git commit -m "feat(desktop): resolve the app's data directories"
     paths: DesktopPaths;
   }): NodeJS.ProcessEnv;
   ```
-  `buildChildEnv` sets `TRANSPORT_RUNTIME=dsh`, `NODE_ENV=production`, `DSH_PROVIDER`, `DSH_MODEL`, `DSH_HOME`, `DSH_TRANSCRIPT_DIR`, `DSH_DEFAULT_SESSION=science-studio`, `PROJECT_ROOT`, `RECORD_STORE_PATH`, and every `config.vars` entry.
+  `buildChildEnv` sets `TRANSPORT_RUNTIME=dsh`, `NODE_ENV=production`, `DSH_PROVIDER`, `DSH_MODEL`, `DSH_HOME`, `DSH_TRANSCRIPT_DIR`, `DSH_DEFAULT_SESSION=gps`, `PROJECT_ROOT`, `RECORD_STORE_PATH`, and every `config.vars` entry.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -359,18 +359,18 @@ test("buildChildEnv pins dsh and the app's directories", () => {
   assert.equal(env.TRANSPORT_RUNTIME, "dsh");
   assert.equal(env.DSH_PROVIDER, "p");
   assert.equal(env.DSH_MODEL, "m");
-  assert.equal(env.DSH_DEFAULT_SESSION, "science-studio");
+  assert.equal(env.DSH_DEFAULT_SESSION, "gps");
   assert.equal(env.DSH_HOME, "/ud/dsh");
   assert.equal(env.DSH_TRANSCRIPT_DIR, "/ud/transcripts");
-  assert.equal(env.PROJECT_ROOT, "/home/me/Documents/Science Studio/projects");
+  assert.equal(env.PROJECT_ROOT, "/home/me/Documents/Generative Protein System/projects");
   assert.equal(env.RECORD_STORE_PATH, "/ud/record.jsonl");
-  assert.equal(env.SS_ENTERPRISE_MODULE, undefined);
+  assert.equal(env.GPS_ENTERPRISE_MODULE, undefined);
 });
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/desktop -- --test-name-pattern="parseConfigEnv"`
+Run: `npm run test -w @gps/desktop -- --test-name-pattern="parseConfigEnv"`
 Expected: FAIL — `Cannot find module '../src/shared/config.js'`.
 
 - [ ] **Step 3: Implement**
@@ -422,14 +422,14 @@ export function buildChildEnv(input: {
 }): NodeJS.ProcessEnv {
   const { base, config, paths } = input;
   const env: NodeJS.ProcessEnv = { ...base, ...(config.vars ?? {}) };
-  delete env.SS_ENTERPRISE_MODULE;
+  delete env.GPS_ENTERPRISE_MODULE;
   env.NODE_ENV = "production";
   env.TRANSPORT_RUNTIME = "dsh";
   env.PROJECT_ROOT = paths.projectRoot;
   env.RECORD_STORE_PATH = paths.recordStorePath;
   env.DSH_HOME = paths.dshHome;
   env.DSH_TRANSCRIPT_DIR = paths.transcriptDir;
-  env.DSH_DEFAULT_SESSION = "science-studio";
+  env.DSH_DEFAULT_SESSION = "gps";
   if (config.provider !== undefined) env.DSH_PROVIDER = config.provider;
   if (config.model !== undefined) env.DSH_MODEL = config.model;
   return env;
@@ -438,7 +438,7 @@ export function buildChildEnv(input: {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/desktop`
+Run: `npm run test -w @gps/desktop`
 Expected: PASS (Task 3 + 4 suites).
 
 - [ ] **Step 5: Commit**
@@ -481,7 +481,7 @@ test("getFreePort returns a port that can be bound", async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/desktop -- --test-name-pattern="getFreePort"`
+Run: `npm run test -w @gps/desktop -- --test-name-pattern="getFreePort"`
 Expected: FAIL — `Cannot find module '../src/shared/net.js'`.
 
 - [ ] **Step 3: Implement**
@@ -506,7 +506,7 @@ export function getFreePort(host = "127.0.0.1"): Promise<number> {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/desktop`
+Run: `npm run test -w @gps/desktop`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -565,7 +565,7 @@ test("returns null for an unset PATH", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/desktop -- --test-name-pattern="dsh"`
+Run: `npm run test -w @gps/desktop -- --test-name-pattern="dsh"`
 Expected: FAIL — `Cannot find module '../src/shared/dsh.js'`.
 
 - [ ] **Step 3: Implement**
@@ -600,7 +600,7 @@ export function detectDsh(input: {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/desktop`
+Run: `npm run test -w @gps/desktop`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -657,7 +657,7 @@ test("waitForHttp rejects when the process exits", async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/desktop -- --test-name-pattern="waitForHttp"`
+Run: `npm run test -w @gps/desktop -- --test-name-pattern="waitForHttp"`
 Expected: FAIL — `Cannot find module '../src/server/next.js'`.
 
 - [ ] **Step 3: Implement**
@@ -737,7 +737,7 @@ async function stopChild(child: ChildProcess): Promise<void> {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/desktop`
+Run: `npm run test -w @gps/desktop`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -758,7 +758,7 @@ git commit -m "feat(desktop): start and await the next standalone server"
 - Test: `apps/desktop/test/host.test.ts`
 
 **Interfaces:**
-- Consumes: `startNextServer`/`NextServerHandle` (Task 7); `createBackend`, `createTransportService` from `@science-studio/transport-service`; `runtimePlugins` from `@science-studio/transport-dsh`.
+- Consumes: `startNextServer`/`NextServerHandle` (Task 7); `createBackend`, `createTransportService` from `@gps/transport-service`; `runtimePlugins` from `@gps/transport-dsh`.
 - Produces:
   ```ts
   export interface HostHandle { webPort: number; apiPort: number; close(): Promise<void> }
@@ -817,7 +817,7 @@ test("readyMessage has the shape the fork parent listens for", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/desktop -- --test-name-pattern="startHost"`
+Run: `npm run test -w @gps/desktop -- --test-name-pattern="startHost"`
 Expected: FAIL — `Cannot find module '../src/server/host.js'`.
 
 - [ ] **Step 3: Implement `report.ts` and `host.ts`**
@@ -878,8 +878,8 @@ export async function startHost(options: {
 }
 
 async function defaultStartApi(env: NodeJS.ProcessEnv): Promise<{ port: number; close(): Promise<void> }> {
-  const { createBackend, createTransportService } = await import("@science-studio/transport-service");
-  const { runtimePlugins } = await import("@science-studio/transport-dsh");
+  const { createBackend, createTransportService } = await import("@gps/transport-service");
+  const { runtimePlugins } = await import("@gps/transport-dsh");
   const backend = await createBackend(env, runtimePlugins);
   const app = await createTransportService({ backend });
   await app.listen({ port: 0, host: "127.0.0.1" });
@@ -919,7 +919,7 @@ startHost({ nextDir, env: process.env, log: (line) => process.stderr.write(line)
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/desktop`
+Run: `npm run test -w @gps/desktop`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -967,7 +967,7 @@ export default nextConfig;
 In root `package.json` `scripts`, add (do not change the existing `build` chain):
 
 ```json
-"build:web:standalone": "NEXT_OUTPUT=standalone npm run build -w @science-studio/web",
+"build:web:standalone": "NEXT_OUTPUT=standalone npm run build -w @gps/web",
 ```
 
 - [ ] **Step 3: Build and verify the standalone tree**
@@ -983,7 +983,7 @@ Verify with: `find apps/web/.next/standalone -maxdepth 3 -name server.js`.
 
 - [ ] **Step 4: Verify a normal web build is unaffected**
 
-Run: `npm run build -w @science-studio/web`
+Run: `npm run build -w @gps/web`
 Expected: exits 0 and does NOT emit `apps/web/.next/standalone` semantics changes (the flag is unset).
 
 - [ ] **Step 5: Commit**
@@ -1004,7 +1004,7 @@ git commit -m "build(web): optional next standalone output for the desktop app"
 
 **Interfaces:**
 - Consumes: `resolveDesktopPaths` (Task 3), `buildChildEnv`/`parseConfigEnv`/`serializeConfigEnv` (Task 4), `detectDsh` (Task 6), host entry (Task 8).
-- Produces: IPC channels `desktop:getConfig`, `desktop:setConfig`, `desktop:detectDsh`, `desktop:openPath`, `desktop:restartHost`; the `scienceStudioDesktop` preload bridge (Task 11).
+- Produces: IPC channels `desktop:getConfig`, `desktop:setConfig`, `desktop:detectDsh`, `desktop:openPath`, `desktop:restartHost`; the `gpsDesktop` preload bridge (Task 11).
 
 - [ ] **Step 1: Implement the host fork helper**
 
@@ -1068,7 +1068,7 @@ export function createWorkbenchWindow(url: string): BrowserWindow {
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
-    title: "Science Studio",
+    title: "Generative Protein System",
     backgroundColor: "#0b0b0b",
     webPreferences: {
       preload: join(here, "..", "preload", "index.mjs"),
@@ -1085,7 +1085,7 @@ export function createConfigWindow(appRoot: string): BrowserWindow {
   const win = new BrowserWindow({
     width: 720,
     height: 640,
-    title: "Science Studio — Settings",
+    title: "Generative Protein System — Settings",
     webPreferences: {
       preload: join(here, "..", "preload", "index.mjs"),
       contextIsolation: true,
@@ -1192,7 +1192,7 @@ function installMenu(): void {
       { role: "editMenu" },
       { role: "viewMenu" },
       {
-        label: "Science Studio",
+        label: "Generative Protein System",
         submenu: [
           { label: "Settings…", accelerator: "CmdOrCtrl+,", click: () => openSettings() },
           {
@@ -1256,8 +1256,8 @@ app.on("window-all-closed", () => {
 
 - [ ] **Step 4: Build the host bundle and the desktop sources**
 
-**Precondition:** the host bundle inlines `@science-studio/transport-service` and
-`@science-studio/transport-dsh` from their built `dist/`, so run
+**Precondition:** the host bundle inlines `@gps/transport-service` and
+`@gps/transport-dsh` from their built `dist/`, so run
 `npm run build` (root) once before this step.
 
 Add these scripts to `apps/desktop/package.json`:
@@ -1289,8 +1289,8 @@ Bundling rules learned while building this (do not "simplify" them away):
 With a built web standalone (`npm run build:desktop`) and `dsh` on PATH plus a configured route, run:
 
 ```bash
-npm run build -w @science-studio/desktop
-npm run build:host -w @science-studio/desktop
+npm run build -w @gps/desktop
+npm run build:host -w @gps/desktop
 DESKTOP_NEXT_DIR="$PWD/apps/web/.next/standalone/apps/web" npx electron apps/desktop
 ```
 
@@ -1327,7 +1327,7 @@ time (Task 12).
 
 **Interfaces:**
 - Consumes: IPC channels from Task 10.
-- Produces: `window.scienceStudioDesktop` with `getConfig`, `setConfig`, `detectDsh`, `openPath`, `restartHost`.
+- Produces: `window.gpsDesktop` with `getConfig`, `setConfig`, `detectDsh`, `openPath`, `restartHost`.
 
 - [ ] **Step 1: Implement the preload bridge**
 
@@ -1344,9 +1344,9 @@ const api = {
   restartHost: (): Promise<{ webPort: number; apiPort: number }> => ipcRenderer.invoke("desktop:restartHost"),
 };
 
-contextBridge.exposeInMainWorld("scienceStudioDesktop", api);
+contextBridge.exposeInMainWorld("gpsDesktop", api);
 
-export type ScienceStudioDesktopApi = typeof api;
+export type GPSDesktopApi = typeof api;
 ```
 
 - [ ] **Step 2: Implement the settings renderer**
@@ -1359,7 +1359,7 @@ export type ScienceStudioDesktopApi = typeof api;
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'" />
-    <title>Science Studio — Settings</title>
+    <title>Generative Protein System — Settings</title>
   </head>
   <body>
     <main id="app">Loading…</main>
@@ -1371,15 +1371,15 @@ export type ScienceStudioDesktopApi = typeof api;
 `apps/desktop/src/renderer/config.ts`:
 
 ```ts
-import type { ScienceStudioDesktopApi } from "../preload/index.mjs";
+import type { GPSDesktopApi } from "../preload/index.mjs";
 
 declare global {
   interface Window {
-    scienceStudioDesktop?: ScienceStudioDesktopApi;
+    gpsDesktop?: GPSDesktopApi;
   }
 }
 
-const bridge = window.scienceStudioDesktop;
+const bridge = window.gpsDesktop;
 const app = document.getElementById("app")!;
 
 function field(label: string, name: string, value: string, hint = ""): string {
@@ -1390,7 +1390,7 @@ function field(label: string, name: string, value: string, hint = ""): string {
 
 async function render(): Promise<void> {
   if (!bridge) {
-    app.textContent = "This window must be opened by the Science Studio desktop app.";
+    app.textContent = "This window must be opened by the Generative Protein System desktop app.";
     return;
   }
   const [config, dshPath] = await Promise.all([bridge.getConfig(), bridge.detectDsh()]);
@@ -1398,7 +1398,7 @@ async function render(): Promise<void> {
     .map(([k, v]) => `${k}=${v}`)
     .join("\n");
   app.innerHTML = `
-    <h1>Science Studio Settings</h1>
+    <h1>Generative Protein System Settings</h1>
     <p>${
       dshPath ? `Found dsh at <code>${dshPath}</code>.` : "The <code>dsh</code> CLI was not found on PATH. Install it before running the agent."
     }</p>
@@ -1458,7 +1458,7 @@ await cp(join(root, "src", "renderer", "config.html"), join(root, "dist", "rende
 
 - [ ] **Step 4: Verify the build emits everything**
 
-Run: `npm run build -w @science-studio/desktop`
+Run: `npm run build -w @gps/desktop`
 Expected: `dist/main/index.js`, `dist/preload/index.mjs`, `dist/renderer/config.html`, `dist/renderer/config.js` all exist.
 
 - [ ] **Step 5: Commit**
@@ -1478,14 +1478,14 @@ git commit -m "feat(desktop): preload bridge and settings window"
 - Test: `apps/desktop/test/builder-config.test.mjs`
 
 **Interfaces:**
-- Produces: `release/` artifacts; app id `ss.hx-engine.com`; product name `Science Studio`.
+- Produces: `release/` artifacts; app id `gps.hx-engine.com`; product name `Generative Protein System`.
 
 - [ ] **Step 1: Implement the builder config**
 
 ```yaml
 # apps/desktop/electron-builder.yml
-appId: ss.hx-engine.com
-productName: Science Studio
+appId: gps.hx-engine.com
+productName: Generative Protein System
 directories:
   output: release
 files:
@@ -1544,7 +1544,7 @@ in that file.)
 Then verify the packaged tree actually contains those packages after Step 4:
 `ls apps/desktop/release/linux-unpacked/resources/app.asar.unpacked 2>/dev/null`;
 electron-builder ships production dependencies of the workspace's
-`@science-studio/transport-dsh` into the asar. If `@deepseek-ai/dsh-sdk-client`
+`@gps/transport-dsh` into the asar. If `@deepseek-ai/dsh-sdk-client`
 is absent from the packaged app, add it (and `@deepseek-ai/dsh`) to
 `apps/desktop/package.json` `dependencies` so electron-builder collects them, and
 re-pack. Confirm by unpacking the asar (`npx asar list
@@ -1561,8 +1561,8 @@ import { readFile } from "node:fs/promises";
 
 test("builder config ships the host bundle and the next standalone tree", async () => {
   const text = await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8");
-  assert.match(text, /appId: ss\.hx-engine\.com/);
-  assert.match(text, /productName: Science Studio/);
+  assert.match(text, /appId: gps\.hx-engine\.com/);
+  assert.match(text, /productName: Generative Protein System/);
   assert.match(text, /from: build\/host\s*\n\s*to: host/);
   assert.match(text, /from: \.\.\/web\/\.next\/standalone\s*\n\s*to: next/);
   assert.match(text, /to: next\/apps\/web\/\.next\/static/);
@@ -1572,7 +1572,7 @@ test("builder config ships the host bundle and the next standalone tree", async 
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/desktop -- --test-name-pattern="builder config"`
+Run: `npm run test -w @gps/desktop -- --test-name-pattern="builder config"`
 Expected: FAIL — `ENOENT electron-builder.yml` before Step 1, or assertion mismatch after a partial file.
 
 - [ ] **Step 4: Wire the pack script and run it**
@@ -1583,12 +1583,12 @@ Expected: FAIL — `ENOENT electron-builder.yml` before Step 1, or assertion mis
 "pack": "npm run build && npm run build:desktop && electron-builder"
 ```
 
-Run: `npm run pack -w @science-studio/desktop`
+Run: `npm run pack -w @gps/desktop`
 Expected: `apps/desktop/release/` contains a `.dmg` (macOS) or `.AppImage` + `.deb` (Linux), and `release/linux-unpacked/resources/host/host.mjs` + `resources/next/apps/web/server.js` exist.
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/desktop`
+Run: `npm run test -w @gps/desktop`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -1655,7 +1655,7 @@ if (!process.env.DESKTOP_DEV_URL && (missingConfig || !detectDsh())) {
 Root `package.json`:
 
 ```json
-"dev:desktop": "DESKTOP_DEV_URL=${DESKTOP_DEV_URL:-http://localhost:3000} npm run dev -w @science-studio/desktop"
+"dev:desktop": "DESKTOP_DEV_URL=${DESKTOP_DEV_URL:-http://localhost:3000} npm run dev -w @gps/desktop"
 ```
 
 - [ ] **Step 3: Manual verification**
@@ -1677,7 +1677,7 @@ In `Commands`, add:
 - `npm run dev:desktop` — the Electron shell against the already-running dev pair
   (`DESKTOP_DEV_URL`, default http://localhost:3000). The packaged app instead
   builds `apps/web` with `NEXT_OUTPUT=standalone` (`npm run build:web:standalone`)
-  and hosts both servers itself. Packaging: `npm run pack -w @science-studio/desktop`
+  and hosts both servers itself. Packaging: `npm run pack -w @gps/desktop`
   (electron-builder; `dmg` on macOS, `AppImage`/`deb` on Linux). Dev-only claim:
   `dsh` must be on PATH and a route configured in Settings for a real turn.
 ```
@@ -1703,20 +1703,20 @@ git commit -m "feat(desktop): dev mode against the local dev servers, and docume
 | B6 one forked child hosts both servers | Task 8 |
 | B7 loopback ephemeral + IPC | Task 5, 7, 8, 10 |
 | C1 default dsh, user-configured route | Task 4, 10, 11 |
-| C2 single-user only | Task 4 (`SS_ENTERPRISE_MODULE` deleted) |
+| C2 single-user only | Task 4 (`GPS_ENTERPRISE_MODULE` deleted) |
 | C3 data dirs | Task 3, 4 |
 | D9 single window + menu + open folder | Task 10 |
 | D10 no update/signing | Task 12 (no publish/sign config) |
 | E11 `apps/desktop`, outside gate | Task 2, 13 |
 | Q14 detect dsh, friendly setup | Task 6, 10, 11 |
-| bundle id `ss.hx-engine.com` | Task 12 |
+| bundle id `gps.hx-engine.com` | Task 12 |
 | esbuild bundle needs injected plugins | Task 1 |
 
 **Deviation to flag to the user:** the "disable sending when `dsh` is missing" half of Q14 is implemented as a launch gate (settings window first) rather than a composer lock inside the Next app, because the latter would add a desktop-specific signal to `apps/web`. Composer-locking is deferred to a follow-up.
 
 **Known risks the implementer must resolve empirically (Task 9/10/12):**
 - The exact path of the Next standalone `server.js` under `outputFileTracingRoot` (Task 9 Step 3) — copy it verbatim into `nextDir()` and `extraResources`.
-- esbuild bundling `@science-studio/transport-dsh` may surface a missing dependency or a `__dirname`/`import.meta` assumption; if so, add `--external:<pkg>` and ship that package under `extraResources`, keeping the plugin files next to the bundle.
+- esbuild bundling `@gps/transport-dsh` may surface a missing dependency or a `__dirname`/`import.meta` assumption; if so, add `--external:<pkg>` and ship that package under `extraResources`, keeping the plugin files next to the bundle.
 - `electron-builder` may need `asarUnpack` if the host bundle or Next reads files it cannot read from an asar; the host and plugins already live in `extraResources`, so start without `asarUnpack`.
 
 ---
@@ -1752,9 +1752,9 @@ is unavailable — the deferred half of the Q14 decision.
 - `runtimeStatus(input: { dshPath: string | null; config: DesktopConfig }): { dshPath: string | null; provider: string | null; model: string | null; ready: boolean }`, where `ready = dshPath !== null && provider !== null && model !== null`.
 - `workbench.cts` exposes EXACTLY `runtimeStatus(): Promise<RuntimeStatus>` — no config write, no `openPath`.
 - Main IPC: `desktop:runtimeStatus` → `runtimeStatus({ dshPath: detectDsh({ pathEnv: pathEnv() }), config: await readConfig() })`; `desktop:openWorkbench` → `await openWorkbench()` (boots the host and shows the workbench regardless of the gate).
-- The web `RuntimeChip` reads `window.scienceStudioDesktop?.runtimeStatus` optionally; it renders "runtime: ready" / "runtime: dsh missing" with a popover (provider/model + hint). It does NOT disable the composer (deferred; document here).
+- The web `RuntimeChip` reads `window.gpsDesktop?.runtimeStatus` optionally; it renders "runtime: ready" / "runtime: dsh missing" with a popover (provider/model + hint). It does NOT disable the composer (deferred; document here).
 
-**Steps:** TDD `runtimeStatus`; wire the preload/IPC; renderer status + button; web chip. `npm run test -w @science-studio/desktop` and `npm run build -w @science-studio/desktop`.
+**Steps:** TDD `runtimeStatus`; wire the preload/IPC; renderer status + button; web chip. `npm run test -w @gps/desktop` and `npm run build -w @gps/desktop`.
 
 **Acceptance:** with no `dsh` on PATH the Settings window shows "dsh: missing" and
 "Open workbench anyway" opens the workbench; the workbench's status bar shows the
@@ -1773,7 +1773,7 @@ re-pack; launch the packaged AppImage under the user's display with `--no-sandbo
 (the AppImage's chrome-sandbox cannot be setuid) and confirm the log has no
 `[desktop] failed to load`, then ask the user to confirm visually.
 
-**Acceptance:** `npm run pack -w @science-studio/desktop` exits 0 with no
+**Acceptance:** `npm run pack -w @gps/desktop` exits 0 with no
 "file source doesn't exist" and no "author is missed"; the launched AppImage
 renders the workbench.
 
@@ -1785,7 +1785,7 @@ default Electron icon ships until an asset is supplied.
 **Files:**
 - Modify: `tsconfig.tests.json` (include `apps/desktop/test/**/*.ts`)
 - Modify: `services/transport-service/test/injected-plugins.test.ts` (the empty-`[]` fallback case)
-- Modify: `apps/desktop/test/config.test.ts` (seed `base.SS_ENTERPRISE_MODULE`; add an empty-config round-trip)
+- Modify: `apps/desktop/test/config.test.ts` (seed `base.GPS_ENTERPRISE_MODULE`; add an empty-config round-trip)
 
 **Steps:** add `apps/desktop/test/**/*.ts` to the test program's `include`, then
 run `npm run build` (which ends with `tsc -p tsconfig.tests.json`) and fix every
@@ -1844,8 +1844,8 @@ are recorded below as deliberate deviations or follow-ups.
   credential/extra env vars — the provider ROUTE stays harness-side in
   `settings.yaml`, there is no `baseURL` field).
 
-**Verification:** `npm run build -w @science-studio/desktop`,
-`npm run test -w @science-studio/desktop`, `npm run build -w @science-studio/web`,
+**Verification:** `npm run build -w @gps/desktop`,
+`npm run test -w @gps/desktop`, `npm run build -w @gps/web`,
 and root `npm run build` (the test type gate) all exit 0.
 
 **Recorded, not fixed (deliberate deviations / follow-ups):**

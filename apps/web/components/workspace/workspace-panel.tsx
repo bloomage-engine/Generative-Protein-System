@@ -7,7 +7,7 @@ import {
   useWorkspaceFile,
   type ClientScope,
   type Entry,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import {
   ChevronLeftIcon,
   DownloadIcon,

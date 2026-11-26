@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createInMemoryRecordStore, type RecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore, type RecordStore } from "@gps/record";
 import {
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
   NullWorkspace,
   WorkspacePathError,
   type RuntimeAdapter,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 import { createRecordDirectory } from "../src/directory.js";

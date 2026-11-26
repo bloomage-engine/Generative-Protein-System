@@ -7,12 +7,12 @@
  * what decides where an agent reads and writes, so it is the observable a
  * per-Project environment is judged by (docs/adr/0008).
  *
- * Exported as `runtimePlugins` so `SS_RUNTIME_MODULES` can point the composition
+ * Exported as `runtimePlugins` so `GPS_RUNTIME_MODULES` can point the composition
  * root at it exactly like a real runtime package: the module specifier is
  * RUNTIME-SELECTED (configuration), which is why the test navigates it by URL
  * rather than by import.
  */
-import type { RuntimeAdapter, RuntimePlugin } from "@science-studio/transport";
+import type { RuntimeAdapter, RuntimePlugin } from "@gps/transport";
 
 /** One adapter's observed `init`. */
 export interface AdapterInitObservation {

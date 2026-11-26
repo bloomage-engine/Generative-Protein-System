@@ -6,7 +6,7 @@ import {
   DEFAULT_WORKTREE_ID,
   useWorkspaceRoot,
   type Entry,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";

@@ -13,7 +13,7 @@ import { COLOR_THEMES, DEFAULT_COLOR_THEME, type ColorThemeId } from "@/lib/them
  * provider of its own: it writes `data-theme` on <html>, which `app/themes.css`
  * scopes every token block to, and persists the pick under its own storage key.
  */
-export const COLOR_THEME_STORAGE_KEY = "ss-color-theme";
+export const COLOR_THEME_STORAGE_KEY = "gps-color-theme";
 
 const THEME_IDS: readonly string[] = COLOR_THEMES.map((theme) => theme.id);
 

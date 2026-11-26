@@ -1,5 +1,5 @@
 {
-  "name": "@science-studio/cron",
+  "name": "@gps/cron",
   "version": "0.0.0",
   "private": true,
   "type": "module",

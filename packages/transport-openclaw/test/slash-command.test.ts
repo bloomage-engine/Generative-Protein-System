@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { OpenClawRuntimeAdapter } from "../src/index.js";
 import type { BackendGateway, BackendGatewayOptions } from "../src/connection.js";
 import type { EventFrame } from "@openclaw/gateway-client/browser";
-import type { Run } from "@science-studio/record";
-import type { RecordStoreLike, SessionState, StateDelta, TransportCommand, WatchSnapshot } from "@science-studio/transport";
-import { sessionState } from "@science-studio/contract-tests";
+import type { Run } from "@gps/record";
+import type { RecordStoreLike, SessionState, StateDelta, TransportCommand, WatchSnapshot } from "@gps/transport";
+import { sessionState } from "@gps/contract-tests";
 import type { GatewayCommandEntry } from "../src/commands.js";
 
 const SESSION = "agent:main:main";

@@ -1,10 +1,10 @@
-# Science Studio
+# Generative Protein System
 
 > 中文: [README.zh.md](./README.zh.md)
 
 ## Overview
 
-Science Studio is an agentic research workbench for protein design. It brings structure and sequence analysis, scientific tools, remote computation, and research records into a shared project environment. Researchers can conduct analyses through conversation, inspect evidence in structure and sequence views, and retain files and analytical histories for subsequent work.
+Generative Protein System is an agentic research workbench for protein design. It brings structure and sequence analysis, scientific tools, remote computation, and research records into a shared project environment. Researchers can conduct analyses through conversation, inspect evidence in structure and sequence views, and retain files and analytical histories for subsequent work.
 
 It supports browser access and desktop clients for Windows, macOS, and Linux.
 
@@ -27,7 +27,7 @@ Create `services/transport-service/.env` using the [configuration example](./ser
 PROJECT_ROOT=/absolute/path/to/projects
 ```
 
-Replace the path with a local directory; on Windows, a path such as `D:/ScienceStudio/projects` works. Configure the model provider in DSH's `settings.yaml` first, and supply its required credentials in `.env`.
+Replace the path with a local directory; on Windows, a path such as `D:/GPS/projects` works. Configure the model provider in DSH's `settings.yaml` first, and supply its required credentials in `.env`.
 
 The development launcher defaults to the `ollama-local` provider and `qwen3.8:latest` model. To use another configuration, set `DSH_PROVIDER` and `DSH_MODEL` in the launch environment; do not put `DSH_*` variables in `.env`. See the [DSH example](./examples/transport-dsh-example/README.md) for configuration details.
 
@@ -46,15 +46,15 @@ The desktop client starts and manages its local services automatically; no separ
 After installing dependencies and building as above, build and launch the client from source:
 
 ```bash
-npm run start -w @science-studio/desktop
+npm run start -w @gps/desktop
 ```
 
-Configure the model provider in the workbench settings. Projects are stored under `Documents/Science Studio/projects` in your home directory by default.
+Configure the model provider in the workbench settings. Projects are stored under `Documents/Generative Protein System/projects` in your home directory by default.
 
 To create an installer, run this command on the target operating system:
 
 ```bash
-npm run pack -w @science-studio/desktop
+npm run pack -w @gps/desktop
 ```
 
 Supported formats are Windows x64 NSIS, macOS DMG, and Linux AppImage and DEB.
@@ -107,7 +107,7 @@ MCP connects external tools and data services, such as literature search, databa
 
 ### Remote computation
 
-Science Studio connects to Slurm clusters and remote Linux hosts. The agent can submit scripts or commands, inspect execution status and logs, request cancellation, and transfer input and output files as needed. Scientific software must be prepared on the remote system.
+Generative Protein System connects to Slurm clusters and remote Linux hosts. The agent can submit scripts or commands, inspect execution status and logs, request cancellation, and transfer input and output files as needed. Scientific software must be prepared on the remote system.
 
 Each submission creates a persistent Compute Job record containing the submitted computation, remote identifier, and execution state. Researchers can inspect jobs in the workbench after the initiating session has ended.
 
@@ -117,4 +117,4 @@ Each submission creates a persistent Compute Job record containing the submitted
 
 ## License
 
-Science Studio is licensed under the [Apache License 2.0](./LICENSE). Third-party dependencies retain their respective licenses.
+Generative Protein System is licensed under the [Apache License 2.0](./LICENSE). Third-party dependencies retain their respective licenses.

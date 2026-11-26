@@ -1,8 +1,8 @@
 "use client";
 
 import { create } from "zustand";
-import { isStructureFile } from "@science-studio/molstar-viewer/formats";
-import type { Project, Session, Worktree } from "@science-studio/transport-client";
+import { isStructureFile } from "@gps/molstar-viewer/formats";
+import type { Project, Session, Worktree } from "@gps/transport-client";
 import {
   readScopeMemory,
   rememberScope,

@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createInMemoryRecordStore } from "@science-studio/record";
-import { LocalEnvironmentProvider, LocalPrincipalResolver, NullWorkspace, type RuntimeAdapter } from "@science-studio/transport";
+import { createInMemoryRecordStore } from "@gps/record";
+import { LocalEnvironmentProvider, LocalPrincipalResolver, NullWorkspace, type RuntimeAdapter } from "@gps/transport";
 import { createTransportService } from "../src/index.js";
 import type { Backend } from "../src/composition.js";
 import type { GitRunner } from "../src/worktree/git.js";
@@ -13,7 +13,7 @@ const adapter = (): RuntimeAdapter =>
   ({ runtime: "fake", init: async () => {}, run: async function* () {}, abort: () => {} }) as RuntimeAdapter;
 
 test("create, list, and delete a worktree through the routes", async () => {
-  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "gps-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
   const backend: Backend = {
@@ -64,7 +64,7 @@ test("create, list, and delete a worktree through the routes", async () => {
 });
 
 test("listing does not create a repository", async () => {
-  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "gps-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
   const backend: Backend = {
@@ -92,7 +92,7 @@ test("listing does not create a repository", async () => {
 });
 
 test("create rejects an unsafe project id (400)", async () => {
-  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "gps-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
   const backend: Backend = {
@@ -125,7 +125,7 @@ test("create rejects an unsafe project id (400)", async () => {
 });
 
 test("a deleted worktree name can be created again", async () => {
-  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "gps-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
   const backend: Backend = {
@@ -163,7 +163,7 @@ test("a deleted worktree name can be created again", async () => {
 });
 
 test("a session is created under a claimed worktree and listed by it", async () => {
-  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "gps-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
   const backend: Backend = {
@@ -203,7 +203,7 @@ test("a session is created under a claimed worktree and listed by it", async () 
 });
 
 test("git-backed worktree writes answer 503 while the list stays usable", async () => {
-  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "gps-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
   await records.addWorktree({ id: "main", projectId: "project-default", name: "main", branch: "main", createdAt: "2026-01-01T00:00:00.000Z" });
@@ -258,7 +258,7 @@ test("git-backed worktree writes answer 503 while the list stays usable", async 
 });
 
 test("a session with worktreeId main is created on a fresh project (main auto-ensured)", async () => {
-  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "gps-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
   const backend: Backend = {
@@ -291,7 +291,7 @@ test("a session with worktreeId main is created on a fresh project (main auto-en
 });
 
 test("a fresh Project workspace lists main without invoking git", async () => {
-  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "gps-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
   let calls = 0;

@@ -1,9 +1,9 @@
 {
-  "name": "@science-studio/molql-tool-openclaw",
+  "name": "@gps/molql-tool-openclaw",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "OpenClaw gateway plugin registering the `molql` (viewer selection) and `computeInteraction` (non-covalent interactions) tools for Science Studio.",
+  "description": "OpenClaw gateway plugin registering the `molql` (viewer selection) and `computeInteraction` (non-covalent interactions) tools for Generative Protein System.",
   "license": "MIT",
   "files": [
     "dist",
@@ -25,7 +25,7 @@
   "devDependencies": {
     "esbuild": "^0.28.2",
     "openclaw": "^2026.8.1",
-    "@science-studio/molql-shared": "workspace:*",
+    "@gps/molql-shared": "workspace:*",
     "tsx": "^4.0.0",
     "typebox": "^1.1.38",
     "typescript": "^5.5.0"

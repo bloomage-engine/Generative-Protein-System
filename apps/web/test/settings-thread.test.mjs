@@ -1,7 +1,7 @@
 /**
  * The Thread settings tab: visible message count input and reset button.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`. Needs a Chromium
+ * Prereq: `npm run build -w @gps/transport-client`. Needs a Chromium
  * (SKIPs without one).
  */
 import { test } from "node:test";

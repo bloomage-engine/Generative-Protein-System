@@ -46,7 +46,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Science Studio",
+  title: "Generative Protein System",
   description: "Research-agent platform for computational life-science R&D.",
 };
 

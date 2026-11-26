@@ -5,7 +5,7 @@ Cron 让一个 Project 能按计划重复执行一次 agent turn（"每天早上
 只有写作面。** 四层各自实现这条分工，且每一层对下层只读。
 
 ```
-作者（dsh 子插件）──写入──▶  .science-studio/cron/<id>.md  ◀──读取──  调度器（服务）
+作者（dsh 子插件）──写入──▶  .gps/cron/<id>.md  ◀──读取──  调度器（服务）
                      共享同一 codec（packages/cron）              UI（轮询 /api/cron*）
 ```
 
@@ -13,7 +13,7 @@ Cron 让一个 Project 能按计划重复执行一次 agent turn（"每天早上
 
 三方共同 import，是文件格式的唯一权威。
 
-- `task-doc.ts` —— 任务是 `.science-studio/cron/` 下的 `<id>.md`：简单
+- `task-doc.ts` —— 任务是 `.gps/cron/` 下的 `<id>.md`：简单
   `key: value` frontmatter（值一律 JSON 引号包裹：`name`、`schedule`、
   `enabled`、可选 `sessionId`/`createdAt`/`updatedAt`）+ 正文即 prompt。
   **id 就是文件名**（`^[a-z0-9][a-z0-9-]{0,63}$`），没有任何 record 行。
@@ -72,25 +72,25 @@ systemPrompt，教模型 5 字段语法、main-only 规则，以及"只在用户
 与 HPC/worktree 插件不同，它**不**调服务：直接用共享 codec 读写任务文件——
 因为**文件即真相**，agent 写的就是调度器读的，不需要 IPC。两条门控：只为真实
 Project 挂载；`root` 被钉在 **main** 工作区（不是 active worktree 的 cwd），
-因为服务永远只读 `<project root>/.science-studio/cron/`。
+因为服务永远只读 `<project root>/.gps/cron/`。
 
 ## 4. UI 侧
 
 - `apps/web/app/api/cron/[[...path]]` 经统一代理策略转发 `/api/cron*`
   （docs/adr/0021）。
-- `@science-studio/transport-client` 的 `useCronTasks` 在面板打开期间每 2s
+- `@gps/transport-client` 的 `useCronTasks` 在面板打开期间每 2s
   轮询 `GET /api/cron?projectId`（失败保留上次数组）。
 - `components/studio/cron-view.tsx`（右栏分区）、
   `renderers/CronTaskRenderer.tsx`（以 tab 打开的任务文件 + 运行日志）、
   `cron-new-task-dialog.tsx`（用 codec 把 preset 生成表达式）。
-- `.science-studio/cron/` 下的文件在文件树里和普通路径一样被列出。
+- `.gps/cron/` 下的文件在文件树里和普通路径一样被列出。
 
 ## 端到端时序
 
 ```
 用户: "每天早上九点总结实验"
   agent → schedule_create（子插件）
-  → 写 <root>/.science-studio/cron/morning-summary.md        ← agent 的份到此为止
+  → 写 <root>/.gps/cron/morning-summary.md        ← agent 的份到此为止
 服务 CronScheduler（30s tick，全程无 agent 进程参与）:
   → 重读文件 → matchesSchedule("0 9 * * *", now)
   → 抢 activeRuns[tenant:sessionId] → adapter.run(add-message prompt)
@@ -107,7 +107,7 @@ UI: useCronTasks 看到 lastRun 更新
   且文件形态让任务对 agent 自己的 cwd 始终可见。
 - `skipped-busy` 的 fire 只留下一行日志，所以比 Session 实际 run 节奏更密的
   调度会**静默丢 fire**。
-- `.science-studio/` 自此是每个 Project 工作区里的产品自有命名空间（与
+- `.gps/` 自此是每个 Project 工作区里的产品自有命名空间（与
   Project Scaffold 共享，docs/adr/0012）；删除 Project 时整个工作区进回收站
   （docs/adr/0014），cron 文件随它去。
 

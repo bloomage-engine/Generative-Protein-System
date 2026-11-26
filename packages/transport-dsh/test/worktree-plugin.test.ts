@@ -62,7 +62,7 @@ test("a project config registers the three tools, the command and the prompt sec
     "worktree_remove",
   ]);
   assert.deepEqual(host.commands().map((c) => c.name), ["worktree"]);
-  assert.deepEqual(host.sections().map((s) => s.name), ["science-studio-worktree"]);
+  assert.deepEqual(host.sections().map((s) => s.name), ["gps-worktree"]);
   assert.equal(host.sections()[0]?.order, 470);
 });
 

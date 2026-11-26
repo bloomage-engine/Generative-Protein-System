@@ -8,8 +8,8 @@ import {
   type SessionState,
   type SettleContext,
   type StateDelta,
-} from "@science-studio/transport";
-import { sessionState } from "@science-studio/contract-tests";
+} from "@gps/transport";
+import { sessionState } from "@gps/contract-tests";
 import { createDshBehavior } from "../src/behavior.js";
 import type { AssistantStreamFrame } from "../src/assistant-stream.js";
 import type { DshTurnClient } from "../src/client.js";
@@ -445,7 +445,7 @@ test("a durable assistant/message with no live frames keeps the durable id", () 
 test("a reset/restart mints a NEW harness id so the next conversation's rows do not collide (fails with a sessionKey-based key)", () => {
   // `/new` drops the conversation and a service restart starts a new child
   // generation; both restart the next turn at turn 1 step 1 on the SAME
-  // Science Studio session key, and NEITHER clears the transcript (the record
+  // Generative Protein System session key, and NEITHER clears the transcript (the record
   // cold-restores it; `/new` keeps earlier turns). So the live row id must be
   // scoped by the GENERATION-scoped harness id — a sessionKey-scoped key would
   // make run B's live frames hit run A's finalized entry and drop B entirely.

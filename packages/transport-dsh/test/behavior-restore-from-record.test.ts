@@ -1,14 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createInMemoryRecordStore, type RecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore, type RecordStore } from "@gps/record";
 import {
   type Message,
   type RecordStoreLike,
   type SessionState,
   type SettleContext,
   type TranscriptHandle,
-} from "@science-studio/transport";
-import { sessionState } from "@science-studio/contract-tests";
+} from "@gps/transport";
+import { sessionState } from "@gps/contract-tests";
 import { createDshBehavior } from "../src/behavior.js";
 import type { DshTurnClient } from "../src/client.js";
 

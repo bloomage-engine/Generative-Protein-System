@@ -6,7 +6,7 @@ import {
 } from "@assistant-ui/react";
 import {
   useTransport,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { MarkdownText } from "./markdown";
 import { AssistantReasoning } from "./reasoning-panel";
 import { Composer } from "./composer";
@@ -57,7 +57,7 @@ export default memo(function App() {
         <h1>transport-dsh · assistant-ui</h1>
         <p>
           A live conversation with a DeepSeek Harness runtime, driven by{" "}
-          <code>@science-studio/transport-dsh</code> behind the shared
+          <code>@gps/transport-dsh</code> behind the shared
           transport-service and rendered by assistant-ui.
         </p>
       </header>

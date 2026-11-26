@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
-import type { ComputeJob } from "@science-studio/transport-client";
-import { DEFAULT_HPC_API, fetchHpcJob, fetchHpcJobLogs } from "@science-studio/transport-client";
+import type { ComputeJob } from "@gps/transport-client";
+import { DEFAULT_HPC_API, fetchHpcJob, fetchHpcJobLogs } from "@gps/transport-client";
 import { Button } from "@/components/ui/button";
 import { hpcTabJobId } from "../file-utils";
 import { JOB_STATE_CLASS } from "../jobs-view";

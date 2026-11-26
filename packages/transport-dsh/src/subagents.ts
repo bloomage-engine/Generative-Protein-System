@@ -1,7 +1,7 @@
 /**
  * The adapter-side subagent ledger. It folds the harness child's
  * `subagent.started` / `subagent.finished` notifications and its child-session
- * `subagent/descriptor` events into one live view per Science Studio Session,
+ * `subagent/descriptor` events into one live view per Generative Protein System Session,
  * and keeps the child's own settled transcript captured into the durable row
  * (docs/adr/0019).
  *
@@ -30,8 +30,8 @@
  * shape degrades to an unlabeled entry rather than a crash.
  */
 import { randomUUID } from "node:crypto";
-import type { PersistedTranscript, Subagent } from "@science-studio/record";
-import type { RecordStoreLike, SubagentRun } from "@science-studio/transport";
+import type { PersistedTranscript, Subagent } from "@gps/record";
+import type { RecordStoreLike, SubagentRun } from "@gps/transport";
 
 export interface SubagentDescriptorInfo {
   label?: string;
@@ -81,7 +81,7 @@ type Entry = {
   harnessChildId: string;
   /** The raw (harness) parent id, for lineage resolution. */
   parentHarnessId: string;
-  /** The resolved Science Studio session key, once resolvable (the record row's parent). */
+  /** The resolved Generative Protein System session key, once resolvable (the record row's parent). */
   parentSessionId?: string;
   label?: string;
   provider?: string;
@@ -102,7 +102,7 @@ export class SubagentRegistry {
   private saving: Promise<void> = Promise.resolve();
 
   constructor(
-    /** Map a ROOT harness session id back to its Science Studio session key. */
+    /** Map a ROOT harness session id back to its Generative Protein System session key. */
     private readonly resolveSessionKey: (rootHarnessId: string) => string | undefined,
     /** Clock seam for deterministic tests. */
     private readonly now: () => string = () => new Date().toISOString(),
@@ -297,7 +297,7 @@ export class SubagentRegistry {
     return stableId !== undefined ? this.entries.get(stableId) : undefined;
   }
 
-  /** The Science Studio session key an entry belongs to: the nearest tracked
+  /** The Generative Protein System session key an entry belongs to: the nearest tracked
    *  ancestor wins; otherwise the ROOT (the first untracked ancestor in the
    *  parent chain) is resolved. `undefined` = not resolvable yet (the entry is
    *  skipped, not dropped, by `list`). */

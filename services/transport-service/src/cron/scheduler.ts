@@ -4,15 +4,15 @@ import {
   type Id,
   type RecordStore,
   type Session,
-} from "@science-studio/record";
-import { matchesSchedule, type CronRunStatus, type CronTask } from "@science-studio/cron";
+} from "@gps/record";
+import { matchesSchedule, type CronRunStatus, type CronTask } from "@gps/cron";
 import type {
   Environment,
   EnvironmentProvider,
   MessagePart,
   Principal,
   SessionState,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { RecordDirectory } from "../directory.js";
 import type { CronStore } from "./store.js";
 

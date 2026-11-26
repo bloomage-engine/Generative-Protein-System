@@ -10,7 +10,7 @@
  * persisted as Runs (docs/adr/0003).
  */
 import type { EventFrame } from "@openclaw/gateway-client/browser";
-import type { Run } from "@science-studio/record";
+import type { Run } from "@gps/record";
 import {
   isCommandText,
   promptWithAttachments,
@@ -19,7 +19,7 @@ import {
   type SessionBehavior,
   type TranscriptHandle,
   type Workspace,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { BackendGateway } from "./connection.js";
 import { decideHistorySync } from "./history-sync.js";
 import { mapChatEvent, mapThinkingEvent, mapToolEvent, parseParts } from "./mapping.js";

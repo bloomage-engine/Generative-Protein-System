@@ -13,12 +13,12 @@ import "dotenv/config";
  * single-user by default, or a private enterprise module when configured.
  */
 import type { FastifyInstance } from "fastify";
-import { createInMemoryRecordStore, DEFAULT_WORKTREE_ID, type RecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore, DEFAULT_WORKTREE_ID, type RecordStore } from "@gps/record";
 import {
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
   type RuntimeAdapter,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import {
   createBackend,
   localWorkspace,
@@ -80,7 +80,7 @@ async function backendFromAdapters(options: TransportServiceOptions): Promise<Ba
   const records = options.recordStore ?? createInMemoryRecordStore();
   const recordStore = toRecordStoreLike(records);
   const workspace = localWorkspace(env, DEFAULT_RECORD_DEFAULTS.projectId, DEFAULT_WORKTREE_ID);
-  const settingsPath = env.SS_SETTINGS_PATH ?? resolveSettingsPath(env);
+  const settingsPath = env.GPS_SETTINGS_PATH ?? resolveSettingsPath(env);
   const runtimeEnv = applySettingsToEnv(env, await loadSettings(settingsPath));
   const capabilities = plugins.find((p) => p.runtime === first.runtime)?.factory.capabilities;
 

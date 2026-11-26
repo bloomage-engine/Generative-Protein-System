@@ -1,6 +1,6 @@
 # The dsh project plugin: scaffold and Project Brief
 
-Every Science Studio **Project Workspace** gets a conventional research
+Every Generative Protein System **Project Workspace** gets a conventional research
 directory layout and a `PROJECT.md` **Project Brief**, laid down and kept
 current by a child-side dsh plugin. The plugin is a launch artifact: the adapter
 mounts it into a Project's harness child with a per-launch `--patch`, next to the

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
-import { createInMemoryRecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore } from "@gps/record";
 import {
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
@@ -13,7 +13,7 @@ import {
   type RuntimeAdapter,
   type SkillInfo,
   type SkillInstallInput,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 

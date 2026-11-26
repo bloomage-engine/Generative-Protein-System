@@ -1,7 +1,7 @@
 /**
  * The CHILD-side half of the dsh command bridge: a cordis plugin that exposes
  * the harness's own command registry (`@deepseek-ai/dsh-commands`) over a
- * private UNIX socket, so the Science Studio adapter — which speaks to this
+ * private UNIX socket, so the Generative Protein System adapter — which speaks to this
  * child over a stdio wire with no command plane (docs/adr/0010) — can list and
  * execute the harness's commands.
  *
@@ -137,7 +137,7 @@ export interface BridgeHost {
   ): () => void;
 }
 
-export const name = "science-studio-command-bridge";
+export const name = "gps-command-bridge";
 export const inject = ["commands", "agents"];
 
 export interface BridgePluginConfig {
@@ -167,7 +167,7 @@ function removeSocketFile(socket: string): void {
  */
 function warn(message: string, error?: unknown): void {
   const detail = error === undefined ? "" : `: ${error instanceof Error ? error.message : String(error)}`;
-  process.stderr.write(`[ss-command-bridge] ${message}${detail}\n`);
+  process.stderr.write(`[gps-command-bridge] ${message}${detail}\n`);
 }
 
 /**
@@ -523,5 +523,5 @@ export function apply(ctx: BridgeHost, config: BridgePluginConfig | undefined): 
         // already gone
       }
     };
-  }, "science-studio-command-bridge");
+  }, "gps-command-bridge");
 }

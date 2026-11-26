@@ -1,4 +1,4 @@
-import type { CommandDescriptor } from "@science-studio/transport";
+import type { CommandDescriptor } from "@gps/transport";
 
 /**
  * The dsh runtime command layer (docs/adr/0003, docs/adr/0010, docs/adr/0011):
@@ -27,7 +27,7 @@ import type { CommandDescriptor } from "@science-studio/transport";
 
 /** What a command may read about the session it is invoked in. */
 export interface DshCommandFacts {
-  /** The Science Studio session key (1:1 with the record's Session). */
+  /** The Generative Protein System session key (1:1 with the record's Session). */
   sessionKey: string;
   /** Harness profile this adapter's child was launched with. */
   profile: string;

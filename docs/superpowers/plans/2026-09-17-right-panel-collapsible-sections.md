@@ -15,8 +15,8 @@
 - NO new dependencies. `Collapsible` already exists at `apps/web/components/ui/collapsible.tsx` (imports from `radix-ui`). The `collapsible-down` / `collapsible-up` keyframes already exist in `apps/web/app/globals.css`.
 - Follow existing shadcn/ui + Tailwind v4 conventions (`cn` from `@/lib/utils`, `data-slot` attributes). No inline `style` for theming — only for the dynamic section height.
 - State is IN-MEMORY only: open flags and heights live in `studio-store.ts`, never `localStorage`.
-- The real type gate is the root `npm run build` (its last step is `typecheck:tests`); the root `npm run typecheck` is known-broken (TS6310). For the app alone: `npm run build -w @science-studio/transport-client && npm run typecheck -w @science-studio/web`.
-- `apps/web` e2e tests need a Chromium (auto-detected; they SKIP without one) and depend on `@science-studio/transport-client` being built (`npm run build -w @science-studio/transport-client`).
+- The real type gate is the root `npm run build` (its last step is `typecheck:tests`); the root `npm run typecheck` is known-broken (TS6310). For the app alone: `npm run build -w @gps/transport-client && npm run typecheck -w @gps/web`.
+- `apps/web` e2e tests need a Chromium (auto-detected; they SKIP without one) and depend on `@gps/transport-client` being built (`npm run build -w @gps/transport-client`).
 - Do not touch `apps/web/app/api/**` route segment config.
 - Reference spec: `docs/superpowers/specs/2026-09-17-right-panel-collapsible-sections-design.md`.
 
@@ -56,7 +56,7 @@ Create `apps/web/test/right-panel-sections.test.mjs`:
  * start collapsed, expand to an empty state, and are resizable by dragging
  * their handle. Collapsing Files unmounts the tree; re-expanding restores it.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`.
+ * Prereq: `npm run build -w @gps/transport-client`.
  * Needs a Chromium; SKIPPED when none is found.
  */
 import { test } from "node:test";
@@ -163,7 +163,7 @@ test(
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npm run build -w @science-studio/transport-client && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test apps/web/test/right-panel-sections.test.mjs`
+Run: `npm run build -w @gps/transport-client && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test apps/web/test/right-panel-sections.test.mjs`
 Expected: FAIL — `page.locator('[data-section="subagents"]')` times out because the pane is currently a single `WorkspaceTree` with no sections. (If no Chromium is found the test SKIPs; install one with `npx playwright install chromium` to see the red.)
 
 - [ ] **Step 3: Commit the failing test**
@@ -326,7 +326,7 @@ export function ModuleEmptyState({
 
 - [ ] **Step 3: Type-check**
 
-Run: `npm run build -w @science-studio/transport-client && npm run typecheck -w @science-studio/web`
+Run: `npm run build -w @gps/transport-client && npm run typecheck -w @gps/web`
 Expected: PASS, no errors. (The new files are unreferenced; this proves they compile.)
 
 - [ ] **Step 4: Commit**
@@ -482,7 +482,7 @@ Every handler, ref, effect and `MENU_WIDTH` above the return is unchanged. In pa
 
 - [ ] **Step 2: Type-check**
 
-Run: `npm run build -w @science-studio/transport-client && npm run typecheck -w @science-studio/web`
+Run: `npm run build -w @gps/transport-client && npm run typecheck -w @gps/web`
 Expected: PASS.
 
 - [ ] **Step 3: Run the existing tree regression (no behavior loss)**
@@ -737,7 +737,7 @@ In `apps/web/components/studio/panel-toggles.tsx`, change the right-panel button
 
 - [ ] **Step 6: Type-check**
 
-Run: `npm run build -w @science-studio/transport-client && npm run typecheck -w @science-studio/web`
+Run: `npm run build -w @gps/transport-client && npm run typecheck -w @gps/web`
 Expected: PASS.
 
 - [ ] **Step 7: Run the new regression test**

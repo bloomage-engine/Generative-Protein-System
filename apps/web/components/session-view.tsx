@@ -8,7 +8,7 @@ import {
   WorkspaceOpenProvider,
   useTransport,
   useTransportApi,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { StudioShell } from "./studio/shell";
 import { FrontendBridge } from "./assistant-ui/frontend-bridge";
 import { ComposerInsertProvider } from "./assistant-ui/composer-insert";

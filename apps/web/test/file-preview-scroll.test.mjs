@@ -9,7 +9,7 @@
  * the content's full height in an unbounded parent: nothing scrolls and the
  * tail is silently clipped out of reach.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`.
+ * Prereq: `npm run build -w @gps/transport-client`.
  * Needs a Chromium; SKIPPED when none is found.
  */
 import { test } from "node:test";

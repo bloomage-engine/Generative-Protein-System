@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Message } from "@science-studio/transport";
+import type { Message } from "@gps/transport";
 import { decideHistorySync, parseHistoryRows, type HistorySyncDecision } from "../src/history-sync.js";
 
 function msg(role: "user" | "assistant", text: string, id: string): Message {

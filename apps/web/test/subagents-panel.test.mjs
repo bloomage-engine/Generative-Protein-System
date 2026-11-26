@@ -3,7 +3,7 @@
  * `/api/transport/subagents`, shows its empty state when the list is empty, and
  * makes no request while collapsed.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`.
+ * Prereq: `npm run build -w @gps/transport-client`.
  * Needs a Chromium; SKIPPED when none is found.
  */
 import { test } from "node:test";

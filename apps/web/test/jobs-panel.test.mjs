@@ -6,7 +6,7 @@
  * (the harness's `/api/hpc` stub is overridden here with seeded rows), so no
  * cluster or transport-service is needed.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`.
+ * Prereq: `npm run build -w @gps/transport-client`.
  * Needs a Chromium; SKIPPED when none is found.
  */
 import { test } from "node:test";
@@ -34,7 +34,7 @@ const RUNNING = {
   script: "#!/bin/bash\necho hi\n",
   resources: { partition: "gpu", nodes: 2 },
   state: "running",
-  remoteDir: "~/science-studio/p1/.ss-jobs/cjob-run-1",
+  remoteDir: "~/gps/p1/.gps-jobs/cjob-run-1",
   submittedAt: "2026-09-22T09:00:00.000Z",
   startedAt: "2026-09-22T09:01:00.000Z",
   updatedAt: "2026-09-22T09:05:00.000Z",

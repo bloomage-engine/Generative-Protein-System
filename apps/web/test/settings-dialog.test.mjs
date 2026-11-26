@@ -4,7 +4,7 @@
  * remount the runtime owner (it lives in the StatusBar, not in `SessionView`),
  * which the transcript marker check covers.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`. Needs a Chromium
+ * Prereq: `npm run build -w @gps/transport-client`. Needs a Chromium
  * (SKIPs without one).
  */
 import { test } from "node:test";

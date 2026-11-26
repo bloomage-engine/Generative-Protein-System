@@ -8,8 +8,8 @@ import {
   type RuntimeAdapter,
   type RuntimeFactory,
   type RuntimeInitOptions,
-} from "@science-studio/transport";
-import { FsWorkspace } from "@science-studio/workspace";
+} from "@gps/transport";
+import { FsWorkspace } from "@gps/workspace";
 import {
   testPrincipalResolver,
   testQuotaPolicy,
@@ -44,8 +44,8 @@ testQuotaPolicy("NoopQuotaPolicy", () => new NoopQuotaPolicy(), {
 });
 
 testWorkspace("FsWorkspace", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ss-contract-"));
-  const outside = await mkdtemp(join(tmpdir(), "ss-contract-outside-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-contract-"));
+  const outside = await mkdtemp(join(tmpdir(), "gps-contract-outside-"));
   await writeFile(join(root, "hello.txt"), "hello contract\n");
   await mkdir(join(root, "dir"));
   await writeFile(join(outside, "secret.txt"), "secret");

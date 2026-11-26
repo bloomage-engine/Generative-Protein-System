@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { DEFAULT_WORKTREE_ID, type Id } from "@science-studio/record";
+import { DEFAULT_WORKTREE_ID, type Id } from "@gps/record";
 
 /** The directory under a Project root that holds linked worktree checkouts. */
 export const WORKTREES_DIR = ".worktrees";

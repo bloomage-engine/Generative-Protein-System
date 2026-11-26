@@ -4,9 +4,9 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
-import type { RecordStoreLike, SessionState, StateDelta } from "@science-studio/transport";
-import { createInMemoryRecordStore } from "@science-studio/record";
-import { sessionState } from "@science-studio/contract-tests";
+import type { RecordStoreLike, SessionState, StateDelta } from "@gps/transport";
+import { createInMemoryRecordStore } from "@gps/record";
+import { sessionState } from "@gps/contract-tests";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
 
 function ev(type: string, data: unknown, seq = 1): SessionEvent {

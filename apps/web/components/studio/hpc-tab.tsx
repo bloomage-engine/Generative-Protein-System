@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Loader2, Plus, Server, Trash2, Zap } from "lucide-react";
-import type { HpcEndpointSettings } from "@science-studio/transport-client";
+import type { HpcEndpointSettings } from "@gps/transport-client";
 import {
   DEFAULT_HPC_API,
   fetchHpcBinding,
@@ -10,7 +10,7 @@ import {
   probeHpcEndpoint,
   saveHpcBinding,
   updateSettings,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SETTINGS_API } from "./settings-dialog";
@@ -292,7 +292,7 @@ export function HpcTab({ projectId }: { projectId: string | null }) {
       <section className="space-y-3">
         <h3 className="text-sm font-semibold">This Project</h3>
         <p className="text-xs text-muted-foreground">
-          The binding file <code>.science-studio/hpc.md</code> selects one endpoint (and per-Project defaults) for
+          The binding file <code>.gps/hpc.md</code> selects one endpoint (and per-Project defaults) for
           agent submissions. {projectId === null ? "No Project is active." : bound ? "Bound." : "This Project is not bound yet."}
         </p>
         {projectId === null || endpoints.length === 0 ? (
@@ -338,7 +338,7 @@ export function HpcTab({ projectId }: { projectId: string | null }) {
               </label>
             </div>
             <label className="grid gap-1 text-xs">
-              <span className="text-muted-foreground">Remote Work Dir (optional — default ~/science-studio/&lt;projectId&gt;)</span>
+              <span className="text-muted-foreground">Remote Work Dir (optional — default ~/gps/&lt;projectId&gt;)</span>
               <Input value={bindWorkDir} onChange={(event) => setBindWorkDir(event.target.value)} placeholder="~/scratch/my-project" />
             </label>
             <label className="grid gap-1 text-xs">

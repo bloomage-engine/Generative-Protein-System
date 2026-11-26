@@ -4,14 +4,14 @@
  *
  * The service forwards live tokens as it receives them, so a whole cluster can
  * land in one socket read; the model then pauses and the next cluster lands
- * later. `@science-studio/transport-client`'s `MarkdownText` turns that into a
+ * later. `@gps/transport-client`'s `MarkdownText` turns that into a
  * typewriter reveal with `useSmooth`. Without a per-frame cap the animator
  * drains the whole backlog inside its window (`maxCharsPerFrame` defaults to
  * Infinity), so a burst paints as one visible gulp — the user's "text jumps in
  * chunks". This test drives a REAL burst through a stub transport and asserts
  * the rendered text never grows by more than a few characters in a frame.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`. Needs a Chromium
+ * Prereq: `npm run build -w @gps/transport-client`. Needs a Chromium
  * (SKIPs without one). The transport is deliberately NOT mocked in the browser:
  * a real socket stub lets one `write` deliver the whole burst as a single read.
  */

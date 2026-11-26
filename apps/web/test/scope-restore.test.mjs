@@ -14,7 +14,7 @@
  * The service surfaces are mocked in the browser, so no transport-service,
  * runtime adapter or workspace deployment is needed.
  *
- * Prereq: `npm run build -w @science-studio/transport-client` (the web app
+ * Prereq: `npm run build -w @gps/transport-client` (the web app
  * imports the client package from its dist build).
  *
  * Needs a Chromium (same resolution as `workspace-panel-history.test.mjs`);
@@ -35,7 +35,7 @@ import {
   warmWorkbench,
 } from "./harness.mjs";
 
-const SCOPE_MEMORY_KEY = "science-studio.scope.v1";
+const SCOPE_MEMORY_KEY = "gps.scope.v1";
 
 /** A `(Project, Worktree)` Session key: the separator mirrors `scope-memory.ts`. */
 const SEP = "\u0000";

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createBackend } from "../src/composition.js";
-import type { RuntimePlugin } from "@science-studio/transport";
+import type { RuntimePlugin } from "@gps/transport";
 
 const stubPlugin: RuntimePlugin = {
   runtime: "stub-runtime",

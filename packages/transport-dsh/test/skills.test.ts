@@ -11,7 +11,7 @@ import {
   WorkspaceNotFoundError,
   type FileStat,
   type Workspace,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import {
   PROJECT_SKILL_DIR,
   discoverSkills,

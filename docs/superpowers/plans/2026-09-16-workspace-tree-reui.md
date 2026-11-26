@@ -14,8 +14,8 @@
 - Match the existing comment style: source files carry a brief purpose comment where the shape is non-obvious; `apps/web/test/*.mjs` files open with a short "what this guards" comment (see `workspace-panel-history.test.mjs`). Do not over-comment.
 - Dependencies are pinned EXACTLY: `@headless-tree/core@1.7.0`, `@headless-tree/react@1.7.0`. Do NOT add `@base-ui/react`.
 - Follow the existing shadcn/ui + Tailwind v4 conventions (`cn` from `@/lib/utils`, `data-slot` attributes).
-- The real type gate is the root `npm run build`; the root `npm run typecheck` is known-broken (TS6310). Use `npm run typecheck -w @science-studio/web` for the app, after `npm run build -w @science-studio/transport-client`.
-- `apps/web` e2e tests need a Chromium (auto-detected; the test SKIPS without one) and depend on `apps/web` and `@science-studio/transport-client` being importable.
+- The real type gate is the root `npm run build`; the root `npm run typecheck` is known-broken (TS6310). Use `npm run typecheck -w @gps/web` for the app, after `npm run build -w @gps/transport-client`.
+- `apps/web` e2e tests need a Chromium (auto-detected; the test SKIPS without one) and depend on `apps/web` and `@gps/transport-client` being importable.
 - Do not touch `apps/web/app/api/**` route segment config (`runtime`/`dynamic` stay literal).
 - Reference spec: `docs/superpowers/specs/2026-09-16-workspace-tree-reui-design.md`.
 
@@ -53,7 +53,7 @@ Create `apps/web/test/workspace-tree.test.mjs`:
  * preview. Against the old one-directory-at-a-time browser (which has no
  * `role="tree"`) this test is red.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`.
+ * Prereq: `npm run build -w @gps/transport-client`.
  * Needs a Chromium; SKIPPED when none is found.
  */
 import { test } from "node:test";
@@ -164,7 +164,7 @@ test(
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npm run build -w @science-studio/transport-client && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test apps/web/test/workspace-tree.test.mjs`
+Run: `npm run build -w @gps/transport-client && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test apps/web/test/workspace-tree.test.mjs`
 Expected: FAIL — `getByRole("tree")` times out because the current browser renders a flat `<ul>` with no `role="tree"`. (If no Chromium is found the test SKIPs; install one with `npx playwright install chromium` to see the red.)
 
 - [ ] **Step 3: Commit the failing test**
@@ -194,7 +194,7 @@ git commit -m "test(web): cover the workspace tree's lazy expand and open"
 Run:
 
 ```bash
-npm install @headless-tree/core@1.7.0 @headless-tree/react@1.7.0 -w @science-studio/web
+npm install @headless-tree/core@1.7.0 @headless-tree/react@1.7.0 -w @gps/web
 ```
 
 Expected: both names appear under `dependencies` in `apps/web/package.json` with exact versions, and `package-lock.json` updates.
@@ -377,7 +377,7 @@ export function fileIconForName(
 
 - [ ] **Step 4: Type-check the app**
 
-Run: `npm run build -w @science-studio/transport-client && npm run typecheck -w @science-studio/web`
+Run: `npm run build -w @gps/transport-client && npm run typecheck -w @gps/web`
 Expected: PASS with no errors.
 
 - [ ] **Step 5: Commit**
@@ -395,7 +395,7 @@ git commit -m "feat(web): add a headless-tree primitive and file-type icons"
 - Modify: `apps/web/components/studio/workspace-tree.tsx`
 
 **Interfaces:**
-- Consumes: `Tree`, `TreeItem`, `TreeItemLabel` (Task 2); `fileIconForName` (Task 2); `useWorkspaceRoot`, `useWorkspaceApi`, `fetchWorkspaceEntries`, `WORKSPACE_UNAVAILABLE_REASON`, types `Entry` / `DirListing` from `@science-studio/transport-client`; `useStudioStore` (`openFile`, `activeTabPath`).
+- Consumes: `Tree`, `TreeItem`, `TreeItemLabel` (Task 2); `fileIconForName` (Task 2); `useWorkspaceRoot`, `useWorkspaceApi`, `fetchWorkspaceEntries`, `WORKSPACE_UNAVAILABLE_REASON`, types `Entry` / `DirListing` from `@gps/transport-client`; `useStudioStore` (`openFile`, `activeTabPath`).
 - Produces: `WorkspaceTree({ project }: { project?: string | null })` — same export and props the shell already uses (`apps/web/components/studio/workspace.tsx:55`).
 
 - [ ] **Step 1: Rewrite `workspace-tree.tsx`**
@@ -419,7 +419,7 @@ import {
   WORKSPACE_UNAVAILABLE_REASON,
   type DirListing,
   type Entry,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Tree, TreeItem, TreeItemLabel } from "@/components/ui/tree";
 import { cn } from "@/lib/utils";
@@ -569,7 +569,7 @@ The 503 case is handled by `root.unavailable`, so no separate `isWorkspaceUnavai
 
 - [ ] **Step 2: Type-check the app**
 
-Run: `npm run build -w @science-studio/transport-client && npm run typecheck -w @science-studio/web`
+Run: `npm run build -w @gps/transport-client && npm run typecheck -w @gps/web`
 Expected: PASS.
 
 - [ ] **Step 3: Run the regression test to verify it passes**

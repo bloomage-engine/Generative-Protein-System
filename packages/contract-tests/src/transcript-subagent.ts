@@ -8,7 +8,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { RecordStore } from "@science-studio/record";
+import type { RecordStore } from "@gps/record";
 
 export interface TranscriptAndSubagentCase {
   store: RecordStore;

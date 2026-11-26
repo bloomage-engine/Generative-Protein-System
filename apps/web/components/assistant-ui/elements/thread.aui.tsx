@@ -8,7 +8,7 @@ import { Image } from "@/components/assistant-ui/elements/image";
 import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
 import { Reasoning } from "@/components/assistant-ui/elements/reasoning.aui";
 import { ReasoningPanel } from "@/components/assistant-ui/elements/reasoning-panel";
-import { buildReasoningTrace } from "@science-studio/transport-client";
+import { buildReasoningTrace } from "@gps/transport-client";
 import { ToolFallback } from "@/components/assistant-ui/elements/tool-fallback.aui";
 import {
   ToolGroupContent,

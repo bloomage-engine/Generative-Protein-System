@@ -4,7 +4,7 @@
  * This is a seam *interface* — it lives in the seam package (`transport`) so all
  * implementations (local filesystem, a fleet cell's bind-mount, a gateway-proxied
  * filesystem) depend on `transport`, never the reverse. Implementations live in
- * `@science-studio/workspace`.
+ * `@gps/workspace`.
  *
  * Interface invariants (part of the interface, NOT implementation detail):
  *
@@ -16,7 +16,7 @@
  * - `open` enforces a byte cap; larger files are a streaming download.
  * - v1 is read-only; `write` arrives with the upload path.
  */
-import type { Id } from "@science-studio/record";
+import type { Id } from "@gps/record";
 
 /** One directory entry, addressed by its workspace-relative path. */
 export interface Entry {

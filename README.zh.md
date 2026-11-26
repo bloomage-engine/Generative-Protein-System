@@ -1,10 +1,10 @@
-# Science Studio
+# Generative Protein System
 
 > English: [README.md](./README.md)
 
 ## 简介
 
-Science Studio 是面向蛋白质设计的智能体科研工作台，将结构与序列分析、科学工具、远程计算和研究记录组织在同一项目中。研究人员可以通过对话开展分析，在结构和序列视图中检查证据，并保留研究文件与分析过程，供后续工作继续使用。
+Generative Protein System 是面向蛋白质设计的智能体科研工作台，将结构与序列分析、科学工具、远程计算和研究记录组织在同一项目中。研究人员可以通过对话开展分析，在结构和序列视图中检查证据，并保留研究文件与分析过程，供后续工作继续使用。
 
 支持浏览器访问，以及 Windows、macOS 和 Linux 桌面客户端。
 
@@ -27,7 +27,7 @@ npm run build
 PROJECT_ROOT=/absolute/path/to/projects
 ```
 
-将路径替换为本机目录；Windows 可使用 `D:/ScienceStudio/projects`。模型服务需预先在 DSH 的 `settings.yaml` 中配置，并在 `.env` 中填写该服务要求的凭据。
+将路径替换为本机目录；Windows 可使用 `D:/GPS/projects`。模型服务需预先在 DSH 的 `settings.yaml` 中配置，并在 `.env` 中填写该服务要求的凭据。
 
 开发启动默认使用 `ollama-local` 服务和 `qwen3.8:latest` 模型。使用其他配置时，通过启动环境中的 `DSH_PROVIDER`、`DSH_MODEL` 指定；不要将 `DSH_*` 变量写入 `.env`。详细配置见 [DSH 示例](./examples/transport-dsh-example/README.md)。
 
@@ -46,15 +46,15 @@ npm run dev:dsh
 完成上述依赖安装和构建后，可从源码构建并启动客户端：
 
 ```bash
-npm run start -w @science-studio/desktop
+npm run start -w @gps/desktop
 ```
 
-启动后，在工作台设置中配置模型服务。项目默认保存在用户目录下的 `Documents/Science Studio/projects`。
+启动后，在工作台设置中配置模型服务。项目默认保存在用户目录下的 `Documents/Generative Protein System/projects`。
 
 如需生成安装包，在目标操作系统上运行：
 
 ```bash
-npm run pack -w @science-studio/desktop
+npm run pack -w @gps/desktop
 ```
 
 支持 Windows x64 NSIS、macOS DMG，以及 Linux AppImage 和 DEB。
@@ -117,4 +117,4 @@ MCP 用于接入外部工具和数据服务，例如文献检索、数据库查�
 
 ## 许可证
 
-Science Studio 采用 [Apache License 2.0](./LICENSE)。第三方依赖遵循各自的许可证。
+Generative Protein System 采用 [Apache License 2.0](./LICENSE)。第三方依赖遵循各自的许可证。

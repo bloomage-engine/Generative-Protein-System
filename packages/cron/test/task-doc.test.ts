@@ -30,23 +30,23 @@ test("a task document round-trips through serialize/parse", () => {
 });
 
 test("paths are recognized and the log file is never a task", () => {
-  assert.equal(CRON_DIR, ".science-studio/cron");
-  assert.equal(cronTaskPath("x1"), ".science-studio/cron/x1.md");
-  assert.equal(cronLogPath("x1"), ".science-studio/cron/x1.log.md");
+  assert.equal(CRON_DIR, ".gps/cron");
+  assert.equal(cronTaskPath("x1"), ".gps/cron/x1.md");
+  assert.equal(cronLogPath("x1"), ".gps/cron/x1.log.md");
   assert.equal(taskIdFromPath(cronTaskPath("x1")), "x1");
   assert.equal(isCronTaskPath(cronTaskPath("x1")), true);
   assert.equal(isCronTaskPath(cronLogPath("x1")), false);
   assert.equal(isCronTaskPath("notes.md"), false);
-  assert.equal(taskIdFromPath(".science-studio/cron/sub/x.md"), null);
+  assert.equal(taskIdFromPath(".gps/cron/sub/x.md"), null);
 });
 
 test("a run log is recognized only with a valid id and no nesting", () => {
   assert.equal(isCronLogPath(cronLogPath("x1")), true);
-  assert.equal(isCronLogPath(".science-studio/cron/daily-digest.log.md"), true);
+  assert.equal(isCronLogPath(".gps/cron/daily-digest.log.md"), true);
   assert.equal(isCronLogPath(cronLogPath("bad id!")), false);
-  assert.equal(isCronLogPath(".science-studio/cron/sub/x.log.md"), false);
+  assert.equal(isCronLogPath(".gps/cron/sub/x.log.md"), false);
   assert.equal(isCronLogPath(cronTaskPath("x1")), false, "a task document is not a log");
-  assert.equal(isCronLogPath(".science-studio/cron/x1.log"), false);
+  assert.equal(isCronLogPath(".gps/cron/x1.log"), false);
   assert.equal(isCronLogPath("notes.log.md"), false);
 });
 

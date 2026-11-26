@@ -1,5 +1,5 @@
 {
-  "name": "@science-studio/transport-dsh-example",
+  "name": "@gps/transport-dsh-example",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -14,10 +14,10 @@
   "dependencies": {
     "@assistant-ui/react": "^0.15.0",
     "@assistant-ui/react-markdown": "^0.14.14",
-    "@science-studio/transport": "*",
-    "@science-studio/transport-client": "*",
-    "@science-studio/transport-dsh": "*",
-    "@science-studio/transport-service": "*",
+    "@gps/transport": "*",
+    "@gps/transport-client": "*",
+    "@gps/transport-dsh": "*",
+    "@gps/transport-service": "*",
     "assistant-stream": "^0.3.41",
     "dotenv": "^16.4.0",
     "react": "^19.0.0",

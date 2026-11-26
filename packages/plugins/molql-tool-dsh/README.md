@@ -1,4 +1,4 @@
-# @science-studio/molql-tool-dsh
+# @gps/molql-tool-dsh
 
 A DeepSeek Harness plugin that registers three tools: **`molql`**
 (select/highlight atoms in the open structure), **`computeInteraction`**
@@ -18,12 +18,12 @@ returns it as structured JSON:
 }
 ```
 
-The result travels as the ordinary tool-call output; the Science Studio web app
-parses it (via `@science-studio/molstar-viewer`) and highlights/focuses the atoms
+The result travels as the ordinary tool-call output; the Generative Protein System web app
+parses it (via `@gps/molstar-viewer`) and highlights/focuses the atoms
 in the open structure. The tool never touches a structure — semantic validation
 (does the selection match anything) happens in the browser.
 
-`computeInteraction` fetches the Science Studio service's
+`computeInteraction` fetches the Generative Protein System service's
 `/api/workspace/interactions` route (the service owns workspace file access and
 runs Mol* headlessly) from the `@<project>/<path>/<molql>` mention, and returns a
 Markdown interaction table.
@@ -63,7 +63,7 @@ node scripts/sync-skill.mjs
 Mount it in the harness composition (`<harness home>/settings.yaml`):
 
 ```yaml
-- name: '@science-studio/molql-tool-dsh'
+- name: '@gps/molql-tool-dsh'
 ```
 
 The syntax manual lives at `skill/SKILL.md` + `skill/references/molql-syntax.md`

@@ -22,7 +22,7 @@ import type { MolqlSelectionTarget } from "./target.js";
 const READY_TIMEOUT_MS = 15000;
 
 /**
- * A standalone Mol* viewer wrapped for the science-studio preview pane.
+ * A standalone Mol* viewer wrapped for the gps preview pane.
  *
  * Owns the plugin lifecycle (init/load/dispose) and implements
  * `MolqlSelectionTarget` so `applyMolqlSelection` can drive it. React is

@@ -27,7 +27,7 @@ import {
   type SkillInvocationPolicy,
   type SkillScope,
   type Workspace,
-} from "@science-studio/transport";
+} from "@gps/transport";
 
 /** The workspace-relative root a Project's own skills are installed under. */
 export const PROJECT_SKILL_DIR = ".dsh/skills";

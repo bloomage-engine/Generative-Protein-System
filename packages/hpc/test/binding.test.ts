@@ -11,7 +11,7 @@ import {
 const BINDING: HpcBinding = {
   endpoint: "cluster-a",
   partition: "gpu",
-  workDir: "~/ss-proj42",
+  workDir: "~/gps-proj42",
   defaultTime: "4:00:00",
   notes: "gpus are A100; queue long on Mondays.",
 };
@@ -44,7 +44,7 @@ test("parse rejects malformed documents with a reason", () => {
 });
 
 test("ids follow the cron grammar and the path is the product namespace", () => {
-  assert.equal(HPC_BINDING_PATH, ".science-studio/hpc.md");
+  assert.equal(HPC_BINDING_PATH, ".gps/hpc.md");
   assert.equal(isValidEndpointId("cluster-a"), true);
   assert.equal(isValidEndpointId("Cluster-a"), false);
   assert.equal(isValidEndpointId("-x"), false);

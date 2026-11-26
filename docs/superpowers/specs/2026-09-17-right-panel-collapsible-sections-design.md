@@ -189,7 +189,7 @@ Open flags flow store → `RightPanel` → `SidebarSection`; toggling calls
   being open by default and the tree being mounted — Files defaults open, so it
   stays green; the test's locators do not touch the removed `<aside>`/header.
 - `npm run build` is the type gate (includes `typecheck:tests`). The suite
-  needs `npm run build -w @science-studio/transport-client` first, per the
+  needs `npm run build -w @gps/transport-client` first, per the
   existing web-e2e notes.
 
 ## Risks

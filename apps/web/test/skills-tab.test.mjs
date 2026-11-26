@@ -5,7 +5,7 @@
  * `/api/skills*`, never the settings file. Opening the dialog must not remount
  * the runtime owner, which the transcript marker check covers.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`. Needs a Chromium
+ * Prereq: `npm run build -w @gps/transport-client`. Needs a Chromium
  * (SKIPs without one).
  */
 import { test } from "node:test";

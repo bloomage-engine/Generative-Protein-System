@@ -6,7 +6,7 @@
 
 **Architecture:** A `Worktree` is a record row (`main` auto-ensured). The environment seam is keyed by `(projectId, worktreeId)` so each worktree gets its own `FsWorkspace` rooted at `<PROJECT_ROOT>/<projectId>/.worktrees/<id>/`. The service spawns the system `git` binary (mirroring the HPC SSH client) behind `/api/worktrees*` routes; it is the only writer of both git and the record row.
 
-**Tech Stack:** TypeScript, Node `node:test` + `node:assert/strict`, Fastify, `@science-studio/{record,transport,workspace}`, `node:child_process`.
+**Tech Stack:** TypeScript, Node `node:test` + `node:assert/strict`, Fastify, `@gps/{record,transport,workspace}`, `node:child_process`.
 
 **Spec:** `docs/superpowers/specs/2026-09-23-dsh-worktree-plugin-design.md`
 
@@ -16,8 +16,8 @@
 - **Deliberate deviation from the spec:** the spec says `Session.worktreeId: Id` is required. This plan makes it **optional** (`worktreeId?: Id`) with `DEFAULT_WORKTREE_ID = "main"` and a `sessionWorktreeId()` normalizer. Semantics are identical (absent = `main`, legacy rows read as `main`) but no existing test fixture or adapter must change. Flagged for the spec reviewer.
 - **No git library.** The service spawns the system `git` binary; the `GIT_BINARY` env var overrides the default `git` on PATH.
 - **Path convention, derived not stored:** `worktreeRelPath("main") === ""`, else `.worktrees/<id>` (POSIX).
-- **Gitignore entries** for a new repository: `.worktrees/` and `.science-studio/`.
-- **Initial commit identity is local, never global:** `-c user.name=Science Studio -c user.email=science-studio@localhost`.
+- **Gitignore entries** for a new repository: `.worktrees/` and `.gps/`.
+- **Initial commit identity is local, never global:** `-c user.name=Generative Protein System -c user.email=gps@localhost`.
 - **Ids:** a Worktree id is the slug of its name, unique within the Project, suffixed on collision; `main` is reserved.
 - **Compatibility:** a request that claims no worktree resolves to `main`, so every existing project-level route keeps working.
 - **Root build gate:** each task ends green under the package's own test command; the final task runs `npm run build` (the real type gate).
@@ -195,7 +195,7 @@ const run = (over: Partial<Run> = {}): Run => ({
 
 async function bothStores(runFn: (make: () => Promise<RecordStore>) => Promise<void>): Promise<void> {
   await runFn(async () => createInMemoryRecordStore());
-  const dir = await mkdtemp(join(tmpdir(), "ss-record-worktree-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-record-worktree-"));
   try {
     await runFn(async () => createJsonlRecordStore(join(dir, "record.jsonl")));
   } finally {
@@ -284,7 +284,7 @@ test("sessionWorktreeId defaults a legacy session to main", () => {
 });
 
 test("JSONL worktree rows and legacy sessions survive a reopen", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-record-worktree-reopen-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-record-worktree-reopen-"));
   try {
     const path = join(dir, "record.jsonl");
     const first = await createJsonlRecordStore(path);
@@ -310,7 +310,7 @@ test("JSONL worktree rows and legacy sessions survive a reopen", async () => {
 
 - [ ] **Step 4: Run the test to verify it fails**
 
-Run: `npm run test -w @science-studio/record`
+Run: `npm run test -w @gps/record`
 Expected: FAIL — the worktree methods are not on the store / exports are missing.
 
 - [ ] **Step 5: Implement the in-memory store methods**
@@ -388,7 +388,7 @@ In the existing `deleteProject`, add `worktrees.delete(worktreeKey(id, w.id))` f
 
 - [ ] **Step 6: Run the test to verify it passes**
 
-Run: `npm run test -w @science-studio/record`
+Run: `npm run test -w @gps/record`
 Expected: PASS for the in-memory half; the JSONL half still fails until Task 2 — that is fine, proceed.
 
 - [ ] **Step 7: Commit**
@@ -472,7 +472,7 @@ and add to the existing `deleteProject` cascade:
 
 - [ ] **Step 4: Run the test to verify it passes in both stores**
 
-Run: `npm run test -w @science-studio/record`
+Run: `npm run test -w @gps/record`
 Expected: PASS — all `worktree.test.ts` cases green in both stores, including the reopen/legacy-normalization case (Step 3 of Task 1).
 
 - [ ] **Step 5: Commit**
@@ -513,7 +513,7 @@ Create `services/transport-service/test/directory-worktree.test.ts`:
 ```ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createInMemoryRecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore } from "@gps/record";
 import { createRecordDirectory, WorktreeNotFoundError } from "../src/directory.js";
 
 const make = async () => {
@@ -661,7 +661,7 @@ import { join } from "node:path";
 import { FsWorkspace } from "../src/index.js";
 
 test("hiddenEntries are omitted from listings at any depth", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ss-hidden-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-hidden-"));
   try {
     await mkdir(join(root, ".worktrees", "exp-a"), { recursive: true });
     await mkdir(join(root, "data", ".git"), { recursive: true });
@@ -809,7 +809,7 @@ test("release during an in-flight acquire prevents re-caching", async () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npm run test -w @science-studio/transport`
+Run: `npm run test -w @gps/transport`
 Expected: FAIL — arity mismatch (`worktreeId` missing) / `worktreeId` property missing.
 
 - [ ] **Step 3: Implement the seam change**
@@ -870,7 +870,7 @@ In `packages/transport/src/environment.ts`:
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `npm run test -w @science-studio/transport`
+Run: `npm run test -w @gps/transport`
 Expected: PASS. (The other transport tests will type-fail until Tasks 7–8 update composition — run only this file if needed: `npx tsx --test packages/transport/test/environment.test.ts`.)
 
 - [ ] **Step 5: Commit**
@@ -946,7 +946,7 @@ git commit -m "feat(transport): WorktreeContext on the runtime init seam"
 - Test: `services/transport-service/test/worktree-paths.test.ts`
 
 **Interfaces:**
-- Consumes: `DEFAULT_WORKTREE_ID` from `@science-studio/record`.
+- Consumes: `DEFAULT_WORKTREE_ID` from `@gps/record`.
 - Produces:
   - `function worktreeRelPath(worktreeId: Id): string` — `""` for `main`, else `posix.join(".worktrees", id)`.
   - `const WORKTREES_DIR = ".worktrees"`
@@ -976,7 +976,7 @@ Expected: FAIL — module not found.
 
 ```ts
 import { posix } from "node:path";
-import { DEFAULT_WORKTREE_ID, type Id } from "@science-studio/record";
+import { DEFAULT_WORKTREE_ID, type Id } from "@gps/record";
 
 /** The directory under a Project root that holds linked worktree checkouts. */
 export const WORKTREES_DIR = ".worktrees";
@@ -1109,8 +1109,8 @@ Create `services/transport-service/test/worktree-scope.test.ts`:
 ```ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createInMemoryRecordStore } from "@science-studio/record";
-import { LocalEnvironmentProvider, NullWorkspace, type RuntimeAdapter } from "@science-studio/transport";
+import { createInMemoryRecordStore } from "@gps/record";
+import { LocalEnvironmentProvider, NullWorkspace, type RuntimeAdapter } from "@gps/transport";
 import { createRecordDirectory } from "../src/directory.js";
 import { createProjectScopes } from "../src/project-scope.js";
 
@@ -1188,7 +1188,7 @@ In `services/transport-service/src/project-scope.ts`:
 - `acquireProject(principal, projectId)` uses `worktreeId: DEFAULT_WORKTREE_ID`, calls `requireWorktree`, and acquires with it.
 - `sessionOf` calls `directory.resolveOrCreateSession(scope.projectId, sessionKey, scope.worktreeId)`.
 
-Import `DEFAULT_WORKTREE_ID` from `@science-studio/record`.
+Import `DEFAULT_WORKTREE_ID` from `@gps/record`.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -1225,7 +1225,7 @@ git commit -m "feat(service): resolve a worktree in the project scope"
     - `worktreeRemove(git, { repoDir, path, force }): Promise<void>`
     - `branchDelete(git, { repoDir, branch }): Promise<void>` — best-effort `git branch -D`; a missing branch is not an error (a worktree branch is always created by `-b`, so deleting it on teardown is safe and lets the same name be recreated).
     - `listWorktrees(git, repoDir): Promise<{ path: string; branch: string | null }[]>`
-  - `const GITIGNORE_ENTRIES = [".worktrees/", ".science-studio/"]`
+  - `const GITIGNORE_ENTRIES = [".worktrees/", ".gps/"]`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1251,7 +1251,7 @@ import {
 const git = createGitRunner();
 
 async function tmp(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "ss-git-"));
+  return mkdtemp(join(tmpdir(), "gps-git-"));
 }
 
 test("ensureRepo initializes main, gitignores and commits, idempotently", async () => {
@@ -1263,7 +1263,7 @@ test("ensureRepo initializes main, gitignores and commits, idempotently", async 
     assert.equal(await currentBranch(git, dir), "main");
     const ignore = await readFile(join(dir, ".gitignore"), "utf8");
     assert.match(ignore, /\.worktrees\//);
-    assert.match(ignore, /\.science-studio\//);
+    assert.match(ignore, /\.gps\//);
     assert.equal(await ensureRepo(git, dir), false); // already a repo
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -1346,8 +1346,8 @@ export class GitError extends Error {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-export const GITIGNORE_ENTRIES = [".worktrees/", ".science-studio/"] as const;
-const COMMITTER = ["-c", "user.name=Science Studio", "-c", "user.email=science-studio@localhost"];
+export const GITIGNORE_ENTRIES = [".worktrees/", ".gps/"] as const;
+const COMMITTER = ["-c", "user.name=Generative Protein System", "-c", "user.email=gps@localhost"];
 
 export function createGitRunner(opts: { gitBin?: string } = {}): GitRunner {
   const gitBin = opts.gitBin ?? process.env.GIT_BINARY ?? "git";
@@ -1519,8 +1519,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createInMemoryRecordStore } from "@science-studio/record";
-import { LocalEnvironmentProvider, LocalPrincipalResolver, NullWorkspace, type RuntimeAdapter } from "@science-studio/transport";
+import { createInMemoryRecordStore } from "@gps/record";
+import { LocalEnvironmentProvider, LocalPrincipalResolver, NullWorkspace, type RuntimeAdapter } from "@gps/transport";
 import { createTransportService } from "../src/server.js";
 import type { Backend } from "../src/composition.js";
 
@@ -1528,7 +1528,7 @@ const adapter = (): RuntimeAdapter =>
   ({ runtime: "fake", init: async () => {}, run: async function* () {}, abort: () => {} }) as RuntimeAdapter;
 
 test("create, list, and delete a worktree through the routes", async () => {
-  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "gps-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
   const backend: Backend = {
@@ -1579,7 +1579,7 @@ test("create, list, and delete a worktree through the routes", async () => {
 });
 
 test("listing does not create a repository", async () => {
-  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "gps-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
   const backend: Backend = {
@@ -1606,7 +1606,7 @@ test("listing does not create a repository", async () => {
 });
 
 test("create rejects an unsafe project id (400)", async () => {
-  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "gps-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
   const backend: Backend = {
@@ -1639,7 +1639,7 @@ test("create rejects an unsafe project id (400)", async () => {
 });
 
 test("a deleted worktree name can be created again", async () => {
-  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "gps-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
   const backend: Backend = {
@@ -1743,7 +1743,7 @@ Expected: PASS.
 
 - [ ] **Step 7: Run the whole service suite**
 
-Run: `npm run test -w @science-studio/transport-service`
+Run: `npm run test -w @gps/transport-service`
 Expected: PASS — fix any existing test that constructed a `Backend` without worktree fields (the defaults keep them optional).
 
 - [ ] **Step 8: Commit**
@@ -1771,7 +1771,7 @@ Append to `worktree-routes.test.ts`:
 
 ```ts
 test("a session is created under a claimed worktree and listed by it", async () => {
-  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "gps-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
   const backend: Backend = {
@@ -1820,7 +1820,7 @@ Expected: FAIL — `worktreeId` is not threaded / the filter is ignored.
 
 In `server.ts`'s `POST /api/projects/:id/sessions`:
 - Read `worktreeId` from the body; when present, `await directory.ensureWorktree(id)` FIRST (the `main` row may not exist yet on a fresh Project — this is the "any worktree-touching path ensures it" rule), then `await directory.requireWorktree(id, worktreeId)` (an unknown id surfaces `WorktreeNotFoundError` → 404), and pass it to `directory.createSession(id, { ..., worktreeId })`.
-- In `GET /api/projects/:id/sessions`, read `worktreeId` from the query and filter with `sessionWorktreeId(session) === worktreeId` when present. Import `sessionWorktreeId` from `@science-studio/record`.
+- In `GET /api/projects/:id/sessions`, read `worktreeId` from the query and filter with `sessionWorktreeId(session) === worktreeId` when present. Import `sessionWorktreeId` from `@gps/record`.
 
 Add to the route test: creating a Session with `worktreeId: "main"` on a fresh Project succeeds (201) — `main` is auto-ensured.
 

@@ -267,7 +267,7 @@ export function createCommandBridge(endpoint: string): DshCommandBridge {
 export function bridgeSocketPath(dir: string): string {
   const unique = `${process.pid}-${randomUUID().slice(0, 8)}`;
   return process.platform === "win32"
-    ? `\\\\.\\pipe\\ss-dsh-bridge-${unique}`
+    ? `\\\\.\\pipe\\gps-dsh-bridge-${unique}`
     : join(dir, `${unique}.sock`);
 }
 
@@ -284,7 +284,7 @@ export async function writeBridgePatch(opts: { dir: string; pluginPath: string; 
   const file = join(dir, `${basename(socket)}.cordis.patch.yml`);
   const document = [
     "- insert:",
-    "    - id: science-studio-command-bridge",
+    "    - id: gps-command-bridge",
     `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
     "      config:",
     `        socket: ${JSON.stringify(socket)}`,
@@ -320,7 +320,7 @@ export async function writeProjectPatch(opts: {
   const file = join(dir, `project-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
   const document = [
     "- insert:",
-    "    - id: science-studio-project",
+    "    - id: gps-project",
     `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
     `      config: ${JSON.stringify(config)}`,
     "",
@@ -351,7 +351,7 @@ export async function writeCronPatch(opts: {
   const file = join(dir, `cron-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
   const document = [
     "- insert:",
-    "    - id: science-studio-cron",
+    "    - id: gps-cron",
     `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
     `      config: ${JSON.stringify(config)}`,
     "",
@@ -374,7 +374,7 @@ export async function writeSubagentPatch(opts: { dir: string; pluginPath: string
   const file = join(dir, `subagent-reporting-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
   const document = [
     "- insert:",
-    "    - id: science-studio-subagent-reporting",
+    "    - id: gps-subagent-reporting",
     `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
     "      config: {}",
     "",
@@ -391,7 +391,7 @@ export async function writeSubagentPatch(opts: { dir: string; pluginPath: string
  */
 export interface HpcPluginLaunchConfig {
   project: { id: string; name: string; createdAt: string };
-  /** Absent → the plugin falls back to `SCIENCE_STUDIO_SERVICE_URL`/the default. */
+  /** Absent → the plugin falls back to `GPS_SERVICE_URL`/the default. */
   service?: string;
 }
 
@@ -410,7 +410,7 @@ export async function writeHpcPatch(opts: {
   const file = join(dir, `hpc-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
   const document = [
     "- insert:",
-    "    - id: science-studio-hpc",
+    "    - id: gps-hpc",
     `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
     `      config: ${JSON.stringify(config)}`,
     "",
@@ -448,7 +448,7 @@ export async function writeWorktreePatch(opts: {
   const file = join(dir, `worktree-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
   const document = [
     "- insert:",
-    "    - id: science-studio-worktree",
+    "    - id: gps-worktree",
     `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
     `      config: ${JSON.stringify(config)}`,
     "",

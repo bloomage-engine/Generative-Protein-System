@@ -1,10 +1,10 @@
-import type { Message, MessagePart } from "@science-studio/transport";
-import type { RunStatus } from "@science-studio/record";
+import type { Message, MessagePart } from "@gps/transport";
+import type { RunStatus } from "@gps/record";
 import type { ContentBlock } from "@deepseek-ai/dsh-llm";
 import type { TurnEndReason } from "@deepseek-ai/dsh-session";
 
 /**
- * Translate one dsh content-block array into Science Studio message parts.
+ * Translate one dsh content-block array into Generative Protein System message parts.
  * Text and reasoning map 1:1; tool calls become a `tool-call` part carrying
  * the model's raw JSON arguments string. Image/file blocks and any
  * merge-extensible future block kinds are dropped: the transport seam has no
@@ -59,7 +59,7 @@ export function findToolCallMessage(messages: readonly Message[], callId: string
   return null;
 }
 
-/** Map a dsh `turn/end` reason to the terminal Science Studio session status. */
+/** Map a dsh `turn/end` reason to the terminal Generative Protein System session status. */
 export function turnEndStatus(reason: TurnEndReason): "idle" | "error" {
   return reason.kind === "error" ? "error" : "idle";
 }

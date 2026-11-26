@@ -4,7 +4,7 @@
 
 **Goal:** An interactive MSA (multiple sequence alignment) viewer in the workbench file preview: aligned grid with click-select, double-click composer mentions, search/filters and conservation; mmseqs2 hit tables; unaligned-FASTA rows; plain-text fallback.
 
-**Architecture:** A new zero-dependency package `@science-studio/msa-viewer` owns the pure, Node-testable logic (parsers for ClustalW / Stockholm / FASTA / mmseqs `.result`, column statistics, the mention codec, row-windowing/span-grouping/ruler/band scales) and thin React views over it (`MsaGrid`, `MsaResultTable`, `UnalignedList`). `apps/web` gains an `"msa"` file kind (by name, per repo convention), a `MsaRenderer` shell that fetches its own bytes and routes by parse result, and mention insertion through the existing `ComposerInsertProvider` seam. No service routes, no agent-side plugin, no record change, no molstar.
+**Architecture:** A new zero-dependency package `@gps/msa-viewer` owns the pure, Node-testable logic (parsers for ClustalW / Stockholm / FASTA / mmseqs `.result`, column statistics, the mention codec, row-windowing/span-grouping/ruler/band scales) and thin React views over it (`MsaGrid`, `MsaResultTable`, `UnalignedList`). `apps/web` gains an `"msa"` file kind (by name, per repo convention), a `MsaRenderer` shell that fetches its own bytes and routes by parse result, and mention insertion through the existing `ComposerInsertProvider` seam. No service routes, no agent-side plugin, no record change, no molstar.
 
 **Tech Stack:** TypeScript (ES2022, strict), React 19 (peer), `node:test` + `tsx` for Node tests, Next.js 15 + Tailwind v4 in the web shell, `tsc -b` build.
 
@@ -14,7 +14,7 @@
 
 - Work happens on branch `molstar-msa` (already created; the spec is committed as `7d96749`).
 - Artifacts and commit messages are **English** (repo convention, `AGENTS.md`); conversation happens in Chinese.
-- `@science-studio/msa-viewer` has **no runtime dependencies** except `react` (peer) and **no monorepo imports** and **no molstar**. Pure entries (`./formats`, `./stats`, `./mention`, `./grid`) must import cleanly under plain Node (`node --import tsx --test`) — no DOM globals at module top level.
+- `@gps/msa-viewer` has **no runtime dependencies** except `react` (peer) and **no monorepo imports** and **no molstar**. Pure entries (`./formats`, `./stats`, `./mention`, `./grid`) must import cleanly under plain Node (`node --import tsx --test`) — no DOM globals at module top level.
 - The root `workspaces` (`packages/*`) already absorb the new directory; `tsconfig.tests.json` already covers `packages/*/test/**` — neither needs editing unless tests drift.
 - `npm run test --workspaces --if-present` (root) automatically includes the new package's `test` script; `npm run build` (root) is the real type gate and gains the new package in its chain (Task 6).
 - **Renderer rule (from `AGENTS.md`):** a renderer inside an open-file tab must NEVER assert its own `visibility` — hidden tabs use `visibility:hidden` and a child's `visibility:visible` resurrects it above the active tab. Loading/error states go on overlays, never on the content element.
@@ -54,7 +54,7 @@ Inputs/failure modes the spec implies but no task's tests fully exercise — eac
 
 ```json
 {
-  "name": "@science-studio/msa-viewer",
+  "name": "@gps/msa-viewer",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -126,9 +126,9 @@ Add to `packages/msa-viewer/package.json` `exports` NOW for the entries this tas
 - [ ] **Step 2: Link the workspace**
 
 ```bash
-cd /home/zhonghua/workspace/science-studio
+cd /home/zhonghua/workspace/gps
 npm install
-ls node_modules/@science-studio | grep msa
+ls node_modules/@gps | grep msa
 ```
 
 Expected: `msa-viewer` listed (symlink into the root `node_modules`).
@@ -315,8 +315,8 @@ test("unrecognized content throws MsaParseError with a reason", () => {
 - [ ] **Step 4: Run the tests and watch them fail**
 
 ```bash
-cd /home/zhonghua/workspace/science-studio
-npm run test -w @science-studio/msa-viewer
+cd /home/zhonghua/workspace/gps
+npm run test -w @gps/msa-viewer
 ```
 
 Expected: FAIL — modules not found (`../src/formats.js` does not exist yet).
@@ -652,9 +652,9 @@ export {
 - [ ] **Step 7: Run the tests and build — both green**
 
 ```bash
-cd /home/zhonghua/workspace/science-studio
-npm run test -w @science-studio/msa-viewer
-npm run build -w @science-studio/msa-viewer
+cd /home/zhonghua/workspace/gps
+npm run test -w @gps/msa-viewer
+npm run build -w @gps/msa-viewer
 ```
 
 Expected: all tests PASS; `tsc -b` emits `dist/` cleanly.
@@ -764,7 +764,7 @@ test("tableStats: averages + conserved count use the same predicate", () => {
 - [ ] **Step 2: Run — expect FAIL** (`./stats.js` not found)
 
 ```bash
-npm run test -w @science-studio/msa-viewer
+npm run test -w @gps/msa-viewer
 ```
 
 - [ ] **Step 3: Implement `src/stats.ts`**
@@ -879,8 +879,8 @@ export {
 - [ ] **Step 5: Tests + build green**
 
 ```bash
-npm run test -w @science-studio/msa-viewer
-npm run build -w @science-studio/msa-viewer
+npm run test -w @gps/msa-viewer
+npm run build -w @gps/msa-viewer
 ```
 
 - [ ] **Step 6: Commit**
@@ -967,7 +967,7 @@ test("msaMentionKey is stable across single cells and runs", () => {
 - [ ] **Step 2: Run — expect FAIL** (module not found)
 
 ```bash
-npm run test -w @science-studio/msa-viewer
+npm run test -w @gps/msa-viewer
 ```
 
 - [ ] **Step 3: Implement `src/mention.ts`**
@@ -1065,8 +1065,8 @@ export {
 - [ ] **Step 5: Tests + build green**
 
 ```bash
-npm run test -w @science-studio/msa-viewer
-npm run build -w @science-studio/msa-viewer
+npm run test -w @gps/msa-viewer
+npm run build -w @gps/msa-viewer
 ```
 
 - [ ] **Step 6: Commit**
@@ -1205,7 +1205,7 @@ test("columnsToKeep: conserved-only and hide-gaps, over the ORIGINAL columns", (
 - [ ] **Step 2: Run — expect FAIL** (module not found)
 
 ```bash
-npm run test -w @science-studio/msa-viewer
+npm run test -w @gps/msa-viewer
 ```
 
 - [ ] **Step 3: Implement `src/grid.ts`**
@@ -1345,8 +1345,8 @@ export {
 - [ ] **Step 5: Tests + build green**
 
 ```bash
-npm run test -w @science-studio/msa-viewer
-npm run build -w @science-studio/msa-viewer
+npm run test -w @gps/msa-viewer
+npm run build -w @gps/msa-viewer
 ```
 
 - [ ] **Step 6: Commit**
@@ -1947,9 +1947,9 @@ export { UnalignedList, type UnalignedListProps } from "./react/UnalignedList.js
 - [ ] **Step 5: Package green** (build typechecks the components; tests unchanged)
 
 ```bash
-cd /home/zhonghua/workspace/science-studio
-npm run build -w @science-studio/msa-viewer
-npm run test -w @science-studio/msa-viewer
+cd /home/zhonghua/workspace/gps
+npm run build -w @gps/msa-viewer
+npm run test -w @gps/msa-viewer
 ```
 
 Expected: build clean; all tests PASS.
@@ -1974,23 +1974,23 @@ git commit -m "feat(msa-viewer): the React views — MsaGrid, MsaResultTable, Un
 - Modify: `apps/web/test/file-kinds.test.mjs` (new tests)
 
 **Interfaces:**
-- Consumes: `@science-studio/msa-viewer` (Tasks 1–5), `useWorkspaceApi` / `workspaceFileUrl` from `@science-studio/transport-client`, `useComposerInsert()` from `@/components/assistant-ui/composer-insert`, `useStudioStore((s) => s.revealLeftView)`, `PlainTextRenderer` (`content: string`).
+- Consumes: `@gps/msa-viewer` (Tasks 1–5), `useWorkspaceApi` / `workspaceFileUrl` from `@gps/transport-client`, `useComposerInsert()` from `@/components/assistant-ui/composer-insert`, `useStudioStore((s) => s.revealLeftView)`, `PlainTextRenderer` (`content: string`).
 - Produces: `FileKind` gains `"msa"`; `kindFor(..., "any-mime")` → `"msa"` for MSA names; `isTextEditable(msa-name)` → `false`; `MsaRenderer({ path, name })`.
 
 - [ ] **Step 1: Add the dependency + link**
 
-`apps/web/package.json` `dependencies` — add beside `"@science-studio/molql-viewer": "*"`:
+`apps/web/package.json` `dependencies` — add beside `"@gps/molql-viewer": "*"`:
 
 ```json
-    "@science-studio/msa-viewer": "*",
+    "@gps/msa-viewer": "*",
 ```
 
 Then:
 
 ```bash
-cd /home/zhonghua/workspace/science-studio
+cd /home/zhonghua/workspace/gps
 npm install
-ls apps/web/node_modules/@science-studio 2>/dev/null || ls node_modules/@science-studio | grep msa
+ls apps/web/node_modules/@gps 2>/dev/null || ls node_modules/@gps | grep msa
 ```
 
 - [ ] **Step 2: Write the failing web tests** (append to `apps/web/test/file-kinds.test.mjs`)
@@ -2032,7 +2032,7 @@ test("msa files are not text-editable (no source editor; the renderer owns the r
 - [ ] **Step 3: Run — expect FAIL** (`kindFor` does not know `"msa"`; `isMsaFile` not exported)
 
 ```bash
-cd /home/zhonghua/workspace/science-studio/apps/web
+cd /home/zhonghua/workspace/gps/apps/web
 node --test test/file-kinds.test.mjs
 ```
 
@@ -2043,7 +2043,7 @@ Note: this single file is pure Node (type stripping) — no Chromium, no dev ser
 (a) the new import (next to the existing `molql-viewer` import at line 2):
 
 ```ts
-import { isMsaFile } from "@science-studio/msa-viewer/formats";
+import { isMsaFile } from "@gps/msa-viewer/formats";
 ```
 
 (b) the kind union + re-export (after the existing line 16 re-export):
@@ -2051,7 +2051,7 @@ import { isMsaFile } from "@science-studio/msa-viewer/formats";
 ```ts
 export type FileKind = "markdown" | "json" | "code" | "text" | "pdf" | "structure" | "image" | "msa";
 
-export { isMsaFile } from "@science-studio/msa-viewer/formats";
+export { isMsaFile } from "@gps/msa-viewer/formats";
 ```
 
 (c) `kindFor` — insert the msa case after the structure case (line 31), and `isTextEditable` (line 117) becomes:
@@ -2074,7 +2074,7 @@ export function isTextEditable(name: string): boolean {
 - [ ] **Step 5: Run the web tests — green**
 
 ```bash
-cd /home/zhonghua/workspace/science-studio/apps/web
+cd /home/zhonghua/workspace/gps/apps/web
 node --test test/file-kinds.test.mjs
 ```
 
@@ -2093,8 +2093,8 @@ import {
   msaMentionKey,
   parseAlignment,
   type MsaTarget,
-} from "@science-studio/msa-viewer";
-import { useWorkspaceApi, workspaceFileUrl } from "@science-studio/transport-client";
+} from "@gps/msa-viewer";
+import { useWorkspaceApi, workspaceFileUrl } from "@gps/transport-client";
 import { useComposerInsert } from "@/components/assistant-ui/composer-insert";
 import { useStudioStore } from "@/store/studio-store";
 import { PlainTextRenderer } from "./PlainTextRenderer";
@@ -2103,7 +2103,7 @@ import { PlainTextRenderer } from "./PlainTextRenderer";
  * The MSA preview: fetches the file's own bytes (like the other specialist viewers —
  * the text hook would double-download, and the server may serve these as
  * `application/octet-stream`, which `useWorkspaceFile` classifies as binary),
- * parses them with `@science-studio/msa-viewer`, and routes:
+ * parses them with `@gps/msa-viewer`, and routes:
  *   aligned  → MsaGrid · unaligned → UnalignedList · mmseqs → MsaResultTable
  * Parse failure and an oversized file fall back to plain text — never a blank pane.
  *
@@ -2273,17 +2273,17 @@ const MsaRenderer = dynamic(
             <TextPreview
 ```
 
-- [ ] **Step 8: Add the package to the root build chain** — in the ROOT `package.json` `scripts.build`, insert `&& npm run build -w @science-studio/msa-viewer` between `molql-viewer` and `transport-openclaw`:
+- [ ] **Step 8: Add the package to the root build chain** — in the ROOT `package.json` `scripts.build`, insert `&& npm run build -w @gps/msa-viewer` between `molql-viewer` and `transport-openclaw`:
 
 ```json
-    "build": "npm run build -w @science-studio/record && npm run build -w @science-studio/transport && npm run build -w @science-studio/workspace && npm run build -w @science-studio/cron && npm run build -w @science-studio/hpc && npm run build -w @science-studio/contract-tests && npm run build -w @science-studio/transport-client && npm run build -w @science-studio/molql-viewer && npm run build -w @science-studio/msa-viewer && npm run build -w @science-studio/transport-openclaw && npm run build -w @science-studio/transport-dsh && npm run build -w @science-studio/transport-service && npm run typecheck:tests",
+    "build": "npm run build -w @gps/record && npm run build -w @gps/transport && npm run build -w @gps/workspace && npm run build -w @gps/cron && npm run build -w @gps/hpc && npm run build -w @gps/contract-tests && npm run build -w @gps/transport-client && npm run build -w @gps/molql-viewer && npm run build -w @gps/msa-viewer && npm run build -w @gps/transport-openclaw && npm run build -w @gps/transport-dsh && npm run build -w @gps/transport-service && npm run typecheck:tests",
 ```
 
 - [ ] **Step 9: Type and test — green**
 
 ```bash
-cd /home/zhonghua/workspace/science-studio
-npm run build -w @science-studio/web 2>&1 | tail -5   # next build = the web type gate (or at least: cd apps/web && npx tsc --noEmit)
+cd /home/zhonghua/workspace/gps
+npm run build -w @gps/web 2>&1 | tail -5   # next build = the web type gate (or at least: cd apps/web && npx tsc --noEmit)
 cd apps/web && npx tsc --noEmit                          # the cheaper, always-available gate
 node --test test/file-kinds.test.mjs
 ```
@@ -2293,7 +2293,7 @@ Expected: `tsc --noEmit` clean; `file-kinds` suite green.
 - [ ] **Step 10: Commit**
 
 ```bash
-cd /home/zhonghua/workspace/science-studio
+cd /home/zhonghua/workspace/gps
 git add apps/web/package.json apps/web/components/studio/file-utils.ts apps/web/components/studio/renderers/MsaRenderer.tsx apps/web/components/studio/file-preview-pane.tsx package.json apps/web/test/file-kinds.test.mjs
 git commit -m "feat(web): msa file kind + MsaRenderer (grid/table/rows + plain-text fallback + composer mentions)"
 ```
@@ -2312,7 +2312,7 @@ git commit -m "feat(web): msa file kind + MsaRenderer (grid/table/rows + plain-t
 - [ ] **Step 1: Whole-repo gate**
 
 ```bash
-cd /home/zhonghua/workspace/science-studio
+cd /home/zhonghua/workspace/gps
 npm run build    # record→…→msa-viewer→…→transport-service→typecheck:tests (checks packages/*/test/**)
 npm run test     # every workspace with a test script, including msa-viewer
 ```
@@ -2376,9 +2376,9 @@ packages/msa-viewer             MSA (multiple sequence alignment) view + interac
   plain text — never a blank pane.
 - **The package is the boundary (zero molstar).** MSA is a text grid, not a 3D
   scene, and Mol\* 5.9.0 ships no MSA component (verified against the installed
-  tree) — so `@science-studio/msa-viewer` owns the parsing/stats/mention/grid math
-  (pure, Node-tested: `npm run test -w @science-studio/msa-viewer`) and the React
-  views are thin over it, the same precedent as `@science-studio/molql-viewer`'s
+  tree) — so `@gps/msa-viewer` owns the parsing/stats/mention/grid math
+  (pure, Node-tested: `npm run test -w @gps/msa-viewer`) and the React
+  views are thin over it, the same precedent as `@gps/molql-viewer`'s
   `react/` folder. `isTextEditable` excludes `"msa"` (no source editor — the
   renderer's "Raw text" toggle is that affordance).
 - **Mentions are plain text over the existing seam.** Double-click (or the
@@ -2393,7 +2393,7 @@ packages/msa-viewer             MSA (multiple sequence alignment) view + interac
 - [ ] **Step 5: Final gate + commit**
 
 ```bash
-cd /home/zhonghua/workspace/science-studio
+cd /home/zhonghua/workspace/gps
 npm run build
 npm run test
 git add AGENTS.md

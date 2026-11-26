@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createCronTask, SCHEDULE_PRESETS, presetToExpression, type SchedulePreset } from "@science-studio/transport-client";
+import { createCronTask, SCHEDULE_PRESETS, presetToExpression, type SchedulePreset } from "@gps/transport-client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

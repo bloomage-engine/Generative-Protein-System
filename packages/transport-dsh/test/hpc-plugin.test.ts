@@ -84,7 +84,7 @@ test("a project config registers the five tools and the prompt section", () => {
     "hpc_logs",
     "hpc_submit",
   ]);
-  assert.deepEqual(host.sections().map((s) => s.name), ["science-studio-hpc"]);
+  assert.deepEqual(host.sections().map((s) => s.name), ["gps-hpc"]);
   assert.equal(host.sections()[0]?.order, 465);
 });
 

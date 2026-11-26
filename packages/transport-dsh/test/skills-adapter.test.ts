@@ -14,7 +14,7 @@ import {
   type FileStat,
   type RecordStoreLike,
   type Workspace,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
 
 /**

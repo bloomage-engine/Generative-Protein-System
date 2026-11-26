@@ -9,7 +9,7 @@
  *   2. The inserted file renders as `.aui-mention-chip` and the SENT text still
  *      holds `:file[raw.csv]{name=analysis/data/raw.csv}`.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`.
+ * Prereq: `npm run build -w @gps/transport-client`.
  * Needs a Chromium; SKIPPED when none is found.
  */
 import { test } from "node:test";

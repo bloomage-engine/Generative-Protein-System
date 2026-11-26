@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RuntimeAdapter, RuntimePlugin } from "@science-studio/transport";
+import type { RuntimeAdapter, RuntimePlugin } from "@gps/transport";
 import { createBackend } from "../src/index.js";
 
 function fakeAdapter(): RuntimeAdapter {
@@ -11,7 +11,7 @@ function fakeAdapter(): RuntimeAdapter {
 }
 
 test("the settings file wins over the ambient launch env in the binding", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-composition-settings-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-composition-settings-"));
   const settingsPath = join(dir, "settings.json");
   await writeFile(
     settingsPath,
@@ -49,7 +49,7 @@ test("the settings file wins over the ambient launch env in the binding", async 
       {
         TRANSPORT_RUNTIME: "fake",
         RECORD_STORE: "memory",
-        SS_SETTINGS_PATH: settingsPath,
+        GPS_SETTINGS_PATH: settingsPath,
         DSH_PROVIDER: "ambient",
         DSH_MODEL: "ambient-model",
       },
@@ -59,8 +59,8 @@ test("the settings file wins over the ambient launch env in the binding", async 
     assert.ok(captured, "localBinding was called");
     assert.equal(captured.DSH_PROVIDER, "from-file");
     assert.equal(captured.DSH_MODEL, "file-model");
-    assert.equal(captured.SS_MODEL_ENDPOINT, "http://file/v1");
-    assert.equal(captured.SS_MODEL_API_KEY, "file-key");
+    assert.equal(captured.GPS_MODEL_ENDPOINT, "http://file/v1");
+    assert.equal(captured.GPS_MODEL_API_KEY, "file-key");
     assert.equal(backend.settingsPath, settingsPath);
   } finally {
     await rm(dir, { recursive: true, force: true });

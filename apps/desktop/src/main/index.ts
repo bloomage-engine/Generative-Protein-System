@@ -19,7 +19,7 @@ import { createWorkbenchWindow } from "./windows.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(here, "..", "..");
-if (process.platform === "win32") app.setAppUserModelId("ss.hx-engine.com");
+if (process.platform === "win32") app.setAppUserModelId("gps.hx-engine.com");
 
 let workbench: BrowserWindow | null = null;
 let host: ChildProcess | null = null;
@@ -39,7 +39,7 @@ function pathEnv(): string {
 function reportFailure(context: string, err: unknown): void {
   const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
   process.stderr.write(`[desktop] ${context}: ${detail}\n`);
-  if (app.isReady()) dialog.showErrorBox("Science Studio failed to start", detail);
+  if (app.isReady()) dialog.showErrorBox("Generative Protein System failed to start", detail);
 }
 
 async function readConfig(): Promise<DesktopConfig> {
@@ -125,7 +125,7 @@ function localUrl(ports: HostPorts): string {
 
 function connectionHelpPage(url: string, reason: string): string {
   const html =
-    `<!doctype html><meta charset="utf-8"><title>Science Studio</title>` +
+    `<!doctype html><meta charset="utf-8"><title>Generative Protein System</title>` +
     `<body style="font-family: system-ui, sans-serif; background: #0b0b0b; color: #e5e5e5; padding: 2rem; line-height: 1.6">` +
     `<h1>Cannot reach ${url}</h1><p>${reason}</p>` +
     `<p>Start the local dev servers (<code>npm run dev</code>) and this window reconnects automatically, or press Ctrl/Cmd+R to retry.</p>` +
@@ -229,7 +229,7 @@ function installMenu(): void {
       { role: "editMenu" },
       { role: "viewMenu" },
       {
-        label: "Science Studio",
+        label: "Generative Protein System",
         submenu: [
           { label: "Settings…", accelerator: "CmdOrCtrl+,", click: () => { void openWorkbench(); } },
           {

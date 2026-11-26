@@ -15,7 +15,7 @@
  * unit-tested without a browser; only `read`/`write`/`syncScopeUrl` touch the
  * browser, and each tolerates a browser that refuses (private mode, quota).
  */
-import type { Project, Session, Worktree } from "@science-studio/transport-client";
+import type { Project, Session, Worktree } from "@gps/transport-client";
 
 /**
  * The reserved `main` Worktree id. Mirrors `DEFAULT_WORKTREE_ID` in the record /
@@ -27,7 +27,7 @@ import type { Project, Session, Worktree } from "@science-studio/transport-clien
 export const DEFAULT_WORKTREE_ID = "main";
 
 /** The one key we own. Versioned, so a future shape can migrate instead of guess. */
-export const SCOPE_MEMORY_KEY = "science-studio.scope.v1";
+export const SCOPE_MEMORY_KEY = "gps.scope.v1";
 
 /**
  * The separator in a session key. A Worktree id is only unique within a Project

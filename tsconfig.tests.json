@@ -7,7 +7,7 @@
   //
   // This is the one program that type-checks them. It runs at the END of
   // `npm run build`, after each package's `dist` exists, because
-  // `@science-studio/*` resolves through node_modules to those built types.
+  // `@gps/*` resolves through node_modules to those built types.
   //
   // `jsx` is the one monorepo-wide concession: transport-client is the only
   // package with `.tsx`, and its tests reach into that source. `lib` stays

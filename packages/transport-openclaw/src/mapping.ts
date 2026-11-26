@@ -1,11 +1,11 @@
 import type { EventFrame } from "@openclaw/gateway-client/browser";
-import type { MessagePart } from "@science-studio/transport";
+import type { MessagePart } from "@gps/transport";
 import { formatResultText, mergeToolResult } from "./tool-result.js";
 
 /**
  * Pure mapping from gateway `chat` / `agent` frames into normalized
  * `MessagePart`s and `StateDelta`s. Ported from the reference openclaw
- * adapter's `events.ts` / `blocks.ts` and adapted to Science Studio's
+ * adapter's `events.ts` / `blocks.ts` and adapted to Generative Protein System's
  * `SessionState` shape (see docs/architecture.md §4 / §5).
  */
 

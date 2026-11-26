@@ -82,7 +82,7 @@ describe("studio store - thread windowing", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/web -- --testPathPattern="studio-store-windowing"`
+Run: `npm run test -w @gps/web -- --testPathPattern="studio-store-windowing"`
 Expected: FAIL with "visibleMessageCount is not defined"
 
 - [ ] **Step 3: Write minimal implementation**
@@ -109,7 +109,7 @@ Expected: FAIL with "visibleMessageCount is not defined"
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/web -- --testPathPattern="studio-store-windowing"`
+Run: `npm run test -w @gps/web -- --testPathPattern="studio-store-windowing"`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -142,7 +142,7 @@ import { SettingsDialog } from "@/components/studio/settings-dialog";
 import { useStudioStore } from "@/store/studio-store";
 
 // Mock fetchSettings and updateSettings
-jest.mock("@science-studio/transport-client", () => ({
+jest.mock("@gps/transport-client", () => ({
   fetchSettings: jest.fn().mockResolvedValue({
     model: {},
     subagents: {},
@@ -183,7 +183,7 @@ describe("Settings Dialog - Thread tab", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/web -- --testPathPattern="settings-thread"`
+Run: `npm run test -w @gps/web -- --testPathPattern="settings-thread"`
 Expected: FAIL with "Thread tab not found"
 
 - [ ] **Step 3: Write minimal implementation**
@@ -267,7 +267,7 @@ Expected: FAIL with "Thread tab not found"
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/web -- --testPathPattern="settings-thread"`
+Run: `npm run test -w @gps/web -- --testPathPattern="settings-thread"`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -356,7 +356,7 @@ describe("Thread - message windowing", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/web -- --testPathPattern="thread-windowing"`
+Run: `npm run test -w @gps/web -- --testPathPattern="thread-windowing"`
 Expected: FAIL with "unstable_useThreadMessageIds is not defined"
 
 - [ ] **Step 3: Write minimal implementation**
@@ -412,7 +412,7 @@ const ThreadMessageWindow: FC = () => {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/web -- --testPathPattern="thread-windowing"`
+Run: `npm run test -w @gps/web -- --testPathPattern="thread-windowing"`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -469,7 +469,7 @@ describe("session switch resets visibleMessageCount", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run test -w @science-studio/web -- --testPathPattern="studio-store-windowing"`
+Run: `npm run test -w @gps/web -- --testPathPattern="studio-store-windowing"`
 Expected: FAIL with "visibleMessageCount not reset"
 
 - [ ] **Step 3: Write minimal implementation**
@@ -490,7 +490,7 @@ Expected: FAIL with "visibleMessageCount not reset"
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -w @science-studio/web -- --testPathPattern="studio-store-windowing"`
+Run: `npm run test -w @gps/web -- --testPathPattern="studio-store-windowing"`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -571,7 +571,7 @@ describe("Thread windowing integration", () => {
 
 - [ ] **Step 2: Run integration test**
 
-Run: `npm run test -w @science-studio/web -- --testPathPattern="thread-windowing-integration"`
+Run: `npm run test -w @gps/web -- --testPathPattern="thread-windowing-integration"`
 Expected: PASS
 
 - [ ] **Step 3: Commit**
@@ -590,7 +590,7 @@ git commit -m "test: add integration tests for thread windowing"
 
 - [ ] **Step 1: Run all web tests**
 
-Run: `npm run test -w @science-studio/web`
+Run: `npm run test -w @gps/web`
 Expected: All tests pass
 
 - [ ] **Step 2: Run typecheck**

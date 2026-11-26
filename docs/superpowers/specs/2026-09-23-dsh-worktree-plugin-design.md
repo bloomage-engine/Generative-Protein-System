@@ -2,7 +2,7 @@
 
 ## Summary
 
-Today a Science Studio **Project** is 1:1 with one workspace directory
+Today a Generative Protein System **Project** is 1:1 with one workspace directory
 (`<PROJECT_ROOT>/<projectId>/`), one runtime adapter and one harness child whose
 cwd is that directory, and every **Session** of the Project shares it
 (ADR-0008). Researchers want to run parallel lines of work on the same project
@@ -161,7 +161,7 @@ return new FsWorkspace(host, {
   those names are omitted from `list` results. It stops the `main` worktree's
   tree from recursively listing every worktree under `.worktrees/` and hides
   `.git`. It affects only the seam's listing (the UI browser); the dsh child
-  uses its own filesystem, and `.science-studio/cron` stays visible.
+  uses its own filesystem, and `.gps/cron` stays visible.
 - **Runtime context.** `RuntimeInitOptions` gains
   `worktree?: { id: string; name: string; branch: string; root: string }`.
   Composition fills it from the record row plus the worktree host path for the
@@ -192,9 +192,9 @@ Git stderr is carried through on the error object.
 **Lazy initialization** — `ensureRepo(hostProjectRoot)`, idempotent:
 
 1. If not a repository: `git init -b main`; write `.gitignore` containing
-   `.worktrees/` and `.science-studio/`; `git add -A`; commit an initial
-   commit with a local identity (`-c user.name="Science Studio" -c
-   user.email="science-studio@localhost"`) so it never depends on the
+   `.worktrees/` and `.gps/`; `git add -A`; commit an initial
+   commit with a local identity (`-c user.name="Generative Protein System" -c
+   user.email="gps@localhost"`) so it never depends on the
    machine's global git config.
 2. `directory.ensureWorktree(projectId)` ensures the `main` row (record only,
    no git).
@@ -240,9 +240,9 @@ A fifth dependency-free child plugin,
 `packages/transport-dsh/src/worktree-plugin.ts`, follows `hpc-plugin.ts`: it
 only fetches the service, and never touches git itself.
 
-- `name = "science-studio-worktree"`, `inject = ["commands", "tools",
+- `name = "gps-worktree"`, `inject = ["commands", "tools",
   "systemPrompt"]`, inert when `config.project` is absent.
-- Tools (all against `SCIENCE_STUDIO_SERVICE_URL` / the patch's `service`, the
+- Tools (all against `GPS_SERVICE_URL` / the patch's `service`, the
   same resolution `hpc-plugin.ts` uses):
   - `worktree_list()` — list the Project's worktrees and mark the current one.
   - `worktree_create({ name, branch?, base? })` — create a worktree. It does
@@ -258,7 +258,7 @@ only fetches the service, and never touches git itself.
   work in another worktree, the researcher opens it in the workbench."* This is
   load-bearing: without it the model assumes it can migrate itself.
 - Wiring mirrors project/cron/hpc: a `writeWorktreePatch` in `bridge.ts`
-  (patch id `science-studio-worktree`, `config = { project, worktree, root:
+  (patch id `gps-worktree`, `config = { project, worktree, root:
   cwd, service? }`) and an `adapter.ts` branch mounting it only when
   `opts.project` exists, with the worktree context from
   `RuntimeInitOptions.worktree` (falling back to `main` when absent).

@@ -5,7 +5,7 @@ import type {
   RuntimeSettingsPatch,
   RuntimeSettingsView,
   SubagentSettings,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import { scopedUrl } from "./scope.js";
 
 export const DEFAULT_SETTINGS_API = "/api/settings";

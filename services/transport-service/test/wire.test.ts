@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { foldState, RunFlow } from "@science-studio/transport";
-import type { Message, SessionState, StateDelta } from "@science-studio/transport";
+import { foldState, RunFlow } from "@gps/transport";
+import type { Message, SessionState, StateDelta } from "@gps/transport";
 import { WireOpsBuilder, type WireOp } from "../src/wire.js";
 
 /**

@@ -12,7 +12,7 @@ import {
   runTotal,
   useSessionMetrics,
   useWorkspaceAvailability,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { useStudioStore } from "@/store/studio-store";
 import { SETTINGS_API, SettingsDialog } from "./settings-dialog";
 import { desktopBridge } from "@/lib/desktop-bridge";

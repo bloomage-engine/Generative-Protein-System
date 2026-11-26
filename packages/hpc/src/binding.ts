@@ -1,8 +1,8 @@
 /**
  * The Project HPC Binding (docs/adr/0024): the one workspace file
- * `.science-studio/hpc.md` by which a Project selects an HPC Endpoint and
+ * `.gps/hpc.md` by which a Project selects an HPC Endpoint and
  * carries its Project-level defaults. House-style frontmatter (JSON-quoted
- * scalars, the `@science-studio/cron` codec's shape) with the body as free
+ * scalars, the `@gps/cron` codec's shape) with the body as free
  * cluster-use notes the Researcher keeps for the Agent.
  *
  * The Binding is Project state, not deployment settings: endpoints carry the
@@ -12,7 +12,7 @@
  */
 
 /** The binding's path inside a Project Workspace. */
-export const HPC_BINDING_PATH = ".science-studio/hpc.md";
+export const HPC_BINDING_PATH = ".gps/hpc.md";
 
 /** Endpoint ids: the cron id grammar — stable, filename-safe, listable. */
 const ENDPOINT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;

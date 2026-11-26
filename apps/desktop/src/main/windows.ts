@@ -8,7 +8,7 @@ export function createWorkbenchWindow(): BrowserWindow {
   return new BrowserWindow({
     width: 1440,
     height: 900,
-    title: "Science Studio",
+    title: "Generative Protein System",
     backgroundColor: "#0b0b0b",
     webPreferences: {
       preload: join(here, "..", "preload", "workbench.cjs"),

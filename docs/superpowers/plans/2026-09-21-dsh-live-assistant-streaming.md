@@ -6,13 +6,13 @@
 
 **Architecture:** The harness child's process-local `agent/assistant-stream` frames are forwarded by the existing child-side bridge plugin over a streaming NDJSON route on the private bridge socket. The adapter's bridge client holds that stream and hands each `{sessionId, frame}` to the dsh `SessionBehavior`, which maps frames to the shared `StateDelta` ops and emits them into the active `RunControl`. The durable `assistant/message` event remains authoritative and finalizes the row.
 
-**Tech Stack:** TypeScript (ESM, `tsc -b`), Node `node:http`/`node:test`, `@deepseek-ai/dsh-*` 0.1.5-alpha.1, `@science-studio/transport`.
+**Tech Stack:** TypeScript (ESM, `tsc -b`), Node `node:http`/`node:test`, `@deepseek-ai/dsh-*` 0.1.5-alpha.1, `@gps/transport`.
 
 ## Global Constraints
 
 - ADR-0022 is the spec: `docs/adr/0022-dsh-live-assistant-streaming.md`. Every decision there binds this plan.
 - Artifacts (code comments, docs, commit messages) are English; conversation is Chinese.
-- `packages/transport-dsh/src/bridge-plugin.ts` is loaded INTO the harness child: it must stay dependency-free (no runtime import of `@deepseek-ai/*`, no runtime import of a module that imports `@science-studio/transport`) and must NEVER write to stdout.
+- `packages/transport-dsh/src/bridge-plugin.ts` is loaded INTO the harness child: it must stay dependency-free (no runtime import of `@deepseek-ai/*`, no runtime import of a module that imports `@gps/transport`) and must NEVER write to stdout.
 - Live streaming is best-effort: a missing bridge or a dead stream must degrade silently to the existing step-granular behavior. No new failure mode may escape a run.
 - The durable `assistant/message` remains authoritative; live content is overwritten by `contentToParts(message.content)` at settlement.
 - No `remove-message` seam op. The live row id is deterministic and reused on retry.
@@ -73,7 +73,7 @@ test("stream-reasoning on an unknown message is dropped", () => {
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `npm run test -w @science-studio/transport`
+Run: `npm run test -w @gps/transport`
 Expected: FAIL (`stream-reasoning` is not a known StateDelta / no effect).
 
 - [ ] **Step 3: Add the variant to `StateDelta`**
@@ -122,7 +122,7 @@ In `packages/transport/src/fold.ts`, add a `case` immediately after the `stream-
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `npm run test -w @science-studio/transport`
+Run: `npm run test -w @gps/transport`
 Expected: PASS (all existing fold tests plus the four new ones).
 
 - [ ] **Step 6: Commit** (only with the user's go-ahead)
@@ -151,7 +151,7 @@ git commit -m "feat(transport): add the stream-reasoning delta"
 - Test: `packages/transport-dsh/test/assistant-stream.test.ts`
 
 **Interfaces:**
-- Consumes: `StateDelta` from `@science-studio/transport`; the `stream-reasoning` op from Task 1.
+- Consumes: `StateDelta` from `@gps/transport`; the `stream-reasoning` op from Task 1.
 - Produces: `AssistantStreamFrame`, `DshAssistantStreamMessage`, `LiveStreamChunk`, and `class LiveAssistantMessage` with `begin()`, `reset()`, `accept(chunk: LiveStreamChunk)`. `LiveAssistantMessage` emits through its constructor's `emit(delta)` callback.
 
 - [ ] **Step 1: Write the failing test**
@@ -161,7 +161,7 @@ Create `packages/transport-dsh/test/assistant-stream.test.ts`:
 ```ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { StateDelta } from "@science-studio/transport";
+import type { StateDelta } from "@gps/transport";
 import { LiveAssistantMessage } from "../src/assistant-stream.js";
 
 function collect(): { emit: (delta: StateDelta) => void; deltas: StateDelta[] } {
@@ -228,7 +228,7 @@ test("usage and finish chunks are ignored; a delta with no matching block is a n
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: FAIL (`../src/assistant-stream.js` does not exist).
 
 - [ ] **Step 3: Implement the mapper**
@@ -250,7 +250,7 @@ Create `packages/transport-dsh/src/assistant-stream.ts`:
  * committed event overwrites the row's parts with `contentToParts(...)` at
  * settlement (`behavior.ts`, docs/adr/0022).
  */
-import type { StateDelta } from "@science-studio/transport";
+import type { StateDelta } from "@gps/transport";
 
 /** One forwarded frame's dsh-llm `StreamChunk` fields, read structurally. */
 export interface LiveStreamChunk {
@@ -393,7 +393,7 @@ export class LiveAssistantMessage {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: PASS (the new file's four tests pass; existing tests still pass).
 
 - [ ] **Step 5: Commit** (only with the user's go-ahead)
@@ -552,7 +552,7 @@ test("the child forwards live assistant frames as NDJSON over the bridge socket"
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: FAIL (`subscribeAssistantStream` is not a function / route 404s).
 
 - [ ] **Step 3: Add the structural types and the second `on` overload**
@@ -778,7 +778,7 @@ Inside `createCommandBridge`, add the method to the returned object:
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: PASS (the streaming test plus the existing bridge tests).
 
 - [ ] **Step 7: Commit** (only with the user's go-ahead)
@@ -824,7 +824,7 @@ function fakeRun(): {
 }
 ```
 
-Add `StateDelta` and `foldState` to the imports from `@science-studio/transport`:
+Add `StateDelta` and `foldState` to the imports from `@gps/transport`:
 
 ```ts
 import {
@@ -835,7 +835,7 @@ import {
   type SessionState,
   type SettleContext,
   type StateDelta,
-} from "@science-studio/transport";
+} from "@gps/transport";
 ```
 
 Then add this import beside the existing `../src/behavior.js` import:
@@ -951,7 +951,7 @@ test("a durable assistant/message with no live frames keeps the durable id", () 
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: FAIL (`ingestAssistantStream` is not a function).
 
 - [ ] **Step 3: Define the behavior type and add the live state**
@@ -994,7 +994,7 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
 Inside the function, after the `modelContexts` declaration, add the live state:
 
 ```ts
-  /** The Run currently driving each Science Studio session (for live frames). */
+  /** The Run currently driving each Generative Protein System session (for live frames). */
   const activeRuns = new Map<string, RunControl<SessionEvent>>();
   /** Live assistant rows under construction, keyed `${sessionKey}:${turn}:${step}`. */
   const liveRows = new Map<string, LiveAssistantMessage>();
@@ -1012,7 +1012,7 @@ Inside the function, after the `modelContexts` declaration, add the live state:
     return typeof turn === "number" && typeof step === "number" ? `${sessionKey}:${turn}:${step}` : null;
   }
 
-  /** The Science Studio session key a harness session id belongs to. */
+  /** The Generative Protein System session key a harness session id belongs to. */
   function sessionKeyForHarness(harnessId: string): string | undefined {
     for (const [key, id] of harnessSessions) if (id === harnessId) return key;
     return undefined;
@@ -1153,7 +1153,7 @@ Finally add `ingestAssistantStream` to the returned behavior object:
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: PASS (the three new behavior tests plus every existing test, including the original `assistant/message maps content blocks to parts in order`).
 
 - [ ] **Step 6: Commit** (only with the user's go-ahead)
@@ -1240,7 +1240,7 @@ test("live assistant frames reach the transcript through the bridge watch", asyn
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: FAIL (`streamListener` stays null / no `stream-text` delta).
 
 - [ ] **Step 3: Implement the attachment**
@@ -1303,7 +1303,7 @@ Add the attachment method beside `attachSubagents`:
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: PASS.
 
 - [ ] **Step 5: Commit** (only with the user's go-ahead)
@@ -1356,7 +1356,7 @@ Expected: PASS (record → transport → … → transport-dsh → transport-ser
 
 - [ ] **Step 3: Run the affected suites**
 
-Run: `npm run test -w @science-studio/transport && npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport && npm run test -w @gps/transport-dsh`
 Expected: PASS, including the new `fold`, `assistant-stream`, `bridge-plugin`, `behavior`, and `adapter` tests.
 
 - [ ] **Step 4: Manual smoke (optional, needs a live dsh route)**
@@ -1376,5 +1376,5 @@ git commit -m "docs: record dsh live assistant streaming"
 
 - Task order matters: Task 1 (`stream-reasoning`) must land before Task 2/4 so the mapper's op exists in the `StateDelta` union.
 - The uncommitted `behavior.ts` patch in the working tree (the `data.stream` block) is **replaced** by Task 4's `case "assistant/message"`. Do not keep the old block.
-- `packages/transport-dsh/src/bridge-plugin.ts` must not gain a runtime import of `assistant-stream.ts` (that module imports `@science-studio/transport`). The plugin declares its own structural `BridgeAssistantStreamFrame` for exactly this reason.
-- The live row id is the Science Studio session key, not the harness id: `harnessSessions` is the stable-key → harness-id map, and `liveKey` builds `${sessionKey}:${turn}:${step}`.
+- `packages/transport-dsh/src/bridge-plugin.ts` must not gain a runtime import of `assistant-stream.ts` (that module imports `@gps/transport`). The plugin declares its own structural `BridgeAssistantStreamFrame` for exactly this reason.
+- The live row id is the Generative Protein System session key, not the harness id: `harnessSessions` is the stable-key → harness-id map, and `liveKey` builds `${sessionKey}:${turn}:${step}`.

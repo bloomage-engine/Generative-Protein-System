@@ -27,7 +27,7 @@
 - Test: `packages/transport-dsh/test/behavior.test.ts`
 
 **Interfaces:**
-- Consumes: `SessionEvent` (`request/context` data = `{ provider: string; model: string; contextWindow?: number }`), `SettleContext` from `@science-studio/transport`.
+- Consumes: `SessionEvent` (`request/context` data = `{ provider: string; model: string; contextWindow?: number }`), `SettleContext` from `@gps/transport`.
 - Produces: `Run.parameters.contextWindow?: number` (plus `provider`/`model` from the captured event, falling back to the adapter's configured pair).
 
 - [ ] **Step 1: Write the failing test**
@@ -35,7 +35,7 @@
 Add to `packages/transport-dsh/test/behavior.test.ts`:
 
 ```ts
-import type { SettleContext } from "@science-studio/transport";
+import type { SettleContext } from "@gps/transport";
 
 function settleCtx(
   state: SessionState,
@@ -81,7 +81,7 @@ test("without request/context the Run keeps the configured route and no contextW
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --import tsx --test test/behavior.test.ts -w packages/transport-dsh` (or `npm test -w @science-studio/transport-dsh`)
+Run: `node --import tsx --test test/behavior.test.ts -w packages/transport-dsh` (or `npm test -w @gps/transport-dsh`)
 Expected: FAIL — `parameters.contextWindow` is `undefined` / provider is `"p"`.
 
 - [ ] **Step 3: Implement**
@@ -131,7 +131,7 @@ projectRun(ctx) {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w @science-studio/transport-dsh`
+Run: `npm test -w @gps/transport-dsh`
 Expected: PASS (all suites, including behavior).
 
 ---
@@ -170,7 +170,7 @@ test("GET /api/projects/:id/runs can filter to one Session", async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @science-studio/transport-service`
+Run: `npm test -w @gps/transport-service`
 Expected: FAIL — the filtered request returns `["r1","r2"]`.
 
 - [ ] **Step 3: Implement**
@@ -188,7 +188,7 @@ app.get("/api/projects/:id/runs", async (request) => {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w @science-studio/transport-service`
+Run: `npm test -w @gps/transport-service`
 Expected: PASS.
 
 ---
@@ -218,7 +218,7 @@ test("fetchSessionRuns scopes the runs request to one Session", async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @science-studio/transport-client`
+Run: `npm test -w @gps/transport-client`
 Expected: FAIL — `fetchSessionRuns is not a function`.
 
 - [ ] **Step 3: Implement**
@@ -241,7 +241,7 @@ export async function fetchSessionRuns(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w @science-studio/transport-client`
+Run: `npm test -w @gps/transport-client`
 Expected: PASS.
 
 ---
@@ -258,7 +258,7 @@ Expected: PASS.
   - `interface SessionMetrics { model?: { provider?: string; model?: string; contextWindow?: number }; latest?: { usage?: TokenUsage; status?: RunStatus; at?: string }; cumulative: { input: number; output: number; total: number; runs: number } }`
   - `summarizeSessionRuns(runs: Run[], sessionId: string): SessionMetrics`
   - `formatTokens(n: number | undefined): string`
-- Consumes: `Run`, `RunStatus` from `@science-studio/record`.
+- Consumes: `Run`, `RunStatus` from `@gps/record`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -267,7 +267,7 @@ Create `packages/transport-client/test/session-metrics.test.ts`:
 ```ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Run } from "@science-studio/record";
+import type { Run } from "@gps/record";
 import { formatTokens, summarizeSessionRuns } from "../src/session-metrics.js";
 
 function run(over: Partial<Run>): Run {
@@ -343,7 +343,7 @@ test("formatTokens renders exact small numbers and compact large ones", () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm test -w @science-studio/transport-client`
+Run: `npm test -w @gps/transport-client`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement**
@@ -359,7 +359,7 @@ Create `packages/transport-client/src/session-metrics.ts`:
  * React-free so it is unit-testable; the fetch hook lives in
  * `use-session-metrics.ts`.
  */
-import type { Run, RunStatus } from "@science-studio/record";
+import type { Run, RunStatus } from "@gps/record";
 
 export interface TokenUsage {
   inputTokens: number;
@@ -455,7 +455,7 @@ export function formatTokens(n: number | undefined): string {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm test -w @science-studio/transport-client`
+Run: `npm test -w @gps/transport-client`
 Expected: PASS.
 
 ---
@@ -545,7 +545,7 @@ export type { UseSessionMetricsOptions } from "./use-session-metrics.js";
 
 - [ ] **Step 3: Typecheck**
 
-Run: `npm run build -w @science-studio/transport-client`
+Run: `npm run build -w @gps/transport-client`
 Expected: PASS.
 
 ---
@@ -597,7 +597,7 @@ Expected: PASS.
 - Modify: `apps/web/components/studio/status-bar.tsx`
 
 **Interfaces:**
-- Consumes: `useSessionMetrics`, `formatTokens`, `DEFAULT_PROJECTS_API` from `@science-studio/transport-client`.
+- Consumes: `useSessionMetrics`, `formatTokens`, `DEFAULT_PROJECTS_API` from `@gps/transport-client`.
 
 - [ ] **Step 1: Implement `SessionStatusChip`**
 
@@ -729,7 +729,7 @@ Expected: PASS.
 
 - [ ] **Step 2: Web suite**
 
-Run: `npm run test:e2e -w @science-studio/web`
+Run: `npm run test:e2e -w @gps/web`
 Expected: PASS or SKIP (needs Chromium); no new failures.
 
 ---

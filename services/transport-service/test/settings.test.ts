@@ -15,7 +15,7 @@ import {
 } from "../src/settings.js";
 
 async function tempDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "ss-settings-"));
+  return mkdtemp(join(tmpdir(), "gps-settings-"));
 }
 
 function errorOf(result: ReturnType<typeof parseSettingsPatch>): string {
@@ -23,11 +23,11 @@ function errorOf(result: ReturnType<typeof parseSettingsPatch>): string {
   return result.error;
 }
 
-test("resolveSettingsPath prefers SS_SETTINGS_PATH, else XDG_DATA_HOME", () => {
-  assert.equal(resolveSettingsPath({ SS_SETTINGS_PATH: "/tmp/x.json" }), "/tmp/x.json");
+test("resolveSettingsPath prefers GPS_SETTINGS_PATH, else XDG_DATA_HOME", () => {
+  assert.equal(resolveSettingsPath({ GPS_SETTINGS_PATH: "/tmp/x.json" }), "/tmp/x.json");
   assert.equal(
     resolveSettingsPath({ XDG_DATA_HOME: "/data" }),
-    join("/data", "science-studio", "settings.json"),
+    join("/data", "gps", "settings.json"),
   );
 });
 
@@ -101,8 +101,8 @@ test("applySettingsToEnv layers settings over env without mutating the input", (
   });
   assert.equal(next.DSH_PROVIDER, "from-file");
   assert.equal(next.DSH_MODEL, "m1");
-  assert.equal(next.SS_MODEL_ENDPOINT, "http://x/v1");
-  assert.equal(next.SS_MODEL_API_KEY, "k");
+  assert.equal(next.GPS_MODEL_ENDPOINT, "http://x/v1");
+  assert.equal(next.GPS_MODEL_API_KEY, "k");
   assert.equal(next.KEEP, "1");
   assert.equal(env.DSH_PROVIDER, "ambient", "the input env is not mutated");
   assert.equal(applySettingsToEnv(env, emptySettings()).DSH_PROVIDER, "ambient");
@@ -200,7 +200,7 @@ test("loadSettings drops invalid MCP rows and keeps valid ones", async () => {
 
 test("applySettingsToEnv carries the enabled MCP catalog in the secret env", () => {
   const next = applySettingsToEnv(
-    { SS_MCP_SECRET_CONFIG: "stale" },
+    { GPS_MCP_SECRET_CONFIG: "stale" },
     {
       model: {},
       plugins: {},
@@ -227,10 +227,10 @@ test("applySettingsToEnv carries the enabled MCP catalog in the secret env", () 
       },
     },
   );
-  const parsed = JSON.parse(next.SS_MCP_SECRET_CONFIG ?? "[]") as { id: string }[];
+  const parsed = JSON.parse(next.GPS_MCP_SECRET_CONFIG ?? "[]") as { id: string }[];
   assert.deepEqual(parsed.map((server) => server.id), ["a"]);
   assert.equal(
-    applySettingsToEnv({ SS_MCP_SECRET_CONFIG: "stale" }, emptySettings()).SS_MCP_SECRET_CONFIG,
+    applySettingsToEnv({ GPS_MCP_SECRET_CONFIG: "stale" }, emptySettings()).GPS_MCP_SECRET_CONFIG,
     undefined,
   );
 });

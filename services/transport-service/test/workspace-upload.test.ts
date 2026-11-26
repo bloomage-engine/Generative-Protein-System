@@ -11,8 +11,8 @@ import {
   type QuotaPolicy,
   type RuntimeAdapter,
   type Workspace,
-} from "@science-studio/transport";
-import { FsWorkspace } from "@science-studio/workspace";
+} from "@gps/transport";
+import { FsWorkspace } from "@gps/workspace";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 
@@ -65,7 +65,7 @@ function upload(base: string, path: string, body: Uint8Array): Promise<Response>
 }
 
 async function makeRoot(): Promise<{ root: string; dispose: () => Promise<void> }> {
-  const root = await mkdtemp(join(tmpdir(), "ss-upload-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-upload-"));
   return { root, dispose: () => rm(root, { recursive: true, force: true }) };
 }
 

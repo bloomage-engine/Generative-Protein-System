@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { EventFrame } from "@openclaw/gateway-client/browser";
-import { sessionState } from "@science-studio/contract-tests";
+import { sessionState } from "@gps/contract-tests";
 import type { BackendGateway } from "../src/connection.js";
 import { OpenClawRuntimeAdapter } from "../src/index.js";
 

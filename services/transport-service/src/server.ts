@@ -17,7 +17,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import { posix } from "node:path";
 import { Readable } from "node:stream";
-import { createInMemoryRecordStore, sessionWorktreeId, type Session } from "@science-studio/record";
+import { createInMemoryRecordStore, sessionWorktreeId, type Session } from "@gps/record";
 import type {
   AttachmentRef,
   FileContent,
@@ -25,13 +25,13 @@ import type {
   Principal,
   SessionState,
   TransportCommand,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import {
   DEFAULT_MAX_UPLOAD_BYTES,
   WorkspacePathError,
   attachmentsFromMentions,
   parseWorkspaceMentions,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import { localWorkspace } from "./composition.js";
 import type { Backend, CorsConfig } from "./composition.js";
 import { registerCronRoutes } from "./cron/routes.js";
@@ -965,7 +965,7 @@ function corsHeaders(cors: CorsConfig): Record<string, string> {
   };
 }
 
-/** Normalize assistant-ui transport commands into Science Studio commands. */
+/** Normalize assistant-ui transport commands into Generative Protein System commands. */
 function normalizeCommands(cmds: unknown[]): TransportCommand[] {
   return cmds.map((c) => {
     const cmd = (c ?? {}) as Record<string, unknown>;

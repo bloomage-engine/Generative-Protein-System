@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RecordStoreLike, Workspace } from "@science-studio/transport";
+import type { RecordStoreLike, Workspace } from "@gps/transport";
 import { DshRuntimeAdapter, type DshClientLaunchOptions, type DshTurnClient } from "../src/index.js";
 
 /**
@@ -56,8 +56,8 @@ async function launched(opts: { projectRoot?: string }): Promise<{ cron: string;
     });
     const patches = await Promise.all((seen?.patches ?? []).map((p) => readFile(p, "utf8")));
     return {
-      cron: patches.find((p) => p.includes("science-studio-cron")) ?? "",
-      project: patches.find((p) => p.includes("science-studio-project")) ?? "",
+      cron: patches.find((p) => p.includes("gps-cron")) ?? "",
+      project: patches.find((p) => p.includes("gps-project")) ?? "",
     };
   } finally {
     await rm(dir, { recursive: true, force: true });

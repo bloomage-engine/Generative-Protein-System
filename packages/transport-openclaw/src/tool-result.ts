@@ -1,5 +1,5 @@
-import type { Message } from "@science-studio/transport";
-import { mergeToolResult } from "@science-studio/transport";
+import type { Message } from "@gps/transport";
+import { mergeToolResult } from "@gps/transport";
 
 // The one tool-part merge invariant lives in the shared kit (docs/adr/0005);
 // re-exported here because this module is the tool-result vocabulary's home.

@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 /**
- * Minimal example server for @science-studio/transport-dsh.
+ * Minimal example server for @gps/transport-dsh.
  *
  * Wires the real dsh adapter (which spawns `dsh --profile sdk` as a local
  * harness subprocess; the model route comes from `.env` as
@@ -9,7 +9,7 @@ import "dotenv/config";
  * key cannot be spelled in `.env`, because this folder's `.env` is exactly
  * what the child reads, since it runs with this folder as its cwd, and the dsh
  * CLI boot layer refuses such a file) into the shared
- * @science-studio/transport-service. The service owns the entire
+ * @gps/transport-service. The service owns the entire
  * assistant-transport wire (reconcile-first snapshots, `set`/`append-text`
  * ops, `[DONE]` termination, the standing watch channel) — this example adds
  * no protocol code of its own, only the adapter registration.
@@ -19,8 +19,8 @@ import "dotenv/config";
  *   GET  /api/transport/watch  standing watch (baseline snapshots; dsh sessions
  *                              have a single writer, so nothing settles remotely)
  */
-import { DshRuntimeAdapter } from "@science-studio/transport-dsh";
-import { createTransportService } from "@science-studio/transport-service";
+import { DshRuntimeAdapter } from "@gps/transport-dsh";
+import { createTransportService } from "@gps/transport-service";
 
 /**
  * `.env` may not spell the adapter's launch knobs directly: the harness child

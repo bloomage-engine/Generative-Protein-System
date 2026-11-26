@@ -1,5 +1,5 @@
 /** Shared fakes for the HPC service tests (NOT a *.test.ts — just helpers). */
-import type { HpcEndpointSettings } from "@science-studio/transport";
+import type { HpcEndpointSettings } from "@gps/transport";
 import type { SshResult, SshRunner } from "../src/hpc/ssh.js";
 
 export const ENDPOINT: HpcEndpointSettings = {

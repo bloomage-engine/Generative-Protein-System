@@ -30,14 +30,14 @@ export function buildChildEnv(input: {
 }): NodeJS.ProcessEnv {
   const { base, config, paths } = input;
   const env: NodeJS.ProcessEnv = { ...base, ...(config.vars ?? {}) };
-  delete env.SS_ENTERPRISE_MODULE;
+  delete env.GPS_ENTERPRISE_MODULE;
   env.NODE_ENV = "production";
   env.TRANSPORT_RUNTIME = "dsh";
   env.PROJECT_ROOT = paths.projectRoot;
   env.RECORD_STORE_PATH = paths.recordStorePath;
   env.DSH_HOME = paths.dshHome;
   env.DSH_TRANSCRIPT_DIR = paths.transcriptDir;
-  env.DSH_DEFAULT_SESSION = "science-studio";
-  env.SS_SETTINGS_PATH = paths.settingsPath;
+  env.DSH_DEFAULT_SESSION = "gps";
+  env.GPS_SETTINGS_PATH = paths.settingsPath;
   return env;
 }

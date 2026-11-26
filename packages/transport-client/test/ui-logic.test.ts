@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { CommandDescriptor } from "@science-studio/transport";
+import type { CommandDescriptor } from "@gps/transport";
 import { slashMenuEnabled } from "../src/slash-menu.js";
 import { buildReasoningTrace, type ReasoningTracePart } from "../src/reasoning.js";
 

@@ -4,7 +4,7 @@
  * mocked to answer one running row, then 500 — after a second poll the row is
  * still shown.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`. Needs a Chromium
+ * Prereq: `npm run build -w @gps/transport-client`. Needs a Chromium
  * (SKIPs without one).
  */
 import { test } from "node:test";

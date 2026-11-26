@@ -8,7 +8,7 @@
  * never in the UI (docs/adr/0002, 0007). Plain fetch helpers — no React — so the
  * app can use them from a route page and they stay unit-testable.
  */
-import type { Project, Run, Session } from "@science-studio/record";
+import type { Project, Run, Session } from "@gps/record";
 import { scopedUrl, scopeBody, type ClientScope } from "./scope.js";
 
 /** Re-exported so apps consume record shapes without depending on the package. */

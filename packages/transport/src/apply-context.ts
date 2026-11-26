@@ -13,7 +13,7 @@
  * constructor for a type the kit already publishes, which is what makes
  * `SessionBehavior.apply` testable without a runtime (docs/adr/0005).
  */
-import type { Id } from "@science-studio/record";
+import type { Id } from "@gps/record";
 import type { Message, MessagePart, SessionState, StateDelta } from "./types.js";
 import { foldState } from "./fold.js";
 import type { RunFlow } from "./run-flow.js";

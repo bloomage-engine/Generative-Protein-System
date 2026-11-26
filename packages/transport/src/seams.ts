@@ -4,7 +4,7 @@
  * facts an implementer must know, not implementation details — see the
  * `codebase-design` vocabulary).
  *
- * Use this entry (`@science-studio/transport/seams`) when you implement or
+ * Use this entry (`@gps/transport/seams`) when you implement or
  * consume a seam and want nothing else. It deliberately excludes the shared kit
  * (`SessionRuntime`, `RunFlow`, `foldState`, the attachment helpers) and the pure
  * single-user defaults (`LocalPrincipalResolver`, `LocalEnvironmentProvider`,

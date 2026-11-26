@@ -9,7 +9,7 @@ import type {
   McpServerSettings,
   McpServerView,
   McpSettings,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import { isSafeProjectId } from "../worktree/paths.js";
 
 const ID = /^[A-Za-z0-9_-]{1,32}$/;

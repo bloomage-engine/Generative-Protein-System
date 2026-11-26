@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RecordStoreLike, Workspace } from "@science-studio/transport";
+import type { RecordStoreLike, Workspace } from "@gps/transport";
 import { DshRuntimeAdapter, type DshClientLaunchOptions, type DshTurnClient } from "../src/index.js";
 import { writeProjectPatch } from "../src/bridge.js";
 
@@ -38,7 +38,7 @@ test("writeProjectPatch inserts the project plugin by file URL with a JSON confi
     });
     const patch = await readFile(file, "utf8");
     assert.match(patch, /- insert:/);
-    assert.match(patch, /id: science-studio-project/);
+    assert.match(patch, /id: gps-project/);
     assert.match(patch, /project-plugin\.js/);
     assert.match(patch, /"id":"drought-screen"/);
     assert.match(patch, /"root":"\/w\/project"/);
@@ -84,10 +84,10 @@ test("the adapter mounts the project plugin when it serves a Project", async () 
     "the bridge, subagent-reporting, project, cron, hpc and worktree patches",
   );
   assert.ok(patches.some((text) => text.includes("drought-screen")), "the project identity rides the launch");
-  assert.ok(patches.some((text) => text.includes("science-studio-cron")), "the cron plugin is mounted");
-  assert.ok(patches.some((text) => text.includes("science-studio-hpc")), "the hpc plugin is mounted (docs/adr/0024)");
+  assert.ok(patches.some((text) => text.includes("gps-cron")), "the cron plugin is mounted");
+  assert.ok(patches.some((text) => text.includes("gps-hpc")), "the hpc plugin is mounted (docs/adr/0024)");
   assert.ok(
-    patches.some((text) => text.includes("science-studio-worktree")),
+    patches.some((text) => text.includes("gps-worktree")),
     "the worktree plugin is mounted (docs/adr/0025)",
   );
 });
@@ -96,9 +96,9 @@ test("the adapter mounts no project plugin without a Project", async () => {
   const patches = await launchedPatches(undefined);
   assert.equal(patches.length, 2, "only the command bridge and the parent-reporting patch are mounted");
   for (const patch of patches) {
-    assert.doesNotMatch(patch, /science-studio-project/);
-    assert.doesNotMatch(patch, /science-studio-cron/);
-    assert.doesNotMatch(patch, /science-studio-hpc/);
-    assert.doesNotMatch(patch, /science-studio-worktree/);
+    assert.doesNotMatch(patch, /gps-project/);
+    assert.doesNotMatch(patch, /gps-cron/);
+    assert.doesNotMatch(patch, /gps-hpc/);
+    assert.doesNotMatch(patch, /gps-worktree/);
   }
 });

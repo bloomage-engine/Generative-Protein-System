@@ -1,4 +1,4 @@
-import type { SubagentRun } from "@science-studio/transport";
+import type { SubagentRun } from "@gps/transport";
 
 /** The default recent-window when settings don't specify one. */
 export const DEFAULT_SUBAGENT_WINDOW_HOURS = 24;

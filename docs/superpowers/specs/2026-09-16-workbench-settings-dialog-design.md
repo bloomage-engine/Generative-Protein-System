@@ -56,7 +56,7 @@ Out of scope (deferred, tabs render empty states):
 ## Decisions
 
 - **Service owns the settings.** The store is a service file
-  (`SS_SETTINGS_PATH`, default `$XDG_DATA_HOME/science-studio/settings.json`;
+  (`GPS_SETTINGS_PATH`, default `$XDG_DATA_HOME/gps/settings.json`;
   desktop `<userData>/settings.json`), mode `0600`, atomic write (temp file +
   rename). The record stays authoritative for Project/Session identity; settings
   are deployment configuration, not record rows.
@@ -75,7 +75,7 @@ Out of scope (deferred, tabs render empty states):
 - **The contract lives in the seam package.** `RuntimeSettings` /
   `RuntimeSettingsView` / `RuntimeSettingsPatch` live in
   `packages/transport` because both the service (which already depends on it)
-  and `@science-studio/transport-client` (which depends on it) need one shape;
+  and `@gps/transport-client` (which depends on it) need one shape;
   a type duplicated across the two would drift silently.
 - **dsh route application belongs to `transport-dsh`.** The route file location,
   the `llm-pi-ai.providers` section and the credential-env mechanism are dsh
@@ -124,8 +124,8 @@ no `export *`; pinned by `packages/transport/test/seams.test.ts`).
 
 ### `services/transport-service/src/settings.ts` (new)
 
-- `resolveSettingsPath(env)`: `SS_SETTINGS_PATH` else
-  `$XDG_DATA_HOME/science-studio/settings.json` (else `~/.local/share/...`).
+- `resolveSettingsPath(env)`: `GPS_SETTINGS_PATH` else
+  `$XDG_DATA_HOME/gps/settings.json` (else `~/.local/share/...`).
 - `loadSettings(path): Promise<RuntimeSettings>`: absent → `{ model: {}, plugins:
   {}, agent: {} }`; malformed/unreadable → log + same defaults (never throw).
 - `saveSettings(path, next)`: `mkdir -p`, write to `<path>.tmp` with mode `0600`,
@@ -137,8 +137,8 @@ no `export *`; pinned by `packages/transport/test/seams.test.ts`).
 - `applySettingsToEnv(env, settings): NodeJS.ProcessEnv`: a copy of `env` where
   the model route wins over the ambient values. Provider/Model are written to
   `DSH_PROVIDER`/`DSH_MODEL` (the names `dshLocalBinding` already copies);
-  Endpoint/API-Key are written to the service-owned names `SS_MODEL_ENDPOINT` /
-  `SS_MODEL_API_KEY` (the dsh package reads those into its binding; openclaw
+  Endpoint/API-Key are written to the service-owned names `GPS_MODEL_ENDPOINT` /
+  `GPS_MODEL_API_KEY` (the dsh package reads those into its binding; openclaw
   ignores them). The input `env` object is not mutated.
 
 ### `services/transport-service/src/server.ts` (extend)
@@ -162,7 +162,7 @@ no `export *`; pinned by `packages/transport/test/seams.test.ts`).
 - `DshBinding` gains `endpoint?: string` and `apiKey?: string` (the latter is a
   raw secret held only for this launch; never persisted by this package).
 - `dshLocalBinding` copies them from service-owned env names
-  (`SS_MODEL_ENDPOINT`, `SS_MODEL_API_KEY`) so the service maps values into the
+  (`GPS_MODEL_ENDPOINT`, `GPS_MODEL_API_KEY`) so the service maps values into the
   binding without the dsh package naming any service module.
 
 ### `packages/transport-dsh/src/route-settings.ts` (new)
@@ -218,7 +218,7 @@ no `export *`; pinned by `packages/transport/test/seams.test.ts`).
 - Model panel: a `模型` section (`Provider`, `Model`, `Endpoint` inputs) and a
   `模型 API` section (an API-key input that shows `apiKeyConfigured`; typing
   replaces, a `Clear` action sends `null`). `Save` → `updateSettings`; on success
-  show `已保存，重启服务后生效` and, when `window.scienceStudioDesktop?.restartHost`
+  show `已保存，重启服务后生效` and, when `window.gpsDesktop?.restartHost`
   exists, a `Restart service` action.
 - Plugins / Agent panels: an empty-state note ("即将支持").
 - On open: `fetchSettings`; a fetch failure shows the error inline, not a throw.
@@ -233,7 +233,7 @@ no `export *`; pinned by `packages/transport/test/seams.test.ts`).
 
 - `shared/config.ts`: `DesktopConfig` drops `provider`/`model` (keeping only the
   generic `vars` that carry non-route env, if any); `buildChildEnv` drops the
-  `DSH_PROVIDER`/`DSH_MODEL` lines and adds `SS_SETTINGS_PATH =
+  `DSH_PROVIDER`/`DSH_MODEL` lines and adds `GPS_SETTINGS_PATH =
   <userData>/settings.json`.
 - Remove the config window: `createConfigWindow`, `renderer/config.{ts,html}`,
   the `desktop:getConfig`/`desktop:setConfig` IPC, and the first-run branch that

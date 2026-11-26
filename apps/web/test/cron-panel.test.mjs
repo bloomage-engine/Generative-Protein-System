@@ -1,7 +1,7 @@
 /**
  * Regression: the Cron module lists scheduled tasks, a double click opens the
  * task tab with its form renderer, and Save PUTs the task. Prereq:
- * `npm run build -w @science-studio/transport-client`. Chromium-gated.
+ * `npm run build -w @gps/transport-client`. Chromium-gated.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -26,7 +26,7 @@ const TASKS = {
       schedule: "0 9 * * *",
       enabled: true,
       prompt: "Summarize.",
-      path: ".science-studio/cron/daily-digest.md",
+      path: ".gps/cron/daily-digest.md",
     },
   ],
   invalid: [],
@@ -58,7 +58,7 @@ test(
         url.pathname === "/api/cron" || url.pathname.startsWith("/api/cron/");
       await page.route("**/api/workspace/file*", (route) => {
         const url = new URL(route.request().url());
-        if (url.searchParams.get("path") === ".science-studio/cron/daily-digest.log.md") {
+        if (url.searchParams.get("path") === ".gps/cron/daily-digest.log.md") {
           return route.fulfill({
             status: 200,
             headers: { "content-type": "text/plain" },
@@ -119,7 +119,7 @@ test(
   async (t) => {
     /**
      * Cron is Project-`main`-only: the service scheduler and the `/api/cron*`
-     * routes read `.science-studio/cron/` from the Project root. The renderer's
+     * routes read `.gps/cron/` from the Project root. The renderer's
      * run-log read must therefore pin `main` explicitly — the workspace provider
      * would otherwise fall back to the ACTIVE worktree (docs/adr/0025), so a
      * `main` cron task opened while scoped to a linked checkout showed an
@@ -148,14 +148,14 @@ test(
         const url = new URL(request.url());
         if (
           url.pathname.endsWith("/api/workspace/file") &&
-          url.searchParams.get("path") === ".science-studio/cron/daily-digest.log.md"
+          url.searchParams.get("path") === ".gps/cron/daily-digest.log.md"
         ) {
           logRequests.push(url);
         }
       });
       await page.route("**/api/workspace/file*", (route) => {
         const url = new URL(route.request().url());
-        if (url.searchParams.get("path") === ".science-studio/cron/daily-digest.log.md") {
+        if (url.searchParams.get("path") === ".gps/cron/daily-digest.log.md") {
           return route.fulfill({
             status: 200,
             headers: { "content-type": "text/plain" },
@@ -211,7 +211,7 @@ test(
           const url = new URL(request.url());
           return (
             url.pathname.endsWith("/api/workspace/file") &&
-            url.searchParams.get("path") === ".science-studio/cron/daily-digest.log.md"
+            url.searchParams.get("path") === ".gps/cron/daily-digest.log.md"
           );
         },
         { timeout: 10_000 },

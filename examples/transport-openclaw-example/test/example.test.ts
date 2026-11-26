@@ -2,7 +2,7 @@
  * End-to-end test of this example's wiring: the openclaw adapter driven by a
  * SCRIPTED gateway (via the adapter's `createGateway` test seam — the same
  * pattern as packages/transport-openclaw/test/subscribe.test.ts) behind
- * @science-studio/transport-service, speaking the assistant-transport SSE
+ * @gps/transport-service, speaking the assistant-transport SSE
  * wire protocol to a plain fetch client. No live gateway needed.
  *
  * Prereq: `npm run build` at the repo root (the workspace deps are imported
@@ -13,8 +13,8 @@ import assert from "node:assert/strict";
 import {
   OpenClawRuntimeAdapter,
   type OpenClawRuntimeAdapterOptions,
-} from "@science-studio/transport-openclaw";
-import { createTransportService } from "@science-studio/transport-service";
+} from "@gps/transport-openclaw";
+import { createTransportService } from "@gps/transport-service";
 
 const SESSION = "agent:main:main";
 

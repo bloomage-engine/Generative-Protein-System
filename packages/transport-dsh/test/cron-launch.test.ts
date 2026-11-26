@@ -17,7 +17,7 @@ test("writeCronPatch inserts the cron plugin by file URL with a JSON config", as
     });
     const patch = await readFile(file, "utf8");
     assert.match(patch, /- insert:/);
-    assert.match(patch, /id: science-studio-cron/);
+    assert.match(patch, /id: gps-cron/);
     assert.match(patch, /cron-plugin\.js/);
     assert.match(patch, /"root":"\/w\/project"/);
   } finally {

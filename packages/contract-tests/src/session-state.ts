@@ -8,7 +8,7 @@
  * it describes, and an adopter inherits a correct one instead of copying a
  * malformed literal out of a sibling test.
  */
-import type { SessionState } from "@science-studio/transport/seams";
+import type { SessionState } from "@gps/transport/seams";
 
 /** A minimal, valid `SessionState`; each entry of `over` replaces a whole field. */
 export function sessionState(over: Partial<SessionState> = {}): SessionState {

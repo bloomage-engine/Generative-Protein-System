@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createInMemoryRecordStore, type ComputeJob } from "@science-studio/record";
+import { createInMemoryRecordStore, type ComputeJob } from "@gps/record";
 import { createHpcPoller } from "../src/hpc/poller.js";
 import { ENDPOINT, fakeSsh } from "./hpc-support.js";
 
@@ -13,7 +13,7 @@ function slurmJob(over: Partial<ComputeJob> = {}): ComputeJob {
     remoteJobId: "4242",
     name: "n",
     state: "pending",
-    remoteDir: "~/w/.ss-jobs/cjob-aaa-1",
+    remoteDir: "~/w/.gps-jobs/cjob-aaa-1",
     submittedAt: "2026-09-22T00:00:00.000Z",
     updatedAt: "2026-09-22T00:00:00.000Z",
     ...over,

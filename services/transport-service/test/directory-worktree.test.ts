@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createInMemoryRecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore } from "@gps/record";
 import { createRecordDirectory, WorktreeNotFoundError } from "../src/directory.js";
 
 const make = async () => {

@@ -8,7 +8,7 @@ import {
   describeSchedule,
   useCronTasks,
   useWorkspaceAvailability,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { Button } from "@/components/ui/button";
 import { ModuleEmptyState, SidebarSection } from "./sidebar-section";
 import { NewCronTaskDialog } from "./cron-new-task-dialog";

@@ -4,7 +4,7 @@ import { readFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-import { createInMemoryRecordStore, type RecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore, type RecordStore } from "@gps/record";
 import {
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
@@ -12,7 +12,7 @@ import {
   type McpServerSettings,
   type PrincipalResolver,
   type RuntimeAdapter,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 import type { McpProber, McpProbeResult } from "../src/mcp/probe.js";
@@ -89,7 +89,7 @@ async function create(
 }
 
 test("MCP CRUD keeps secrets write-only and filters project rows per Project", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-mcp-routes-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-mcp-routes-"));
   const settingsPath = join(dir, "settings.json");
   try {
     await withServer(await fixture({ records: await projects(), settingsPath }), async (base) => {
@@ -172,7 +172,7 @@ test("MCP CRUD keeps secrets write-only and filters project rows per Project", a
 });
 
 test("MCP writes validate the Project and the manager gate", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-mcp-routes-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-mcp-routes-"));
   const settingsPath = join(dir, "settings.json");
   try {
     const records = await projects();
@@ -222,7 +222,7 @@ test("MCP writes validate the Project and the manager gate", async () => {
 });
 
 test("Test connection probes a draft and reuses stored credentials", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-mcp-routes-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-mcp-routes-"));
   const settingsPath = join(dir, "settings.json");
   try {
     const seen: McpServerSettings[] = [];
@@ -284,7 +284,7 @@ test("Test connection probes a draft and reuses stored credentials", async () =>
 });
 
 test("deleting a Project drops its project-scoped MCP rows only", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-mcp-routes-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-mcp-routes-"));
   const settingsPath = join(dir, "settings.json");
   try {
     const records = await projects();

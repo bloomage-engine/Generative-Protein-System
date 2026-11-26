@@ -20,7 +20,7 @@ import {
   type TransportCommand,
   type WatchSnapshot,
   type Workspace,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
 import type { HarnessNotification } from "@deepseek-ai/dsh-sdk-client";
 import { createDshTurnClient, type DshClientLaunchOptions, type DshTurnClient } from "./client.js";
@@ -175,7 +175,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private runtimes = new Map<string, SessionRuntime<SessionEvent>>();
   private behavior: DshBehavior | null = null;
   /**
-   * Science Studio session key → the harness session id this child generation
+   * Generative Protein System session key → the harness session id this child generation
    * created for it. Ids are generation-scoped (a previous harness process can
    * never hand its session over — docs/adr/0004), so this map is what keeps
    * every turn of THIS child on the same harness conversation.
@@ -228,7 +228,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       options.hpcPluginPath ?? fileURLToPath(new URL("./hpc-plugin.js", import.meta.url));
     this.worktreePluginPath =
       options.worktreePluginPath ?? fileURLToPath(new URL("./worktree-plugin.js", import.meta.url));
-    this.bridgeDir = options.bridgeDir ?? join(tmpdir(), "science-studio", "dsh-bridge");
+    this.bridgeDir = options.bridgeDir ?? join(tmpdir(), "gps", "dsh-bridge");
     this.createBridge = options.createBridge ?? createCommandBridge;
     this.subagentRegistry = new SubagentRegistry(
       (harnessId) => this.sessionKeyForHarnessId(harnessId),
@@ -353,7 +353,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     // (docs/adr/0025), and the service always reads/writes tasks under the
     // Project's `main` root, so the plugin is pinned there — `cwd` is the ACTIVE
     // worktree, and a task authored from a linked checkout would otherwise land
-    // in `.worktrees/<id>/.science-studio/cron/` where the service never looks.
+    // in `.worktrees/<id>/.gps/cron/` where the service never looks.
     if (opts.project) {
       const cronRoot = opts.projectRoot ?? cwd;
       try {
@@ -375,7 +375,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     // one, the service base URL the tools fetch.
     if (opts.project) {
       try {
-        const service = process.env.SCIENCE_STUDIO_SERVICE_URL;
+        const service = process.env.GPS_SERVICE_URL;
         patches.push(
           await writeHpcPatch({
             dir: this.bridgeDir,
@@ -398,7 +398,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     // one.
     if (opts.project) {
       try {
-        const service = process.env.SCIENCE_STUDIO_SERVICE_URL;
+        const service = process.env.GPS_SERVICE_URL;
         patches.push(
           await writeWorktreePatch({
             dir: this.bridgeDir,
@@ -658,7 +658,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
     return this.ready;
   }
 
-  /** The Science Studio session key a harness session id belongs to, if known. */
+  /** The Generative Protein System session key a harness session id belongs to, if known. */
   private sessionKeyForHarnessId(harnessId: string): string | undefined {
     for (const [key, id] of this.harnessSessions) if (id === harnessId) return key;
     return undefined;
@@ -968,7 +968,7 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   }
 
   /**
-   * Resolve one harness command for one Science Studio session. Never throws:
+   * Resolve one harness command for one Generative Protein System session. Never throws:
    * every failure is an {@link HarnessCommandOutcome} the behavior turns into a
    * reply row, so a bridge problem can never break the run stream.
    *

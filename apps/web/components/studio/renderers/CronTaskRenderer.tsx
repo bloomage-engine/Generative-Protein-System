@@ -19,7 +19,7 @@ import {
   type CronRunStatus,
   type CronTask,
   type SchedulePreset,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,7 +33,7 @@ const STATUS_CLASS: Record<CronRunStatus, string> = {
 
 /**
  * Cron is Project-`main`-only: the service scheduler and the `/api/cron*`
- * routes read `.science-studio/cron/` from the Project root, not a linked
+ * routes read `.gps/cron/` from the Project root, not a linked
  * checkout. Those routes honour a `worktreeId` claim and default to `main`; the
  * web client sends none. The run-log read below therefore pins `main`
  * explicitly: the workspace provider would otherwise fall back to the ACTIVE

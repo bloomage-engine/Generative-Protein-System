@@ -3,7 +3,7 @@
 dsh adapter 驱动的是一台**第三方 harness**：`@deepseek-ai/dsh-sdk-client` 把
 `dsh --profile sdk` spawn 成子进程，走 stdio JSON-RPC，版本精确 pin 死
 （docs/adr/0004）。这条 wire 没有命令面、没有取消、没有 token 级流式，二进制也
-改不了。所以 Science Studio 需要加给 agent 的一切——项目脚手架、定时任务、
+改不了。所以 Generative Protein System 需要加给 agent 的一切——项目脚手架、定时任务、
 HPC、工作树、命令桥——都走本文的机制：**adapter init 时给每个插件写一个小
 YAML 补丁，以 `--patch` 交给子进程，让 harness 自己的 cordis 插件装载器把插件
 模块拉进它的进程。**
@@ -13,7 +13,7 @@ YAML 补丁，以 `--patch` 交给子进程，让 harness 自己的 cordis 插�
 一个 cordis 插件就是形状固定的普通 JS 模块：
 
 ```ts
-export const name = "science-studio-cron";                  // 插件 id
+export const name = "gps-cron";                  // 插件 id
 export const inject = ["commands", "tools", "systemPrompt"]; // 要注入的宿主服务
 export function apply(ctx: CronHost, config) { ... }         // child boot 时被调用
 ```
@@ -25,7 +25,7 @@ harness 按 `inject` 列表从自己的服务容器解析依赖，再带着补�
 
 ```yaml
 - insert:
-    - id: science-studio-cron
+    - id: gps-cron
       name: "file:///abs/path/to/dist/cron-plugin.js"
       config: {"project": {"id": …}, "root": "/abs/project/root"}
 ```
@@ -37,7 +37,7 @@ harness 按 `inject` 列表从自己的服务容器解析依赖，再带着补�
 - **不依赖 profile 目录解析**：插件 `name` 写成 `file:` URL（`dsh-app-boot`
   文档支持的形态），指向 adapter 自己 `dist/` 的兄弟文件
   （`new URL("./cron-plugin.js", import.meta.url)`）。插件随
-  `@science-studio/transport-dsh` 一起发布，用户什么都不用装。
+  `@gps/transport-dsh` 一起发布，用户什么都不用装。
 - **文件名唯一**（`cron-<8hex>.cordis.patch.yml`），两个 adapter / 两个
   Project 共用 `bridgeDir` 也不会互相覆盖。
 - **补丁里的 config 就是父子两侧的全部契约**：Project 身份、工作区 root、
@@ -70,10 +70,10 @@ harness 按 `inject` 列表从自己的服务容器解析依赖，再带着补�
 | 规则 | 原因 |
 | --- | --- |
 | **不 import 任何 `@deepseek-ai/*` / cordis** | 子进程自己 pin 了这些包；import 会拉进第二份拷贝，或随 harness 升级直接崩。宿主能力全部声明为**本地结构化类型视图**（`CronHost`、`BridgeHost`…），接口漂移表现为注册失败（unavailable），而不是 child 起不来。 |
-| **永不写 stdout** | child 的 stdout 就是 NDJSON-RPC wire。诊断一律 `process.stderr.write("[ss-…] …")`。 |
+| **永不写 stdout** | child 的 stdout 就是 NDJSON-RPC wire。诊断一律 `process.stderr.write("[gps-…] …")`。 |
 | **`apply` 永不抛（fail SOFT）** | 一个抛异常的 cordis 插件会**让整个 child boot 失败**——adapter 丢掉整个运行时。配置缺失即禁用；每条注册各自 try。 |
 | **dispose 挂 `ctx.effect(disposer, label)`** | 生命周期顺序交给 cordis（socket 关闭、监听器摘除）。 |
-| **可以 import 自家 workspace 包**（如 `@science-studio/cron`） | 从插件文件的物理位置（adapter dist）解析，永不碰 harness 的拷贝。 |
+| **可以 import 自家 workspace 包**（如 `@gps/cron`） | 从插件文件的物理位置（adapter dist）解析，永不碰 harness 的拷贝。 |
 
 插件能向宿主注册三类面：`ctx.tools.register(...)`（模型可见工具，参数是
 JSON Schema）、`ctx.commands.register(...)`（harness 斜杠命令）、
@@ -120,7 +120,7 @@ adapter 侧的一半（`bridge.ts` 的 `createCommandBridge`）在同一 socket 
 
 `packages/plugins/molql-tool-dsh` 也是 dsh 插件，但它是**agent-side
 deployable**：独立构建、安装进 harness 自己的插件/skill 通道，不走 per-launch
-patch。本文这六个插件随 `@science-studio/transport-dsh` 发布，用户零安装。
+patch。本文这六个插件随 `@gps/transport-dsh` 发布，用户零安装。
 
 ## 验证
 

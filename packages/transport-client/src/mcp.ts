@@ -3,7 +3,7 @@
 import type {
   McpServerDraft,
   McpServerView,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import { scopedUrl } from "./scope.js";
 
 /** The same-origin MCP proxy base (the web hop). */

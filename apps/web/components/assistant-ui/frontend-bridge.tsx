@@ -6,8 +6,8 @@ import {
   useAuiState,
   type ToolCallMessagePartProps,
 } from "@assistant-ui/react";
-import { MolqlError, MOLQL_TOOL_NAME } from "@science-studio/molstar-viewer/directive";
-import { MOLQL_MEASUREMENTS_TOOL_NAME } from "@science-studio/molstar-viewer/measurement";
+import { MolqlError, MOLQL_TOOL_NAME } from "@gps/molstar-viewer/directive";
+import { MOLQL_MEASUREMENTS_TOOL_NAME } from "@gps/molstar-viewer/measurement";
 import { executeAction, getRegisteredActions } from "@/lib/frontend-actions/registry";
 import { planDispatch, type CompletedToolCall } from "@/lib/frontend-actions/dispatch-plan";
 // Side-effect imports: register the `molql` and `measurements` action handlers.

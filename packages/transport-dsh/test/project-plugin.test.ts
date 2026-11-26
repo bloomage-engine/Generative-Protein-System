@@ -68,7 +68,7 @@ test("a project config registers the command, the tools, the prompt and the scaf
     apply(host.ctx, { project: META, root });
     assert.deepEqual(host.commands().map((entry) => entry.name), ["project"]);
     assert.deepEqual(host.tools().map((entry) => entry.name).sort(), ["project_log", "project_update"]);
-    assert.deepEqual(host.sections().map((entry) => entry.name), ["science-studio-project"]);
+    assert.deepEqual(host.sections().map((entry) => entry.name), ["gps-project"]);
 
     assert.equal(existsSync(join(root, "docs")), false, "nothing exists before a session starts");
     assert.ok(host.sessionStart(), "an agent/session-start listener is registered");

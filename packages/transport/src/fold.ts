@@ -1,4 +1,4 @@
-import type { Id } from "@science-studio/record";
+import type { Id } from "@gps/record";
 import type { Message, MessagePart, SessionState, StateDelta } from "./types.js";
 
 /**

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { McpServerSettings } from "@science-studio/transport";
+import type { McpServerSettings } from "@gps/transport";
 import { DshRuntimeAdapter } from "../src/adapter.js";
 import type { DshClientLaunchOptions, DshTurnClient } from "../src/client.js";
 import { MCP_CONFIG_ENV, dshMcpConfigs, writeMcpPatch } from "../src/mcp-patch.js";
@@ -53,10 +53,10 @@ test("writeMcpPatch emits one plugin insert per server and no credentials", asyn
     const file = await writeMcpPatch({ dir, configs: dshMcpConfigs(servers.slice(0, 2)) });
     const patch = await readFile(file, "utf8");
     assert.match(patch, /- insert:/);
-    assert.match(patch, /id: science-studio-mcp-0/);
-    assert.match(patch, /id: science-studio-mcp-1/);
+    assert.match(patch, /id: gps-mcp-0/);
+    assert.match(patch, /id: gps-mcp-1/);
     assert.match(patch, /name: "@deepseek-ai\/dsh-mcp-client"/);
-    assert.match(patch, /SS_MCP_SECRET_CONFIG/);
+    assert.match(patch, /GPS_MCP_SECRET_CONFIG/);
     assert.equal(patch.includes("global-secret"), false);
     assert.equal(patch.includes("mine-secret"), false);
   } finally {
@@ -102,9 +102,9 @@ test("a Project child mounts only global rows plus its own", async () => {
   const { patches, env } = await mounted({ project: META });
   const mcp = patches.find((patch) => patch.includes("@deepseek-ai/dsh-mcp-client"));
   assert.ok(mcp, "MCP patch was mounted");
-  assert.match(mcp, /science-studio-mcp-0/);
-  assert.match(mcp, /science-studio-mcp-1/);
-  assert.equal(mcp.includes("science-studio-mcp-2"), false);
+  assert.match(mcp, /gps-mcp-0/);
+  assert.match(mcp, /gps-mcp-1/);
+  assert.equal(mcp.includes("gps-mcp-2"), false);
 
   const parsed = JSON.parse(env?.[MCP_CONFIG_ENV] ?? "[]") as {
     serverName: string;
@@ -118,7 +118,7 @@ test("a standalone child (no Project) mounts only global rows", async () => {
   const { patches, env } = await mounted({});
   const mcp = patches.find((patch) => patch.includes("@deepseek-ai/dsh-mcp-client"));
   assert.ok(mcp);
-  assert.equal(mcp.includes("science-studio-mcp-1"), false);
+  assert.equal(mcp.includes("gps-mcp-1"), false);
   const parsed = JSON.parse(env?.[MCP_CONFIG_ENV] ?? "[]") as { serverName: string }[];
   assert.deepEqual(parsed.map((server) => server.serverName), ["global"]);
 });

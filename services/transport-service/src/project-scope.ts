@@ -18,12 +18,12 @@
  * `worktreeId` claims the Project's `main` worktree.
  *
  * Resolving the record's Session lives here too: a claimed runtime session key
- * IS a Science Studio Session id (1:1, docs/adr/0007), and the key is mapped
+ * IS a Generative Protein System Session id (1:1, docs/adr/0007), and the key is mapped
  * through the Worktree's OWN adapter (`resolveSessionKey`) — never a fabricated
  * constant.
  */
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { DEFAULT_WORKTREE_ID, type Id, type Session } from "@science-studio/record";
+import { DEFAULT_WORKTREE_ID, type Id, type Session } from "@gps/record";
 import {
   FileTooLargeError,
   WorkspaceNotFoundError,
@@ -33,7 +33,7 @@ import {
   type EnvironmentProvider,
   type Principal,
   type RuntimeAdapter,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { RecordDirectory } from "./directory.js";
 import { isSafeProjectId } from "./worktree/paths.js";
 

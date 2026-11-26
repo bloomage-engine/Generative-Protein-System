@@ -20,7 +20,7 @@ test("writeWorktreePatch inserts the plugin by file URL with a JSON config", asy
     });
     const patch = await readFile(file, "utf8");
     assert.match(patch, /- insert:/);
-    assert.match(patch, /id: science-studio-worktree/);
+    assert.match(patch, /id: gps-worktree/);
     assert.match(patch, /worktree-plugin\.js/);
     assert.match(patch, /"worktree":\{"id":"exp-a"/);
     assert.match(patch, /"service":"http:\/\/127\.0\.0\.1:3123"/);
@@ -55,11 +55,11 @@ async function mountedPatches(opts: {
 
 test("the adapter mounts the worktree plugin for a real project", async () => {
   const patches = await mountedPatches({ project: META, worktree: WT });
-  assert.ok(patches.some((p) => /science-studio-worktree/.test(p)));
+  assert.ok(patches.some((p) => /gps-worktree/.test(p)));
   assert.ok(patches.some((p) => /"worktree":\{"id":"exp-a"/.test(p)));
 });
 
 test("without a project the worktree plugin is not mounted", async () => {
   const patches = await mountedPatches({});
-  assert.ok(!patches.some((p) => /science-studio-worktree/.test(p)));
+  assert.ok(!patches.some((p) => /gps-worktree/.test(p)));
 });

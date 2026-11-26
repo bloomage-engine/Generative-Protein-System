@@ -1,10 +1,10 @@
 import "dotenv/config";
 
 /**
- * Minimal example server for @science-studio/transport-openclaw.
+ * Minimal example server for @gps/transport-openclaw.
  *
  * Wires the real OpenClaw adapter (gateway URL/token from `.env`) into the
- * shared @science-studio/transport-service. The service owns the entire
+ * shared @gps/transport-service. The service owns the entire
  * assistant-transport wire (reconcile-first snapshots, `set`/`append-text`
  * ops, `[DONE]` termination, the standing watch channel) — this example adds
  * no protocol code of its own, only the adapter registration.
@@ -14,8 +14,8 @@ import "dotenv/config";
  *   GET  /api/transport/commands  runtime command catalog for the slash menu
  *   GET  /api/transport/watch  standing watch (remote replies from the gateway)
  */
-import { OpenClawRuntimeAdapter } from "@science-studio/transport-openclaw";
-import { createTransportService } from "@science-studio/transport-service";
+import { OpenClawRuntimeAdapter } from "@gps/transport-openclaw";
+import { createTransportService } from "@gps/transport-service";
 
 const adapter = new OpenClawRuntimeAdapter();
 const app = await createTransportService({ adapters: [adapter] });

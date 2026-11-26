@@ -12,20 +12,20 @@ import {
 } from "../src/job-layout.js";
 
 test("the default Remote Work Dir names the Project", () => {
-  assert.equal(defaultWorkDir("proj-7"), "~/science-studio/proj-7");
+  assert.equal(defaultWorkDir("proj-7"), "~/gps/proj-7");
 });
 
 test("job paths hang under a dot-dir and never double the separator", () => {
-  assert.equal(jobDir("~/w", "cjob-1"), "~/w/.ss-jobs/cjob-1");
-  assert.equal(jobDir("~/w/", "cjob-1"), "~/w/.ss-jobs/cjob-1");
+  assert.equal(jobDir("~/w", "cjob-1"), "~/w/.gps-jobs/cjob-1");
+  assert.equal(jobDir("~/w/", "cjob-1"), "~/w/.gps-jobs/cjob-1");
   const p = jobPaths("~/w", "cjob-1");
-  assert.equal(p.dir, "~/w/.ss-jobs/cjob-1");
-  assert.equal(p.script, "~/w/.ss-jobs/cjob-1/script.sh");
-  assert.equal(p.runner, "~/w/.ss-jobs/cjob-1/run.sh");
-  assert.equal(p.stdout, "~/w/.ss-jobs/cjob-1/stdout");
-  assert.equal(p.stderr, "~/w/.ss-jobs/cjob-1/stderr");
-  assert.equal(p.pid, "~/w/.ss-jobs/cjob-1/pid");
-  assert.equal(p.rc, "~/w/.ss-jobs/cjob-1/rc");
+  assert.equal(p.dir, "~/w/.gps-jobs/cjob-1");
+  assert.equal(p.script, "~/w/.gps-jobs/cjob-1/script.sh");
+  assert.equal(p.runner, "~/w/.gps-jobs/cjob-1/run.sh");
+  assert.equal(p.stdout, "~/w/.gps-jobs/cjob-1/stdout");
+  assert.equal(p.stderr, "~/w/.gps-jobs/cjob-1/stderr");
+  assert.equal(p.pid, "~/w/.gps-jobs/cjob-1/pid");
+  assert.equal(p.rc, "~/w/.gps-jobs/cjob-1/rc");
 });
 
 test("single-quote escaping is POSIX-correct", () => {
@@ -36,7 +36,7 @@ test("single-quote escaping is POSIX-correct", () => {
 });
 
 test("remote paths are restricted to the space-free safe grammar", () => {
-  assert.equal(isSafeRemotePath("~/ss-proj42"), true);
+  assert.equal(isSafeRemotePath("~/gps-proj42"), true);
   assert.equal(isSafeRemotePath("/scratch/a/b-c.1_2"), true);
   assert.equal(isSafeRemotePath("~/with space"), false);
   assert.equal(isSafeRemotePath("~/a/../../x"), false);

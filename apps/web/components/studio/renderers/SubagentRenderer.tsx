@@ -1,7 +1,7 @@
 "use client";
 
 import { Bot } from "lucide-react";
-import type { Message, MessagePart, SubagentTranscript } from "@science-studio/transport";
+import type { Message, MessagePart, SubagentTranscript } from "@gps/transport";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 

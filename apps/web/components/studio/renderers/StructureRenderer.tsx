@@ -4,7 +4,7 @@ import "molstar/lib/mol-plugin-ui/skin/light.scss";
 import "./structure-theme.css";
 
 import { useCallback, useMemo, useState } from "react";
-import { useWorkspaceApi, workspaceFileUrl } from "@science-studio/transport-client";
+import { useWorkspaceApi, workspaceFileUrl } from "@gps/transport-client";
 import {
   formatAtomMolql,
   formatBondMolql,
@@ -14,7 +14,7 @@ import {
   molqlTargetKey,
   MolqlViewerPanel,
   type MolqlTarget,
-} from "@science-studio/molstar-viewer";
+} from "@gps/molstar-viewer";
 import { useComposerInsert } from "@/components/assistant-ui/composer-insert";
 import { useStudioStore } from "@/store/studio-store";
 

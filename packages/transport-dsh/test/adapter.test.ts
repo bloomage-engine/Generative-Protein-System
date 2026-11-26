@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
 import type { HarnessNotification } from "@deepseek-ai/dsh-sdk-client";
-import type { RecordStoreLike, SessionState, StateDelta, SubagentRun } from "@science-studio/transport";
-import { sessionState } from "@science-studio/contract-tests";
-import type { Run, Subagent } from "@science-studio/record";
+import type { RecordStoreLike, SessionState, StateDelta, SubagentRun } from "@gps/transport";
+import { sessionState } from "@gps/contract-tests";
+import type { Run, Subagent } from "@gps/record";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
-import type { PersistedTranscript } from "@science-studio/record";
+import type { PersistedTranscript } from "@gps/record";
 import type { DshCommandBridge } from "../src/bridge.js";
 import type { DshAssistantStreamMessage } from "../src/assistant-stream.js";
 
@@ -464,7 +464,7 @@ test("a harness id another process already took falls back to a fresh harness se
 });
 
 test("a saved route credential reaches the launch client env", async () => {
-  const home = await mkdtemp(join(tmpdir(), "ss-route-env-"));
+  const home = await mkdtemp(join(tmpdir(), "gps-route-env-"));
   try {
     let seenEnv: NodeJS.ProcessEnv | undefined;
     const adapter = new DshRuntimeAdapter({
@@ -472,7 +472,7 @@ test("a saved route credential reaches the launch client env", async () => {
         seenEnv = options.env;
         return { start: async () => {}, close: async () => {}, runTurn: async () => {} };
       },
-      transcriptDir: join(tmpdir(), "science-studio-route-env-test"),
+      transcriptDir: join(tmpdir(), "gps-route-env-test"),
     });
     await adapter.init({
       binding: {
@@ -497,13 +497,13 @@ test("a saved route credential reaches the launch client env", async () => {
 });
 
 test("a failing route write does not fail init", async () => {
-  const home = await mkdtemp(join(tmpdir(), "ss-route-fail-"));
+  const home = await mkdtemp(join(tmpdir(), "gps-route-fail-"));
   try {
     await writeFile(join(home, "settings.yaml"), "", "utf8");
     await mkdir(join(home, "settings.yaml.tmp"));
     const adapter = new DshRuntimeAdapter({
       createClient: (): DshTurnClient => ({ start: async () => {}, close: async () => {}, runTurn: async () => {} }),
-      transcriptDir: join(tmpdir(), "science-studio-route-fail-test"),
+      transcriptDir: join(tmpdir(), "gps-route-fail-test"),
     });
     await adapter.init({
       binding: {

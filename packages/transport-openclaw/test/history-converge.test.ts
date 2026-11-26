@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sessionState } from "@science-studio/contract-tests";
+import { sessionState } from "@gps/contract-tests";
 import { OpenClawRuntimeAdapter } from "../src/index.js";
 import type { BackendGateway, BackendGatewayOptions } from "../src/connection.js";
 import type { EventFrame } from "@openclaw/gateway-client/browser";
-import type { SessionState, StateDelta, TransportCommand } from "@science-studio/transport";
+import type { SessionState, StateDelta, TransportCommand } from "@gps/transport";
 
 type ScriptedGateway = BackendGateway & { emit(frame: EventFrame): void };
 

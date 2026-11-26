@@ -20,7 +20,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { RuntimeAdapter } from "@science-studio/transport/seams";
+import type { RuntimeAdapter } from "@gps/transport/seams";
 
 /** assistant-ui's local-mint prefix, as both shipped runtimes recognize it. */
 const DEFAULT_LOCAL_IDS = ["__LOCALID_abc123", "__LOCALID_zzz"];

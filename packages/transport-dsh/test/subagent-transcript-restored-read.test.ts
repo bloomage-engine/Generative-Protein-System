@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createInMemoryRecordStore } from "@science-studio/record";
-import type { RecordStoreLike } from "@science-studio/transport";
+import { createInMemoryRecordStore } from "@gps/record";
+import type { RecordStoreLike } from "@gps/transport";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
 
 /**

@@ -7,7 +7,7 @@ import {
 } from "assistant-stream";
 import { asAsyncIterableStream } from "assistant-stream/utils";
 import type { ReadonlyJSONValue } from "assistant-stream/utils";
-import type { Message } from "@science-studio/transport";
+import type { Message } from "@gps/transport";
 import { scopeBody, withScope, type ClientScope } from "./scope.js";
 
 /**

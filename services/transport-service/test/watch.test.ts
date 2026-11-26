@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
-import { LocalPrincipalResolver, NullWorkspace } from "@science-studio/transport";
+import { LocalPrincipalResolver, NullWorkspace } from "@gps/transport";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
-import type { RuntimeAdapter, SessionState, StateDelta, TransportCommand, WatchSnapshot } from "@science-studio/transport";
+import type { RuntimeAdapter, SessionState, StateDelta, TransportCommand, WatchSnapshot } from "@gps/transport";
 
 function emptyDeltas(): AsyncIterable<StateDelta> {
   return (async function* (): AsyncGenerator<StateDelta, void, unknown> {

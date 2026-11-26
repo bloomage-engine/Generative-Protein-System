@@ -7,4 +7,4 @@ const api = {
     ipcRenderer.invoke("desktop:restartHost"),
 };
 
-contextBridge.exposeInMainWorld("scienceStudioDesktop", api);
+contextBridge.exposeInMainWorld("gpsDesktop", api);

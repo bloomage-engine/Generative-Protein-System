@@ -11,10 +11,10 @@
  * repeated failures settle to `unknown` and stop polling after three
  * strikes (a manual refresh resets the strikes).
  */
-import type { ComputeJob, Id, RecordStore } from "@science-studio/record";
-import { isOpenComputeJobState } from "@science-studio/hpc";
-import type { HpcEndpointSettings } from "@science-studio/transport";
-import { parseExitCode, sacctStateToJobState, squeueStateToJobState } from "@science-studio/hpc";
+import type { ComputeJob, Id, RecordStore } from "@gps/record";
+import { isOpenComputeJobState } from "@gps/hpc";
+import type { HpcEndpointSettings } from "@gps/transport";
+import { parseExitCode, sacctStateToJobState, squeueStateToJobState } from "@gps/hpc";
 import { remotePath, type SshRunner } from "./ssh.js";
 
 declare module "fastify" {

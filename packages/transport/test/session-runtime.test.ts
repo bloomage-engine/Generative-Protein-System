@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Run } from "@science-studio/record";
+import type { Run } from "@gps/record";
 import {
   SessionRuntime,
   textOutput,

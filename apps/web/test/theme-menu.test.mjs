@@ -8,7 +8,7 @@
  * user sees. Both choices must also survive a reload, and opening/switching must
  * not remount the runtime owner (the transcript marker check).
  *
- * Prereq: `npm run build -w @science-studio/transport-client`. Needs a Chromium
+ * Prereq: `npm run build -w @gps/transport-client`. Needs a Chromium
  * (SKIPs without one).
  */
 import { test } from "node:test";

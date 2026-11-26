@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { SubagentRegistry } from "../src/subagents.js";
-import type { Run, Subagent } from "@science-studio/record";
-import type { RecordStoreLike } from "@science-studio/transport";
+import type { Run, Subagent } from "@gps/record";
+import type { RecordStoreLike } from "@gps/transport";
 
 function registry(resolve: (id: string) => string | undefined) {
   let tick = 0;

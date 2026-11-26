@@ -3,7 +3,7 @@
  * archived or deleted (docs/adr/0014). Pure, so the decision table is testable
  * without a browser; the caller performs the fetch and the `setScope` commit.
  */
-import type { Project, Session } from "@science-studio/transport-client";
+import type { Project, Session } from "@gps/transport-client";
 
 /**
  * The Project to open once `removedProjectId` is gone: the first Project still

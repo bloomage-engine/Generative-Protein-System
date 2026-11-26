@@ -1,5 +1,5 @@
 {
-  "name": "@science-studio/transport-client",
+  "name": "@gps/transport-client",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -17,10 +17,10 @@
     "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
-    "@science-studio/cron": "*",
-    "@science-studio/hpc": "*",
-    "@science-studio/record": "*",
-    "@science-studio/transport": "*"
+    "@gps/cron": "*",
+    "@gps/hpc": "*",
+    "@gps/record": "*",
+    "@gps/transport": "*"
   },
   "peerDependencies": {
     "@assistant-ui/react": "^0.15.0",

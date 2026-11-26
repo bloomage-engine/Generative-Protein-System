@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-import { createInMemoryRecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore } from "@gps/record";
 import {
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
@@ -12,7 +12,7 @@ import {
   type Principal,
   type PrincipalResolver,
   type RuntimeAdapter,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 
@@ -59,7 +59,7 @@ async function withServer(
 const json = { "content-type": "application/json" };
 
 test("PUT /api/settings merges and GET redacts the key", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-settings-routes-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-settings-routes-"));
   try {
     await withServer(join(dir, "settings.json"), async (base) => {
       const put = await fetch(`${base}/api/settings`, {
@@ -102,7 +102,7 @@ test("PUT /api/settings merges and GET redacts the key", async () => {
 });
 
 test("PUT /api/settings rejects a bad body with 400", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-settings-routes-bad-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-settings-routes-bad-"));
   try {
     await withServer(join(dir, "settings.json"), async (base) => {
       const res = await fetch(`${base}/api/settings`, {
@@ -119,7 +119,7 @@ test("PUT /api/settings rejects a bad body with 400", async () => {
 });
 
 test("a non-local non-manager principal can GET but not PUT", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-settings-routes-hosted-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-settings-routes-hosted-"));
   const researcher: Principal = {
     id: "u-1",
     tenant: "t-1",

@@ -19,7 +19,7 @@
 import { ComposerAddAttachment, ComposerAttachments } from "@/components/assistant-ui/elements/attachment.aui";
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
-import { useRuntimeSlashMenu, useWorkspaceMentions } from "@science-studio/transport-client";
+import { useRuntimeSlashMenu, useWorkspaceMentions } from "@gps/transport-client";
 import {
   AuiIf,
   ComposerPrimitive,

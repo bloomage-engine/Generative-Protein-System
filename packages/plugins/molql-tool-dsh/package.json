@@ -1,9 +1,9 @@
 {
-  "name": "@science-studio/molql-tool-dsh",
+  "name": "@gps/molql-tool-dsh",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "DeepSeek Harness plugin registering the `molql` (viewer selection) and `computeInteraction` (non-covalent interactions) tools for Science Studio.",
+  "description": "DeepSeek Harness plugin registering the `molql` (viewer selection) and `computeInteraction` (non-covalent interactions) tools for Generative Protein System.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/schemastery": "^3.18.2",
-    "@science-studio/molql-shared": "workspace:*",
+    "@gps/molql-shared": "workspace:*",
     "tsx": "^4.0.0",
     "typescript": "^5.5.0"
   }

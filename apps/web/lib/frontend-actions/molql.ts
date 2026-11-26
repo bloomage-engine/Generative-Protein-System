@@ -1,7 +1,7 @@
 "use client";
 
 import { toast } from "sonner";
-import { MolqlError, MOLQL_TOOL_NAME } from "@science-studio/molstar-viewer/directive";
+import { MolqlError, MOLQL_TOOL_NAME } from "@gps/molstar-viewer/directive";
 import { activeStructurePath, useStudioStore } from "@/store/studio-store";
 import { registerAction } from "./registry";
 
@@ -15,12 +15,12 @@ import { registerAction } from "./registry";
  * cannot be applied, so we surface a toast instead of silently doing nothing
  * (or drawing on a hidden tab).
  *
- * `@science-studio/molstar-viewer` (and molstar with it) is imported DYNAMICALLY
+ * `@gps/molstar-viewer` (and molstar with it) is imported DYNAMICALLY
  * so the multi-megabyte viewer only loads when a `molql` result actually
  * arrives — never as part of the chat bundle.
  */
 registerAction(MOLQL_TOOL_NAME, async (payload) => {
-  const { applyMolqlToolResult, getMolqlViewer } = await import("@science-studio/molstar-viewer");
+  const { applyMolqlToolResult, getMolqlViewer } = await import("@gps/molstar-viewer");
   const path = activeStructurePath(useStudioStore.getState());
   const target = path ? getMolqlViewer(path) : null;
   if (!target) {

@@ -4,7 +4,7 @@ import {
   createInitialRuntimeState,
   fetchSessionSnapshot,
 } from "../src/session-sync.js";
-import type { Message } from "@science-studio/transport";
+import type { Message } from "@gps/transport";
 
 function sseResponse(body: string, ok = true): Response {
   const frames = new TextEncoder().encode(body);

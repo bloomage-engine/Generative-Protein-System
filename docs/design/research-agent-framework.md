@@ -6,7 +6,7 @@ Status: proposed (rev 4). Audience: maintainers of `packages/*`,
 `services/transport-service`, `apps/web`. Vocabulary: `codebase-design` (module /
 interface / seam / adapter / depth). Domain terms: `/CONTEXT.md`.
 
-This document designs the two capabilities Science Studio is missing on top of
+This document designs the two capabilities Generative Protein System is missing on top of
 the existing transport seam:
 
 1. **Deployment modes** — one local single-user install (no login, runtime on
@@ -43,7 +43,7 @@ adding a third must not touch the core (§4.3).
   open, not an upload.
 - **Multi-tenancy is a hostile boundary.** openclaw `fleet` explicitly warns
   that one shared Gateway is not a multi-tenant boundary; each trust boundary
-  gets its own **cell**. Science Studio must map that honest boundary, not
+  gets its own **cell**. Generative Protein System must map that honest boundary, not
   pretend to be stronger than it is.
 - **Open core.** The OSS repo must remain a complete single-user product. The
   enterprise module plugs into OSS-declared seams from out of tree; OSS never
@@ -57,7 +57,7 @@ adding a third must not touch the core (§4.3).
 | `RuntimeAdapter` (`packages/transport/src/types.ts`) | Runtime swap stays an adapter swap. |
 | `SessionRuntime` + `RunFlow` kit | Adapters keep composing one shared run lifecycle; no re-implementation. |
 | Reconcile-first + standing watch | History convergence semantics; untouched. |
-| Record ownership (`docs/adr/0002`) | Science Studio owns `Run`/`Artifact`, not the runtime. |
+| Record ownership (`docs/adr/0002`) | Generative Protein System owns `Run`/`Artifact`, not the runtime. |
 | The assistant-transport wire (SSE frames, `[DONE]`) | Migrating to Fastify is an implementation change, not a protocol change. |
 
 The design **adds** seams; it does not move these.
@@ -273,7 +273,7 @@ handful of methods hiding path containment, symlink policy, size caps, and the
 browser-path ↔ agent-path mapping.
 
 ```ts
-// packages/transport/src/workspace.ts  (seam types; implementations in @science-studio/workspace)
+// packages/transport/src/workspace.ts  (seam types; implementations in @gps/workspace)
 export interface Entry {
   /** Workspace-relative, POSIX-style (never absolute, never `..`). */
   path: string;
@@ -398,7 +398,7 @@ runtime and their files?* The interface is runtime-agnostic; connection material
 is not on it.
 
 ```ts
-// seam type in @science-studio/transport; Local/Dsh providers in @science-studio/sandbox
+// seam type in @gps/transport; Local/Dsh providers in @gps/sandbox
 export interface Sandbox {
   tenant: string;
   /** Which runtime product this sandbox runs — a runtime-factory id (§4.3). */
@@ -438,7 +438,7 @@ implementation. State the trust difference honestly (§10).
     subsequent calls read the registry. `binding` returns
     `{ runtime: "openclaw", config: { url, tokenRef } }`.
   - `remove` runs `openclaw fleet rm <tenant> --purge-data --force` after
-    cascading Science Studio-side deletion.
+    cascading Generative Protein System-side deletion.
   - `status` maps `fleet status` onto `Sandbox["state"]`.
   - Pin the image by digest (`--image …@sha256:…`) and rely on fleet's
     health-gated create/upgrade + automatic rollback.
@@ -447,7 +447,7 @@ implementation. State the trust difference honestly (§10).
   returns `{ runtime: "dsh", config: { home, profile, apiKeyRef } }`.
 
 **The token problem is real and must be designed, not hand-waved.** Fleet's
-registry deliberately does *not* store the token, so Science Studio needs its
+registry deliberately does *not* store the token, so Generative Protein System needs its
 own `SandboxRegistry` (tenant → port, `tokenRef`, workspaceRoot, state,
 **private**). Either generate the token and pass `--gateway-token`, or capture
 the create output once. Either way: **a token is written exactly once and never
@@ -599,7 +599,7 @@ Serving files from the transport service rather than a separate process is
 deliberate: the file service needs the *same* principal and the *same* sandbox
 resolution as transport. A separate process would force a second copy of the
 registry and a service-to-service trust hop. The module is separate
-(`@science-studio/workspace`); the deployment stays one process.
+(`@gps/workspace`); the deployment stays one process.
 
 ### 9.1 Fastify
 
@@ -676,7 +676,7 @@ export interface EnterpriseModule {
 function localBackend(env: NodeJS.ProcessEnv): Backend { /* Local* + FsWorkspace */ }
 
 export async function createBackend(env = process.env): Promise<Backend> {
-  const specifier = env.SS_ENTERPRISE_MODULE;
+  const specifier = env.GPS_ENTERPRISE_MODULE;
   if (!specifier) return localBackend(env);
   const mod = (await import(specifier)) as EnterpriseModule;
   return mod.createBackend(env);
@@ -690,7 +690,7 @@ The same pattern, one level up: the OSS web app resolves an optional
 **Invariants that keep single-user unaffected** (worth a CI gate):
 
 1. No OSS package depends on any enterprise artifact.
-2. The OSS test suite passes with `SS_ENTERPRISE_MODULE` unset.
+2. The OSS test suite passes with `GPS_ENTERPRISE_MODULE` unset.
 3. Every enterprise implementation satisfies an OSS-declared interface, so the
    core compiles and runs without it.
 4. The published OSS seam types are treated as a public contract — deliberately
@@ -757,7 +757,7 @@ apps/web                              + workspace browser/viewer, @-mention popo
                                         + optional enterprise UI slot (absent by default)
 
 Private (enterprise repo)
-@acme/ss-enterprise                     BearerPrincipalResolver, FleetSandboxProvider + SandboxRegistry,
+@acme/gps-enterprise                     BearerPrincipalResolver, FleetSandboxProvider + SandboxRegistry,
                                         SchemaRecordStore (+ migrations), QuotaPolicy, enterprise Fastify plugin,
                                         login gate + quota meters
 ```
@@ -789,11 +789,11 @@ is the live status/checklist. The phases below remain the reference shape.
    runtime's launch surface into its own package (`GatewayBinding`, `DshBinding`)
    and register factories from configuration — remove `RuntimeInitOptions.gateway`
    and the static runtime imports (§4.3–4.4).
-4. Publish `@science-studio/contract-tests` skeletons for `PrincipalResolver`,
+4. Publish `@gps/contract-tests` skeletons for `PrincipalResolver`,
    `Workspace`, `SandboxProvider`, and runtime factories (§15.1).
 
 **Phase 1 — workspace (single-user).**
-5. Create `@science-studio/workspace` with `FsWorkspace`, `WorkspaceLimits` and
+5. Create `@gps/workspace` with `FsWorkspace`, `WorkspaceLimits` and
    tests for the containment/symlink/size invariants.
 6. Add `/api/workspace/*` + the Next route; enforce `maxUploadBytes`; build the
    browser panel and viewer (text inline, download for everything else).
@@ -807,10 +807,10 @@ is the live status/checklist. The phases below remain the reference shape.
     gating `approve` on `capabilities.approvals`.
 
 **Phase 3 — enterprise module (private repo).**
-12. Create `@acme/ss-enterprise`: `BearerPrincipalResolver` (OIDC/JWKS) +
+12. Create `@acme/gps-enterprise`: `BearerPrincipalResolver` (OIDC/JWKS) +
     `PrincipalDirectory`, `SecretStore`, `SandboxRegistry` + `FleetSandboxProvider`,
     `SchemaRecordStore`, enterprise Fastify plugin; wire it via
-    `SS_ENTERPRISE_MODULE`.
+    `GPS_ENTERPRISE_MODULE`.
 13. Control schema + migration runner (§14.5); two-tier quota enforcement
     (§14.2).
 14. Origin-locked CORS, login gate + quota meters in the web app's enterprise UI
@@ -963,7 +963,7 @@ export interface EnterpriseUIExtension {
 The slot may only **wrap or extend**, never alter OSS behaviour; absent, the app
 is byte-identical to the single-user product. Reject the fork for merge burden.
 Escape hatch: if the slot outgrows a handful of components, extract the OSS shell
-into `@science-studio/web-app` and let the enterprise app compose it.
+into `@gps/web-app` and let the enterprise app compose it.
 
 ### 14.5 Postgres schema migration at scale
 
@@ -994,7 +994,7 @@ Migration is a resumable operational job, not an app-startup step.
 
 ## 15. Further optimizations
 
-1. **Conformance suite for the seams** (`@science-studio/contract-tests`, OSS). The
+1. **Conformance suite for the seams** (`@gps/contract-tests`, OSS). The
    open-core boundary is only as good as the private module's conformance.
    Publish reusable suites for `PrincipalResolver`, `SandboxProvider`,
    `Workspace`, `QuotaPolicy`, and `RuntimeFactory`; the enterprise and third-party

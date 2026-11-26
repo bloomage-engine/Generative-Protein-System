@@ -18,7 +18,7 @@ import {
   updateSettings,
   type RuntimeSettingsPatch,
   type RuntimeSettingsView,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { useStudioStore } from "@/store/studio-store";
 import { desktopBridge } from "@/lib/desktop-bridge";
 import { HpcTab } from "@/components/studio/hpc-tab";

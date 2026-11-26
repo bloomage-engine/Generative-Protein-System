@@ -7,7 +7,7 @@ agent holds only the authoring surface.** Four layers implement that split; each
 is read-only with respect to the layer below it.
 
 ```
-author (dsh child plugin)  ──writes──▶  .science-studio/cron/<id>.md  ◀──reads── scheduler (service)
+author (dsh child plugin)  ──writes──▶  .gps/cron/<id>.md  ◀──reads── scheduler (service)
                             same codec (packages/cron)                    UI (polls /api/cron*)
 ```
 
@@ -15,7 +15,7 @@ author (dsh child plugin)  ──writes──▶  .science-studio/cron/<id>.md  
 
 Shared by all three consumers; the single source of truth for the file format.
 
-- `task-doc.ts` — a task is `<id>.md` under `.science-studio/cron/`: simple
+- `task-doc.ts` — a task is `<id>.md` under `.gps/cron/`: simple
   `key: value` frontmatter with JSON-quoted strings (`name`, `schedule`,
   `enabled`, optional `sessionId` / `createdAt` / `updatedAt`) and the prompt as
   the body. **The id IS the filename** (`^[a-z0-9][a-z0-9-]{0,63}$`); there is no
@@ -84,26 +84,26 @@ task files directly with the shared codec, because **the file is the authority**
 — what the agent writes is exactly what the scheduler reads, no IPC. Two
 gating rules: it mounts only for a real Project, and its `root` is pinned to the
 **main** workspace (not the active worktree's cwd), since the service only ever
-reads `<project root>/.science-studio/cron/`.
+reads `<project root>/.gps/cron/`.
 
 ## 4. The UI side
 
 - `apps/web/app/api/cron/[[...path]]` relays `/api/cron*` through the one proxy
   policy (docs/adr/0021).
-- `@science-studio/transport-client`'s `useCronTasks` polls
+- `@gps/transport-client`'s `useCronTasks` polls
   `GET /api/cron?projectId` every 2 s while the panel is open (keep-last-good on
   failure).
 - `components/studio/cron-view.tsx` (right-panel section),
   `renderers/CronTaskRenderer.tsx` (a task file opened as a tab, with its run
   log), and `cron-new-task-dialog.tsx` (preset → expression via the codec).
-- `.science-studio/cron/` files are listed by the file tree like any other path.
+- `.gps/cron/` files are listed by the file tree like any other path.
 
 ## End-to-end sequence
 
 ```
 user: "summarise the experiments every morning at 9"
   agent → schedule_create (child plugin)
-  → write <root>/.science-studio/cron/morning-summary.md        (agent's part ends here)
+  → write <root>/.gps/cron/morning-summary.md        (agent's part ends here)
 service CronScheduler (30 s tick, no agent process involved):
   → re-read files → matchesSchedule("0 9 * * *", now)
   → take activeRuns[tenant:sessionId] → adapter.run(add-message prompt)
@@ -121,7 +121,7 @@ UI: useCronTasks sees lastRun
   and a file keeps the task visible in the agent's own cwd.
 - A `skipped-busy` fire is dropped with only a log line, so a schedule tighter
   than the Session's real run cadence silently loses fires.
-- `.science-studio/` is now a product-owned namespace inside every Project
+- `.gps/` is now a product-owned namespace inside every Project
   Workspace (shared with the Project Scaffold, docs/adr/0012); deleting a
   Project recycles the whole workspace, cron files included (docs/adr/0014).
 

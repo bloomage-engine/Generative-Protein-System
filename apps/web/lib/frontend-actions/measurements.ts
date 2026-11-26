@@ -1,8 +1,8 @@
 "use client";
 
 import { toast } from "sonner";
-import { MolqlError } from "@science-studio/molstar-viewer/directive";
-import { MOLQL_MEASUREMENTS_TOOL_NAME } from "@science-studio/molstar-viewer/measurement";
+import { MolqlError } from "@gps/molstar-viewer/directive";
+import { MOLQL_MEASUREMENTS_TOOL_NAME } from "@gps/molstar-viewer/measurement";
 import { activeStructurePath, useStudioStore } from "@/store/studio-store";
 import { registerAction } from "./registry";
 
@@ -14,13 +14,13 @@ import { registerAction } from "./registry";
  * front so the drawing is visible — never on whatever tab happens to be active,
  * which would draw file A's numbers onto file B.
  *
- * `@science-studio/molstar-viewer` (and molstar with it) is imported DYNAMICALLY
+ * `@gps/molstar-viewer` (and molstar with it) is imported DYNAMICALLY
  * so the viewer stays out of the chat bundle until a `measurements` result
  * arrives.
  */
 registerAction(MOLQL_MEASUREMENTS_TOOL_NAME, async (payload) => {
   const { applyMeasurementToolResult, getMolqlViewer, parseMeasurementToolResult } = await import(
-    "@science-studio/molstar-viewer"
+    "@gps/molstar-viewer"
   );
   const parsed = parseMeasurementToolResult(payload);
   if (!parsed) {

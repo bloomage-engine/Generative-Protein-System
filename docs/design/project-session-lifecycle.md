@@ -3,7 +3,7 @@
 Companion to ADR-0014. Describes the surfaces this feature adds; the ADR owns the
 decision and its rationale.
 
-## Record store (`@science-studio/record`)
+## Record store (`@gps/record`)
 
 New/changed `RecordStore` members (implemented by both the in-memory and JSONL
 stores and pinned by `test/record-store.test.ts`):
@@ -29,7 +29,7 @@ The JSONL store appends a `{ t: "drop", table: "project" | "session" | "run",
 id }` row for every removed row (cascades expand to multiple drops). The loader
 applies a drop by deleting the key; compaction writes only live tables.
 
-## Workspace / environment seams (`@science-studio/transport`)
+## Workspace / environment seams (`@gps/transport`)
 
 - `Workspace.recycle?(): Promise<void>` — optional. `FsWorkspace` moves its root
   to `<dirname(root)>/.recycle/<basename(root)>-<timestamp>/`, and a distinct
@@ -38,7 +38,7 @@ applies a drop by deleting the key; compaction writes only live tables.
   `LocalEnvironmentProvider` drops the cached environment (and any pending
   acquire) for that Project.
 
-## Service (`@science-studio/transport-service`)
+## Service (`@gps/transport-service`)
 
 `RecordDirectory` gains `renameProject / unarchiveProject / deleteProject` and
 `renameSession / archiveSession / unarchiveSession / deleteSession`, plus the
@@ -66,7 +66,7 @@ Delete order: resolve the record's Project row, rename its workspace into the
 recycle bin, remove the record rows, then release the environment. A workspace
 with no surface (null) is a no-op, not an error.
 
-## Client (`@science-studio/transport-client`)
+## Client (`@gps/transport-client`)
 
 `renameProject`, `archiveProject`, `unarchiveProject`, `deleteProject`,
 `renameSession`, `archiveSession`, `unarchiveSession`, `deleteSession`; plus

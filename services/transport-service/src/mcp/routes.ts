@@ -5,8 +5,8 @@
  * rows. Reads are principal-only; every write/action is local-or-manager.
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
-import type { RecordStore } from "@science-studio/record";
-import type { McpServerDraft, McpServerSettings } from "@science-studio/transport";
+import type { RecordStore } from "@gps/record";
+import type { McpServerDraft, McpServerSettings } from "@gps/transport";
 import { isSafeProjectId } from "../worktree/paths.js";
 import { normalizeServer } from "./codec.js";
 import { probeMcpServer, type McpProber } from "./probe.js";

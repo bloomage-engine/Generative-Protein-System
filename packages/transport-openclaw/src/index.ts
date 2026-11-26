@@ -21,9 +21,9 @@ import type {
   StateDelta,
   TransportCommand,
   WatchSnapshot,
-} from "@science-studio/transport";
-import { SessionRuntime } from "@science-studio/transport";
-import type { SessionBehavior } from "@science-studio/transport";
+} from "@gps/transport";
+import { SessionRuntime } from "@gps/transport";
+import type { SessionBehavior } from "@gps/transport";
 import type { EventFrame } from "@openclaw/gateway-client/browser";
 import { mapCommandEntries, type GatewayCommandEntry } from "./commands.js";
 import { createBackendGateway, type BackendGateway, type BackendGatewayOptions } from "./connection.js";

@@ -1,6 +1,6 @@
 "use client";
 
-import type { CommandDescriptor } from "@science-studio/transport";
+import type { CommandDescriptor } from "@gps/transport";
 import {
   createContext,
   useContext,

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { createTransportService } from "../src/index.js";
-import type { RuntimeAdapter, SessionState, TransportCommand } from "@science-studio/transport";
+import type { RuntimeAdapter, SessionState, TransportCommand } from "@gps/transport";
 
 /**
  * The service is runtime-agnostic: which threadId means which session is the

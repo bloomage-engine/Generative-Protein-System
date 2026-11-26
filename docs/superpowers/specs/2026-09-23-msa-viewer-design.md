@@ -6,14 +6,14 @@ Work on branch `molstar-msa`.
 
 Alignments and pairwise-search result files are common in a research workspace, but today the workbench shows them as raw text. This adds an interactive MSA viewer on the human-preview path, mirroring the existing structure-viewer pattern:
 
-- a new package `@science-studio/msa-viewer` that owns the pure, Node-testable logic (format parsing, column statistics, the mention codec) plus the browser-only React components (alignment grid, mmseqs result table);
+- a new package `@gps/msa-viewer` that owns the pure, Node-testable logic (format parsing, column statistics, the mention codec) plus the browser-only React components (alignment grid, mmseqs result table);
 - a new `"msa"` file kind in `apps/web` and a new `MsaRenderer` center-pane renderer that routes to the right sub-view (aligned grid / unaligned rows / mmseqs hit table / plain-text fallback) and inserts viewer mentions into the composer through the same seam the structure renderer uses.
 
 No new service routes, no agent-side plugin, no record change, and no molstar dependency: the MSA grid is a text grid, and Mol\* 5.9.0 ships no MSA component (only a single-sequence strip and a two-sequence alignment algorithm — verified against the installed tree). The agent already has the alignment file in its own cwd and can read it as plain text; the viewer mention doubles as a stable reference the agent can follow.
 
 ## Motivation
 
-Researchers drop alignment and search output into a Project workspace: ClustalW/Stockholm/aligned-FASTA MSAs and mmseqs2 `.result` hit tables. There is no way to read them as alignments — no per-column conservation, no click-to-select, no selection reference they can hand to the agent. The structure files already have a specialist viewer (`StructureRenderer` + `@science-studio/molql-viewer`); sequence alignments need the equivalent.
+Researchers drop alignment and search output into a Project workspace: ClustalW/Stockholm/aligned-FASTA MSAs and mmseqs2 `.result` hit tables. There is no way to read them as alignments — no per-column conservation, no click-to-select, no selection reference they can hand to the agent. The structure files already have a specialist viewer (`StructureRenderer` + `@gps/molql-viewer`); sequence alignments need the equivalent.
 
 ## Scope
 

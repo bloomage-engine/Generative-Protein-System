@@ -6,7 +6,7 @@
  * preview. Against the old one-directory-at-a-time browser (which has no
  * `role="tree"`) this test is red.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`.
+ * Prereq: `npm run build -w @gps/transport-client`.
  * Needs a Chromium; SKIPPED when none is found.
  */
 import { test } from "node:test";

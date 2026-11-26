@@ -11,7 +11,7 @@
  * unstyled HTML with monochrome `pre` blocks — the exact shape this test
  * drives.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`. Needs a
+ * Prereq: `npm run build -w @gps/transport-client`. Needs a
  * Chromium; SKIPPED when none is found.
  */
 import { test } from "node:test";

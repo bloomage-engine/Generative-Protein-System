@@ -1,9 +1,9 @@
 /**
- * `@science-studio/transport` — the shared transport package, in three tiers:
+ * `@gps/transport` — the shared transport package, in three tiers:
  *
  * 1. the CONTRACT surface (re-exported from `./seams.js`): every seam interface
  *    plus its error classes and limit constants. Import it alone via
- *    `@science-studio/transport/seams`.
+ *    `@gps/transport/seams`.
  * 2. the KIT: behavior adapters share rather than re-implement (`SessionRuntime`
  *    + its `SessionBehavior`, `foldState`, the attachment rendering/mention
  *    helpers).
@@ -15,7 +15,7 @@
  * package's interface.
  *
  * Keep the package React-free (the assistant-ui boundary lives in
- * `@science-studio/transport-client`).
+ * `@gps/transport-client`).
  */
 
 // -- 1. Contract surface -----------------------------------------------------

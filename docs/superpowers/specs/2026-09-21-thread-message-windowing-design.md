@@ -146,7 +146,7 @@ loadMoreHistory: () => set((state) => ({
 ### Settings Storage
 
 Reuse existing settings pattern:
-- **Server-side**: Stored in `SS_SETTINGS_PATH` (default `<userData>/settings.json`)
+- **Server-side**: Stored in `GPS_SETTINGS_PATH` (default `<userData>/settings.json`)
 - **Client-side**: Fetched via `useSettings` hook
 - **API**: `GET /api/settings`, `PATCH /api/settings`
 

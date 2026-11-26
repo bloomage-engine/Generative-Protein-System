@@ -70,14 +70,14 @@ interface HpcEndpoint {
 
 ## 3 Project HPC Binding — the workspace file
 
-`.science-studio/hpc.md` inside the Project Workspace (the `.science-studio/`
+`.gps/hpc.md` inside the Project Workspace (the `.gps/`
 namespace, shared with cron). House-style frontmatter codec in `packages/hpc`:
 
 ```
 ---
 endpoint: "cluster-a"
 partition: "gpu"          # optional override of the endpoint default
-workDir: "~/ss-proj42"    # optional Remote Work Dir override
+workDir: "~/gps-proj42"    # optional Remote Work Dir override
 defaultTime: "4:00:00"    # optional
 ---
 Freeform body: cluster-use notes the Researcher keeps for the Agent.
@@ -103,8 +103,8 @@ Pure, zero-dependency, in the root build chain after `cron`; tests under
   `P/PD/CF→pending`, `R/CG/S→running`, `CD/R→(post-run via sacct)→completed`,
   `F/TO→failed`, `CA→cancelled`, anything unmapped→`unknown`.
 - `job-layout.ts` — Remote Work Dir conventions:
-  `defaultWorkDir(projectId) = ~/science-studio/<projectId>`, and per-job dir
-  `<workDir>/.ss-jobs/<cjobId>/` with fixed names `script.sh`, `run.sh`,
+  `defaultWorkDir(projectId) = ~/gps/<projectId>`, and per-job dir
+  `<workDir>/.gps-jobs/<cjobId>/` with fixed names `script.sh`, `run.sh`,
   `stdout`, `stderr`, `pid`, `rc`, plus the safe-path grammar
   (`isSafeRemotePath`) and the POSIX `shq` escaper. All names derive from
   server-generated ids, never user text — so remote paths need no escaping
@@ -158,7 +158,7 @@ interface ComputeJob {
   user-derived scalars (workDir, partition, name) pass through `shq()` —
   POSIX single-quote escaping. Remote output is data: never `eval`'d, never
   path-assembled from a remote reply.
-- Sockets/tmp artifacts live under `$TMPDIR/science-studio/hpc/`, 0600, one
+- Sockets/tmp artifacts live under `$TMPDIR/gps/hpc/`, 0600, one
   dir per service process (same discipline as the bridge socket).
 - `ControlPersist=600` lets a dead control master self-expire; no pool to
   manage, and a killed service leaks at most a socket file.
@@ -174,7 +174,7 @@ one `app/api/hpc/[[...path]]/route.ts` catch-all relaying via `proxyToService`
 | `GET /api/hpc/binding?projectId` | `{ bound, raw?, binding?, error? }` |
 | `PUT /api/hpc/binding?projectId` | body = the binding as a JSON object (the route serializes via the codec); writes through the Workspace seam; manager-gated |
 | `GET /api/hpc/endpoints` | the `hpc` view (endpoints as-is) |
-| `POST /api/hpc/endpoints/:id/probe` | connect + `uname -srm` + (`sbatch --version` when slurm) + `mkdir -p ~/science-studio`; answers `{ ok, os?, scheduler?, errors: [...] }` — per-check, never a thrown 500 |
+| `POST /api/hpc/endpoints/:id/probe` | connect + `uname -srm` + (`sbatch --version` when slurm) + `mkdir -p ~/gps`; answers `{ ok, os?, scheduler?, errors: [...] }` — per-check, never a thrown 500 |
 | `GET /api/hpc/jobs?projectId[&state=]` | ledger rows, non-terminal first then newest-first |
 | `POST /api/hpc/jobs` | submit — §7.1 below |
 | `POST /api/hpc/jobs/:id/cancel` | `scancel <id>` / `kill -TERM -<pid>` (setsid ⇒ pgid=pid, so the command's children go too); row→`cancelled`; a terminal row answers 409 |
@@ -239,12 +239,12 @@ started only by `index.ts`'s `isMain` (cron shape; tests call `tick()`):
 
 ## 9 dsh child plugin — `hpc-plugin.ts` + `writeHpcPatch`
 
-- `export const name = "science-studio-hpc"`, `inject = ["tools",
+- `export const name = "gps-hpc"`, `inject = ["tools",
   "systemPrompt"]`. Mounted with project+config like project/cron: only for a
   real Project, inert otherwise; fails soft; stderr-only; structural host
   views, no `@deepseek-ai/*`.
 - Patch config: `{ project: { id }, service?: string }` — service URL from
-  `SCIENCE_STUDIO_SERVICE_URL` env (default `http://127.0.0.1:3001`, the
+  `GPS_SERVICE_URL` env (default `http://127.0.0.1:3001`, the
   molql-plugin convention); the fetch uses the child's GLOBAL `fetch` — the
   same choice the shipped molql plugin already relies on (the child runs on the
   dsh CLI's own Node, where it is stable).
@@ -306,7 +306,7 @@ successful 400-shaped answer consumed politely by the tools/panel, not a
   happy slurm (mkdir→upload→sbatch) + linux (runner + exit marker), ambiguous
   sbatch, guard 429, cancel, logs; poller reconcile incl. 3-strike unknown +
   the squeue/sacct race guard; routes 400/404/409/429/502 semantics. The real
-  spawner stays reachable for a PATH shim via `SS_SSH_BIN`/`SS_SCP_BIN`.
+  spawner stays reachable for a PATH shim via `GPS_SSH_BIN`/`GPS_SCP_BIN`.
 - `packages/transport-dsh/test/`: plugin fail-soft + inert-without-project;
   tool fetch error mapping; `writeHpcPatch` YAML snapshot.
 - `apps/web/test/`: jobs-panel regression (mocked `/api/hpc` rows render,

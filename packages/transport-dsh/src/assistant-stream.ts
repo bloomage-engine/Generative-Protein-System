@@ -12,7 +12,7 @@
  * committed event overwrites the row's parts with `contentToParts(...)` at
  * settlement (`behavior.ts`, docs/adr/0022).
  */
-import type { MessagePart, StateDelta } from "@science-studio/transport";
+import type { MessagePart, StateDelta } from "@gps/transport";
 
 /** One forwarded frame's dsh-llm `StreamChunk` fields, read structurally. */
 export interface LiveStreamChunk {

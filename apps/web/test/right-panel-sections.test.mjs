@@ -5,7 +5,7 @@
  * dragging their handle. Collapsing Files unmounts the tree; re-expanding
  * restores it.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`.
+ * Prereq: `npm run build -w @gps/transport-client`.
  * Needs a Chromium; SKIPPED when none is found.
  */
 import { test } from "node:test";

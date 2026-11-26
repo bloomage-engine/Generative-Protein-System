@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FsWorkspace } from "@science-studio/workspace";
+import { FsWorkspace } from "@gps/workspace";
 import { createCronStore, type CronStore } from "../src/cron/store.js";
 
 async function fixture<T>(
   fn: (store: CronStore, workspace: FsWorkspace, root: string) => Promise<T>,
 ): Promise<T> {
-  const root = await mkdtemp(join(tmpdir(), "ss-cron-store-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-cron-store-"));
   const workspace = new FsWorkspace(root, { agentRoot: root });
   const store = createCronStore({ now: () => "2026-09-18T00:00:00.000Z" });
   try {
@@ -56,8 +56,8 @@ test("write stamps createdAt once and preserves it on update", async () => {
 test("a malformed file is reported as invalid, never as a task", async () => {
   await fixture(async (store, workspace, root) => {
     await store.write(workspace, { id: "ok", name: "OK", schedule: "0 9 * * *", enabled: true, prompt: "" });
-    await mkdir(join(root, ".science-studio", "cron"), { recursive: true });
-    await writeFile(join(root, ".science-studio", "cron", "broken.md"), "not a task");
+    await mkdir(join(root, ".gps", "cron"), { recursive: true });
+    await writeFile(join(root, ".gps", "cron", "broken.md"), "not a task");
     const listing = await store.list(workspace);
     assert.deepEqual(listing.tasks.map((t) => t.id), ["ok"]);
     assert.equal(listing.invalid.length, 1);
