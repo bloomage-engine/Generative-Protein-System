@@ -31,14 +31,21 @@ npm run build
 ```dotenv
 TRANSPORT_RUNTIME=dsh
 PROJECT_ROOT=/absolute/path/to/projects
-OLLAMA_LOCAL_API_KEY=ollama
+# 为实际配置的 route 填凭据：
+# OLLAMA_LOCAL_API_KEY=ollama
+# DEEPSEEK_API_KEY=<your-deepseek-api-key>
 ```
 
 - `PROJECT_ROOT` 是所有 Project workspace 的父目录；default 项目位于
   `<PROJECT_ROOT>/project-default`。Windows 使用 `D:/GPS/projects`，路径含
   空格时加引号；WSL 使用 `/mnt/d/GPS/projects`。
-- 示例使用默认的 `ollama-local` route。Ollama 会忽略凭据内容，但 harness
-  要求 `OLLAMA_LOCAL_API_KEY` 非空。
+- 服务不会硬编码模型 provider。它会依次采用：工作台
+  Settings → Model、`~/.dsh/settings.yaml` 的 `agent-default-model`、
+  唯一配置的 `llm-pi-ai` route。都没有时才回退到内置的
+  `deepseek-official`/`deepseek-v4-flash`，这需要 `DEEPSEEK_API_KEY`。
+- 如果使用本地 Ollama，需要在 `~/.dsh/settings.yaml` 同时写入默认选择和
+  pi-ai route（见下）。Ollama 会忽略凭据内容，但 harness 要求
+  `OLLAMA_LOCAL_API_KEY` 非空。
 - 如果改用 DeepSeek，在 `.env` 中填 `DEEPSEEK_API_KEY`，并这样启动：
   `DSH_PROVIDER=deepseek-official DSH_MODEL=deepseek-v4-flash`。
 - `OPENCLAW_*` 变量是 legacy，dsh 模式不需要。
@@ -48,6 +55,10 @@ OLLAMA_LOCAL_API_KEY=ollama
 provider route 本身写在 `~/.dsh/settings.yaml`，例如：
 
 ```yaml
+agent-default-model:
+  provider: ollama-local
+  model: qwen3.8:latest
+
 llm-pi-ai:
   providers:
     ollama-local:

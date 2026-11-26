@@ -54,15 +54,16 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 - `npm run dev:dsh` — the same service+web pair, with the service forced onto the
   **dsh** runtime (`TRANSPORT_RUNTIME=dsh npm run dev`). The launch env is NOT in
   the `.env`: the service's own `dev` script exports the launch-only knobs
-  (`DSH_PROVIDER`/`DSH_MODEL` default the LAN `ollama-local`/`qwen3.8:latest`,
-  `DSH_WORKSPACE` default `$HOME/workspace/dsh-workspace`,
-  `DSH_DEFAULT_SESSION` default `gps`; an ambient `DSH_*` wins) before
-  `tsx src/index.ts`, so every dev launch — root `npm run dev` included — gets a
-  working route, and `dev:dsh` only adds the runtime selector. Those names cannot
-  be spelled in `.env`: the harness child reads the LAUNCHER's cwd `.env` as its
-  project layer and hard-refuses any `DSH_*`/`XDG_*`/`DYLD_*` key there. Unset
-  knobs are a foot-gun — the adapter falls back to
-  `deepseek-official`/`deepseek-v4-flash` and the agent's cwd becomes this
+  (`DSH_WORKSPACE` default `$HOME/workspace/dsh-workspace`,
+  `DSH_DEFAULT_SESSION` default `gps`; an ambient `DSH_*` wins). The
+  provider/model are resolved from the workbench Settings → Model, then the
+  harness's `agent-default-model`, then a single configured `llm-pi-ai` route;
+  `deepseek-official`/`deepseek-v4-flash` is only the last resort. Those
+  `DSH_*` names cannot be spelled in `.env`: the harness child reads the
+  LAUNCHER's cwd `.env` as its project layer and hard-refuses any
+  `DSH_*`/`XDG_*`/`DYLD_*` key there. Unset knobs are a foot-gun — the adapter
+  falls back to `deepseek-official`/`deepseek-v4-flash` and the agent's cwd
+  becomes this
   package's source directory. The route's credential NAME (`apiKeyEnv`, e.g.
   `OLLAMA_LOCAL_API_KEY`) is a legal `.env` line and is inherited by the child.
 - `npm run dev:desktop` — the Electron shell against the already-running dev pair

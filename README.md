@@ -32,14 +32,22 @@ Create `services/transport-service/.env` from the
 ```dotenv
 TRANSPORT_RUNTIME=dsh
 PROJECT_ROOT=/absolute/path/to/projects
-OLLAMA_LOCAL_API_KEY=ollama
+# Credential for the route you configure:
+# OLLAMA_LOCAL_API_KEY=ollama
+# DEEPSEEK_API_KEY=<your-deepseek-api-key>
 ```
 
 - `PROJECT_ROOT` is the parent of every Project workspace; the default Project
   lives at `<PROJECT_ROOT>/project-default`. On Windows use
   `D:/GPS/projects` and quote paths with spaces. In WSL use
   `/mnt/d/GPS/projects`.
-- The example uses the default `ollama-local` route. Any non-empty
+- The service does not hardcode a model provider. It uses the workbench
+  Settings → Model, then `agent-default-model` in `~/.dsh/settings.yaml`, then
+  the only configured `llm-pi-ai` route. If none is present it falls back to
+  the built-in `deepseek-official`/`deepseek-v4-flash` route, which needs
+  `DEEPSEEK_API_KEY`.
+- For a local Ollama route, add both the default selection and the pi-ai route
+  to `~/.dsh/settings.yaml` (see below). Any non-empty
   `OLLAMA_LOCAL_API_KEY` works for Ollama; the harness only requires it to be
   set.
 - For DeepSeek instead, put `DEEPSEEK_API_KEY` in `.env` and start with
@@ -51,6 +59,10 @@ OLLAMA_LOCAL_API_KEY=ollama
 The provider route itself lives in `~/.dsh/settings.yaml`, for example:
 
 ```yaml
+agent-default-model:
+  provider: ollama-local
+  model: qwen3.8:latest
+
 llm-pi-ai:
   providers:
     ollama-local:

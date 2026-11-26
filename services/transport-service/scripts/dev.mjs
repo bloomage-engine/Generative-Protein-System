@@ -6,8 +6,6 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const env = { ...process.env };
 const defaults = {
-  DSH_PROVIDER: "ollama-local",
-  DSH_MODEL: "qwen3.8:latest",
   DSH_WORKSPACE: join(homedir(), "workspace", "dsh-workspace"),
   DSH_DEFAULT_SESSION: "gps",
 };
