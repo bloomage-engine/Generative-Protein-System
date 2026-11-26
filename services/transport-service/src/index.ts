@@ -118,7 +118,7 @@ async function backendFromAdapters(options: TransportServiceOptions): Promise<Ba
 }
 
 // Start when run directly (npm run dev / start).
-if (isMainModule()) {
+if (isMainModule(process.argv[1], import.meta.url)) {
   const port = Number(process.env.PORT ?? 3001);
   const host = process.env.HOST ?? "127.0.0.1";
   const backend = await createBackend();
