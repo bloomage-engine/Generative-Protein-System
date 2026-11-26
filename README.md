@@ -10,54 +10,71 @@ It supports browser access and desktop clients for Windows, macOS, and Linux.
 
 ## Installation and quick start
 
-### Web deployment
+### Prerequisites
 
-You need Node.js, npm, and DSH with a configured model provider. Node.js 22.12 or later is recommended for compatibility with desktop builds.
+- Node.js 22.12+
+- npm and Git
+- `dsh` installed and available on PATH
 
-Install dependencies and build from the repository root:
+Model provider, model, endpoint, and credentials are configured in the
+workbench **Settings → Model** after the application starts.
+
+### Web application
+
+Install dependencies and build the packages, service, and web app:
 
 ```bash
 npm install
 npm run build
+npm run build -w @gps/web
 ```
 
-Create `services/transport-service/.env` using the [configuration example](./services/transport-service/.env.example), and set the project directory and credentials required by your model provider:
+Create `services/transport-service/.env` from the
+[configuration example](./services/transport-service/.env.example) and set the
+projects directory:
 
 ```dotenv
 PROJECT_ROOT=/absolute/path/to/projects
+# Optional: credentials supplied through the environment
+# DEEPSEEK_API_KEY=<your-deepseek-api-key>
+# OLLAMA_LOCAL_API_KEY=ollama
 ```
 
-Replace the path with a local directory; on Windows, a path such as `D:/GPS/projects` works. Configure the model provider in DSH's `settings.yaml` first, and supply its required credentials in `.env`.
+`.env` configures paths and optional credentials only; the model route is
+configured in the workbench, not in `.env`.
 
-The development launcher defaults to the `ollama-local` provider and `qwen3.8:latest` model. To use another configuration, set `DSH_PROVIDER` and `DSH_MODEL` in the launch environment; do not put `DSH_*` variables in `.env`. See the [DSH example](./examples/transport-dsh-example/README.md) for configuration details.
+Start the service and web app in separate terminals:
 
 ```bash
-npm run dev:dsh
+npm start -w @gps/transport-service
+npm start -w @gps/web
 ```
 
-Open [http://localhost:3000](http://localhost:3000), create a project and a session, and start working.
+Open <http://127.0.0.1:3000>. If no model is configured yet, open
+**Settings → Model**, enter the provider, model, endpoint, and credentials,
+then save and restart the service if prompted.
 
-Natural-language structure analysis also requires the [MolQL tool plugin](./packages/plugins/molql-tool-dsh/README.md). Configure external scientific services and remote computation in the workbench's MCP and HPC settings, respectively.
+Natural-language structure analysis also requires the
+[MolQL tool plugin](./packages/plugins/molql-tool-dsh/README.md). External
+scientific services and remote computation are configured in the workbench's
+MCP and HPC settings.
 
 ### Desktop client
 
-The desktop client starts and manages its local services automatically; no separate Web service is required. The `dsh` executable must be available on PATH, and Git must be installed to use worktrees.
+The desktop client requires `dsh` on PATH and Git for worktrees. It starts its
+own local service and web server.
 
-After installing dependencies and building as above, build and launch the client from source:
-
-```bash
-npm run start -w @gps/desktop
-```
-
-Configure the model provider in the workbench settings. Projects are stored under `Documents/Generative Protein System/projects` in your home directory by default.
-
-To create an installer, run this command on the target operating system:
+Build the installer on the target operating system:
 
 ```bash
+npm install
 npm run pack -w @gps/desktop
 ```
 
-Supported formats are Windows x64 NSIS, macOS DMG, and Linux AppImage and DEB.
+The installer is written to `apps/desktop/release` (Windows NSIS, macOS DMG,
+Linux AppImage or DEB). Install and open it; no further terminal command is
+needed. On first use, configure the model in **Settings → Model** if none is
+set.
 
 ## Features
 

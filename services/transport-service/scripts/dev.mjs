@@ -6,15 +6,12 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const env = { ...process.env };
 const defaults = {
-  DSH_PROVIDER: "ollama-local",
-  DSH_MODEL: "qwen3.8:latest",
   DSH_WORKSPACE: join(homedir(), "workspace", "dsh-workspace"),
   DSH_DEFAULT_SESSION: "gps",
 };
 for (const [key, value] of Object.entries(defaults)) {
   if (!env[key]) env[key] = value;
 }
-if (process.argv.includes("--dsh")) env.TRANSPORT_RUNTIME = "dsh";
 
 const child = spawn(process.execPath, ["--import", "tsx", join(root, "src", "index.ts")], {
   cwd: root,

@@ -715,7 +715,7 @@ Expected: PASS.
 
 - [ ] **Step 3: Manual verification**
 
-Run `npm run dev:dsh`, open a session, send a turn; the bar shows `· <model> · <used>/<window>` after the turn settles, and the popover shows the breakdown. Reload → same numbers (record-sourced).
+Run `npm run dev`, open a session, send a turn; the bar shows `· <model> · <used>/<window>` after the turn settles, and the popover shows the breakdown. Reload → same numbers (record-sourced).
 
 ---
 

@@ -496,6 +496,35 @@ test("a saved route credential reaches the launch client env", async () => {
   }
 });
 
+test("the harness's agent-default-model is used when the binding names no route", async () => {
+  const home = await mkdtemp(join(tmpdir(), "gps-default-model-"));
+  try {
+    await writeFile(
+      join(home, "settings.yaml"),
+      "agent-default-model:\n  provider: ollama-local\n  model: qwen3.8:latest\n",
+      "utf8",
+    );
+    let seenProvider: string | undefined;
+    let seenModel: string | undefined;
+    const adapter = new DshRuntimeAdapter({
+      createClient: (options): DshTurnClient => {
+        seenProvider = options.provider;
+        seenModel = options.model;
+        return { start: async () => {}, close: async () => {}, runTurn: async () => {} };
+      },
+      transcriptDir: join(tmpdir(), "gps-default-model-test"),
+    });
+    await adapter.init({
+      binding: { runtime: "dsh", config: { home } },
+      recordStore: { addRun: async () => {} },
+    });
+    assert.equal(seenProvider, "ollama-local");
+    assert.equal(seenModel, "qwen3.8:latest");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("a failing route write does not fail init", async () => {
   const home = await mkdtemp(join(tmpdir(), "gps-route-fail-"));
   try {

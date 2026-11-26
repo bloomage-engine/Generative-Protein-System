@@ -45,6 +45,7 @@ import {
 } from "./bridge.js";
 import { createDshBehavior, type DshBehavior } from "./behavior.js";
 import { applyRouteSettings } from "./route-settings.js";
+import { resolveModelSelection } from "./model-route.js";
 import { MCP_CONFIG_ENV, dshMcpConfigs, writeMcpPatch } from "./mcp-patch.js";
 import { readChildTranscript } from "./child-transcript.js";
 import {
@@ -297,16 +298,30 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       binding.workspace ??
       env("DSH_WORKSPACE") ??
       process.cwd();
-    const provider = binding.provider ?? env("DSH_PROVIDER") ?? DEFAULT_PROVIDER;
-    const model = binding.model ?? env("DSH_MODEL") ?? DEFAULT_MODEL;
-    const maxTokens = binding.maxTokens;
-    // The session transcript's durable home is the record store (bound above),
-    // not an adapter-owned file (docs/adr/0019). `transcriptDir` remains a
-    // retained (retired-for-durability) config surface for compat.
     // The harness home the child's session logs live under, kept for the
     // child-transcript reads: an explicit binding/env home wins, then the
     // constructor seam (tests), then the harness default directory.
     this.dshHome = dshHome ?? this.dshHome ?? join(homedir(), ".dsh");
+    // Do not impose a project-owned provider: an explicit binding/env pair wins,
+    // then the harness's own agent-default-model, then a single configured
+    // llm-pi-ai route. The built-in DeepSeek route is only a last resort.
+    const selection = await resolveModelSelection({
+      dshHome: this.dshHome,
+      provider: binding.provider ?? env("DSH_PROVIDER"),
+      model: binding.model ?? env("DSH_MODEL"),
+    });
+    const provider = selection?.provider ?? DEFAULT_PROVIDER;
+    const model = selection?.model ?? DEFAULT_MODEL;
+    if (!selection) {
+      console.warn(
+        `[dsh] no model route configured; falling back to ${DEFAULT_PROVIDER}/${DEFAULT_MODEL}. ` +
+          `Choose a model in Settings -> Model or add agent-default-model to ${this.dshHome}/settings.yaml.`,
+      );
+    }
+    const maxTokens = binding.maxTokens;
+    // The session transcript's durable home is the record store (bound above),
+    // not an adapter-owned file (docs/adr/0019). `transcriptDir` remains a
+    // retained (retired-for-durability) config surface for compat.
     this.launchCwd = cwd;
 
     // The command bridge is a launch-artifact PAIR: a socket path and the

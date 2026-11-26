@@ -16,7 +16,6 @@
     "typecheck": "tsc -b --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "dev": "node scripts/dev.mjs",
-    "dev:dsh": "node scripts/dev.mjs --dsh",
     "start": "node dist/index.js"
   },
   "dependencies": {

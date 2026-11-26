@@ -10,54 +10,67 @@ Generative Protein System 是面向蛋白质设计的智能体科研工作台，
 
 ## 安装与快速开始
 
-### Web 部署
+### 前置条件
 
-需要 Node.js、npm 和已配置模型服务的 DSH。建议使用 Node.js 22.12 或更高版本，以兼容桌面端构建。
+- Node.js 22.12+
+- npm 和 Git
+- 已安装 `dsh`，并可在 PATH 中找到
 
-在仓库根目录安装依赖并构建：
+模型 provider、model、endpoint 和凭据在应用启动后通过工作台的
+**Settings → Model** 配置。
+
+### Web 端
+
+安装依赖并构建 workspace 包、service 和 Web：
 
 ```bash
 npm install
 npm run build
+npm run build -w @gps/web
 ```
 
-参考 [配置示例](./services/transport-service/.env.example)，创建 `services/transport-service/.env`，设置项目目录和模型服务所需的凭据：
+参考 [配置示例](./services/transport-service/.env.example)，创建
+`services/transport-service/.env`，设置项目目录：
 
 ```dotenv
 PROJECT_ROOT=/absolute/path/to/projects
+# 可选：通过环境变量提供凭据
+# DEEPSEEK_API_KEY=<your-deepseek-api-key>
+# OLLAMA_LOCAL_API_KEY=ollama
 ```
 
-将路径替换为本机目录；Windows 可使用 `D:/GPS/projects`。模型服务需预先在 DSH 的 `settings.yaml` 中配置，并在 `.env` 中填写该服务要求的凭据。
+`.env` 只配置路径和可选凭据；模型 route 在工作台中配置，不写入 `.env`。
 
-开发启动默认使用 `ollama-local` 服务和 `qwen3.8:latest` 模型。使用其他配置时，通过启动环境中的 `DSH_PROVIDER`、`DSH_MODEL` 指定；不要将 `DSH_*` 变量写入 `.env`。详细配置见 [DSH 示例](./examples/transport-dsh-example/README.md)。
+在两个终端分别启动 service 和 Web：
 
 ```bash
-npm run dev:dsh
+npm start -w @gps/transport-service
+npm start -w @gps/web
 ```
 
-打开 [http://localhost:3000](http://localhost:3000)，创建项目和会话，即可开始使用。
+打开 <http://127.0.0.1:3000>。如果尚未配置模型，进入
+**Settings → Model**，填写 provider、model、endpoint 和凭据；保存后按提示
+重启 service。
 
-自然语言结构分析还需要部署 [MolQL 工具插件](./packages/plugins/molql-tool-dsh/README.md)。外部科学服务和远程计算分别在工作台的 MCP、HPC 设置中配置。
+自然语言结构分析还需要部署
+[MolQL 工具插件](./packages/plugins/molql-tool-dsh/README.md)。外部科学服务和
+远程计算分别在工作台的 MCP、HPC 设置中配置。
 
-### 桌面客户端
+### 客户端
 
-桌面客户端自动启动并管理本地服务，无需另外运行 Web 服务。需要本机能够通过 PATH 找到 `dsh`，并已安装 Git 以使用工作分支功能。
+客户端需要能在 PATH 中找到 `dsh`，并安装 Git 以使用 worktree。客户端会自行
+启动本地 service 和 Web 服务。
 
-完成上述依赖安装和构建后，可从源码构建并启动客户端：
-
-```bash
-npm run start -w @gps/desktop
-```
-
-启动后，在工作台设置中配置模型服务。项目默认保存在用户目录下的 `Documents/Generative Protein System/projects`。
-
-如需生成安装包，在目标操作系统上运行：
+在目标操作系统构建安装包：
 
 ```bash
+npm install
 npm run pack -w @gps/desktop
 ```
 
-支持 Windows x64 NSIS、macOS DMG，以及 Linux AppImage 和 DEB。
+安装包生成在 `apps/desktop/release`（Windows NSIS、macOS DMG、Linux
+AppImage 或 DEB）。安装后直接打开即可，不需要再执行终端命令。首次使用时，
+如果尚未配置模型，在 **Settings → Model** 中配置。
 
 ## 主要功能
 
