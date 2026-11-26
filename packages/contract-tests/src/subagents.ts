@@ -9,7 +9,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { RuntimeAdapter } from "@science-studio/transport/seams";
+import type { RuntimeAdapter } from "@gps/transport/seams";
 
 export interface SubagentsCase {
   /** The adapter under test, already constructed the way its runtime needs. */

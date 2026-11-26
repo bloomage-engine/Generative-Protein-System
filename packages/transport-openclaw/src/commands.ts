@@ -1,4 +1,4 @@
-import type { CommandDescriptor } from "@science-studio/transport";
+import type { CommandDescriptor } from "@gps/transport";
 
 /**
  * Runtime command mapping for the openclaw gateway (docs/adr/0003).

@@ -1,6 +1,6 @@
 import type { BundledLanguage } from "shiki";
-import { isStructureFile } from "@science-studio/molstar-viewer/formats";
-import { isMsaFile } from "@science-studio/msa-viewer/formats";
+import { isStructureFile } from "@gps/molstar-viewer/formats";
+import { isMsaFile } from "@gps/msa-viewer/formats";
 
 /**
  * Infer a renderer + code language from a file name / mime (the workspace API
@@ -10,12 +10,12 @@ import { isMsaFile } from "@science-studio/msa-viewer/formats";
  * PDFs as `application/pdf`, images as `image/*`, and every structure format as
  * `application/octet-stream` (see `mimeFor`), so a MIME sniff cannot tell a
  * `.pdb` from any other binary. The structure formats themselves are owned by
- * `@science-studio/molstar-viewer/formats`.
+ * `@gps/molstar-viewer/formats`.
  */
 export type FileKind = "markdown" | "json" | "code" | "text" | "pdf" | "structure" | "image" | "msa";
 
-export { isStructureFile } from "@science-studio/molstar-viewer/formats";
-export { isMsaFile } from "@science-studio/msa-viewer/formats";
+export { isStructureFile } from "@gps/molstar-viewer/formats";
+export { isMsaFile } from "@gps/msa-viewer/formats";
 
 export function isPdfFile(name: string): boolean {
   return name.toLowerCase().endsWith(".pdf");

@@ -7,7 +7,7 @@ import type {
   McpServerDraft,
   McpServerSettings,
   McpServerView,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import { loadSettings, saveSettings } from "../settings.js";
 import { normalizeServer, serversForProject, viewMcpServer } from "./codec.js";
 

@@ -15,7 +15,7 @@ import {
 const AGENT_ROOT = "/home/node/.openclaw/workspace";
 
 async function makeRoot(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "ss-workspace-"));
+  return mkdtemp(join(tmpdir(), "gps-workspace-"));
 }
 
 /** A root with: `analysis/` (containing `notes.md`), `data.csv`, `README.txt`. */
@@ -247,7 +247,7 @@ try {
 });
 
 test("recycle moves the workspace into a sibling .recycle bin", async () => {
-  const parent = await mkdtemp(join(tmpdir(), "ss-recycle-"));
+  const parent = await mkdtemp(join(tmpdir(), "gps-recycle-"));
   const root = join(parent, "metabolism");
   try {
     await mkdir(root, { recursive: true });

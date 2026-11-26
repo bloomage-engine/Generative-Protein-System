@@ -9,7 +9,7 @@ import {
   bindingString,
   type RuntimeBinding,
   type RuntimeCapabilities,
-} from "@science-studio/transport";
+} from "@gps/transport";
 
 /** The private config shape of an openclaw `RuntimeBinding`. */
 export interface GatewayBinding {

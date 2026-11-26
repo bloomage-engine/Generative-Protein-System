@@ -8,8 +8,8 @@ import {
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
   type RuntimeAdapter,
-} from "@science-studio/transport";
-import { FsWorkspace } from "@science-studio/workspace";
+} from "@gps/transport";
+import { FsWorkspace } from "@gps/workspace";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 
@@ -42,7 +42,7 @@ async function withServer<T>(root: string, fn: (base: string) => Promise<T>): Pr
 }
 
 test("cron CRUD creates, lists, reads, updates and deletes a task file", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ss-cron-routes-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-cron-routes-"));
   try {
     await withServer(root, async (base) => {
       const created = await fetch(`${base}/api/cron/task?projectId=p1`, {
@@ -78,7 +78,7 @@ test("cron CRUD creates, lists, reads, updates and deletes a task file", async (
 });
 
 test("an invalid schedule is a 400, an unknown id a 404", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ss-cron-routes-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-cron-routes-"));
   try {
     await withServer(root, async (base) => {
       const bad = await fetch(`${base}/api/cron/task?projectId=p1`, {

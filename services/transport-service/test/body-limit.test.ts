@@ -7,7 +7,7 @@ import {
   NullWorkspace,
   type RuntimeAdapter,
   type StateDelta,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 

@@ -11,9 +11,9 @@ import {
   type SessionState,
   type StateDelta,
   type TransportCommand,
-} from "@science-studio/transport";
-import { createInMemoryRecordStore, type RecordStore } from "@science-studio/record";
-import { FsWorkspace } from "@science-studio/workspace";
+} from "@gps/transport";
+import { createInMemoryRecordStore, type RecordStore } from "@gps/record";
+import { FsWorkspace } from "@gps/workspace";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 import { createRecordDirectory } from "../src/directory.js";
@@ -27,7 +27,7 @@ type ServiceApp = Awaited<ReturnType<typeof createTransportService>>;
 async function fixture<T>(
   fn: (ctx: { base: string; records: RecordStore; app: ServiceApp; prompts: string[] }) => Promise<T>,
 ): Promise<T> {
-  const root = await mkdtemp(join(tmpdir(), "ss-cron-sched-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-cron-sched-"));
   const records = createInMemoryRecordStore();
   const prompts: string[] = [];
   const adapter: RuntimeAdapter = {
@@ -119,7 +119,7 @@ test("fire() on an unknown task is an error", async () => {
 });
 
 test("a busy target is skipped and logged as skipped-busy", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ss-cron-busy-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-cron-busy-"));
   try {
     const store = createCronStore({ now: () => "2026-09-18T00:00:00.000Z" });
     const workspace = new FsWorkspace(root, { agentRoot: root });
@@ -174,7 +174,7 @@ test("a busy target is skipped and logged as skipped-busy", async () => {
 });
 
 test("tick() fires a matching task once and does not re-fire within the same minute", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ss-cron-dedupe-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-cron-dedupe-"));
   try {
     const store = createCronStore({ now: () => "2026-09-18T00:00:00.000Z" });
     const workspace = new FsWorkspace(root, { agentRoot: root });
@@ -236,8 +236,8 @@ test("tick() fires a matching task once and does not re-fire within the same min
 });
 
 test("a project whose environment fails does not stop the tick for other projects", async () => {
-  const goodRoot = await mkdtemp(join(tmpdir(), "ss-cron-good-"));
-  const badRoot = await mkdtemp(join(tmpdir(), "ss-cron-bad-"));
+  const goodRoot = await mkdtemp(join(tmpdir(), "gps-cron-good-"));
+  const badRoot = await mkdtemp(join(tmpdir(), "gps-cron-bad-"));
   try {
     const store = createCronStore({ now: () => "2026-09-18T00:00:00.000Z" });
     const goodWorkspace = new FsWorkspace(goodRoot, { agentRoot: goodRoot });

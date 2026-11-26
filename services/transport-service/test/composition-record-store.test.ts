@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createJsonlRecordStore, type Subagent } from "@science-studio/record";
+import { createJsonlRecordStore, type Subagent } from "@gps/record";
 import { toRecordStoreLike } from "../src/composition.js";
 
 /**

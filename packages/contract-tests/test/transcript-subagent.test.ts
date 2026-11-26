@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createInMemoryRecordStore, createJsonlRecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore, createJsonlRecordStore } from "@gps/record";
 import { testTranscriptAndSubagent } from "../src/index.js";
 
 testTranscriptAndSubagent("in-memory record", async () => ({ store: createInMemoryRecordStore() }));

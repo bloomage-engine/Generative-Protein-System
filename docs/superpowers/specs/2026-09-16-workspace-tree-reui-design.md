@@ -141,7 +141,7 @@ Exact pins, consistent with the repo's dependency discipline.
 - `npm run build` — the real type gate (includes `typecheck:tests`).
 - The existing `apps/web/test/*.mjs` suites do not reference the tree DOM
   (confirmed), so no suite rewrite is expected. `npm run test:e2e -w
-  @science-studio/web` should stay green.
+  @gps/web` should stay green.
 - Manual: expand/collapse a nested directory; open a file into the preview;
   reveal a file via a top-bar search pick and via an agent file link; switch
   Projects and confirm the tree rebuilds; run with no `PROJECT_ROOT` and confirm

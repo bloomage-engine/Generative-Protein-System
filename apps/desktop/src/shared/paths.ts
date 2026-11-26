@@ -21,7 +21,7 @@ export function resolveDesktopPaths(input: {
     configPath: join(input.userDataDir, "config.env"),
     settingsPath: join(input.userDataDir, "settings.json"),
     recordStorePath: join(input.userDataDir, "record.jsonl"),
-    projectRoot: env.PROJECT_ROOT ?? join(input.homeDir, "Documents", "Science Studio", "projects"),
+    projectRoot: env.PROJECT_ROOT ?? join(input.homeDir, "Documents", "Generative Protein System", "projects"),
     dshHome: join(input.userDataDir, "dsh"),
     transcriptDir: join(input.userDataDir, "transcripts"),
   };

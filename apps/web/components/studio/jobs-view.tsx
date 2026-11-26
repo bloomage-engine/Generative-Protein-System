@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { RefreshCw, Server, XCircle } from "lucide-react";
-import type { ComputeJob } from "@science-studio/transport-client";
-import { DEFAULT_HPC_API, DEFAULT_WORKTREE_ID, cancelHpcJob, isOpenComputeJobState, useHpcJobs } from "@science-studio/transport-client";
+import type { ComputeJob } from "@gps/transport-client";
+import { DEFAULT_HPC_API, DEFAULT_WORKTREE_ID, cancelHpcJob, isOpenComputeJobState, useHpcJobs } from "@gps/transport-client";
 import { Button } from "@/components/ui/button";
 import { ModuleEmptyState, SidebarSection } from "./sidebar-section";
 import { useStudioStore } from "@/store/studio-store";

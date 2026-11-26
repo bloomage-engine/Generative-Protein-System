@@ -6,7 +6,7 @@ import type {
   RuntimeAdapter,
   SessionState,
   TransportCommand,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import { createTransportService } from "../src/index.js";
 
 /**

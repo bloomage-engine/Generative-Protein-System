@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
-import { createInMemoryRecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore } from "@gps/record";
 import {
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
@@ -9,12 +9,12 @@ import {
   type RuntimeAdapter,
   type SessionState,
   type TransportCommand,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 
 /**
- * Science Studio owns the record (`docs/adr/0002`), so the `SessionState` a run
+ * Generative Protein System owns the record (`docs/adr/0002`), so the `SessionState` a run
  * is driven with must come from the record layer rather than fabricated
  * constants. These tests pin that the service resolves the Session from the
  * store, files it under a Project (explicitly named, or the default one), and

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
-import type { RuntimeAdapter, SessionState, SubagentRun, SubagentTranscript, TransportCommand } from "@science-studio/transport";
+import type { RuntimeAdapter, SessionState, SubagentRun, SubagentTranscript, TransportCommand } from "@gps/transport";
 import { createTransportService } from "../src/index.js";
 
 async function withAdapter<T>(adapter: RuntimeAdapter, fn: (base: string) => Promise<T>): Promise<T> {

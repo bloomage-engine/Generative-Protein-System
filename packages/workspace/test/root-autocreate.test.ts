@@ -8,7 +8,7 @@ import { FsWorkspace } from "../src/index.js";
 const AGENT_ROOT = "/home/node/.openclaw/workspace";
 
 test("list('') auto-creates a missing root as an empty workspace", async () => {
-  const base = await mkdtemp(join(tmpdir(), "ss-root-absent-"));
+  const base = await mkdtemp(join(tmpdir(), "gps-root-absent-"));
   // Deliberately do NOT create `base/proj/` — only its parent.
   const projDir = join(base, "proj");
   try {
@@ -22,7 +22,7 @@ test("list('') auto-creates a missing root as an empty workspace", async () => {
 });
 
 test("list('') is idempotent when the root already exists", async () => {
-  const base = await mkdtemp(join(tmpdir(), "ss-root-persist-"));
+  const base = await mkdtemp(join(tmpdir(), "gps-root-persist-"));
   const projDir = join(base, "proj");
   try {
     const ws = new FsWorkspace(projDir, { agentRoot: AGENT_ROOT });
@@ -35,7 +35,7 @@ test("list('') is idempotent when the root already exists", async () => {
 });
 
 test("non-root paths on a missing root STILL raise WorkspaceNotFoundError", async () => {
-  const base = await mkdtemp(join(tmpdir(), "ss-root-absent-nested-"));
+  const base = await mkdtemp(join(tmpdir(), "gps-root-absent-nested-"));
   const projDir = join(base, "proj");
   try {
     const ws = new FsWorkspace(projDir, { agentRoot: AGENT_ROOT });

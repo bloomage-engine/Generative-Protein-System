@@ -11,9 +11,9 @@ test("internal state lives under userData", () => {
   assert.equal(p.transcriptDir, "/ud/transcripts");
 });
 
-test("Projects default to ~/Documents/Science Studio/projects", () => {
+test("Projects default to ~/Documents/Generative Protein System/projects", () => {
   const p = resolveDesktopPaths({ userDataDir: "/ud", homeDir: "/home/me" });
-  assert.equal(p.projectRoot, "/home/me/Documents/Science Studio/projects");
+  assert.equal(p.projectRoot, "/home/me/Documents/Generative Protein System/projects");
 });
 
 test("an explicit PROJECT_ROOT wins", () => {

@@ -20,11 +20,11 @@ import {
   useWorkspaceFileLink,
   useWorkspaceOpen,
   type MarkdownComponents,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 
 /**
  * Markdown renderer for assistant text parts — this app's skin over the
- * shared mechanism (`BaseMarkdownText` from `@science-studio/transport-client`:
+ * shared mechanism (`BaseMarkdownText` from `@gps/transport-client`:
  * GFM, shallow-stable component maps, streaming caret). This file only styles
  * each element (Tailwind/shadcn) and adds the code-block copy button.
  * `MarkdownTextPrimitive` reads the part text from its message-part context,
@@ -245,7 +245,7 @@ const defaultComponents: MarkdownComponents = {
   th: ({ className, ...props }) => (
     <th
       className={cn(
-        "aui-md-th bg-muted px-3 py-1.5 text-start font-medium first:rounded-ss-lg last:rounded-se-lg [[align=center]]:text-center [[align=right]]:text-right",
+        "aui-md-th bg-muted px-3 py-1.5 text-start font-medium first:rounded-gps-lg last:rounded-se-lg [[align=center]]:text-center [[align=right]]:text-right",
         className,
       )}
       {...props}

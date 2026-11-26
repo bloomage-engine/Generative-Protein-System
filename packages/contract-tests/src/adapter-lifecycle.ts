@@ -18,7 +18,7 @@ import type {
   RuntimeAdapter,
   SessionState,
   StateDelta,
-} from "@science-studio/transport/seams";
+} from "@gps/transport/seams";
 import { sessionState } from "./session-state.js";
 
 type PersistedRun = Parameters<RecordStoreLike["addRun"]>[0];

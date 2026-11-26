@@ -9,7 +9,7 @@ import {
   type McpServerSettings,
   type RuntimeBinding,
   type RuntimeCapabilities,
-} from "@science-studio/transport";
+} from "@gps/transport";
 
 /** The private config shape of a dsh `RuntimeBinding`. */
 export interface DshBinding {
@@ -82,13 +82,13 @@ export function dshLocalBinding(
   copy("workspace", "DSH_WORKSPACE");
   copy("provider", "DSH_PROVIDER");
   copy("model", "DSH_MODEL");
-  copy("endpoint", "SS_MODEL_ENDPOINT");
-  copy("apiKey", "SS_MODEL_API_KEY");
+  copy("endpoint", "GPS_MODEL_ENDPOINT");
+  copy("apiKey", "GPS_MODEL_API_KEY");
   copy("transcriptDir", "DSH_TRANSCRIPT_DIR");
   copy("defaultSession", "DSH_DEFAULT_SESSION");
   const maxTokens = env["DSH_MAX_TOKENS"];
   if (maxTokens && /^\d+$/.test(maxTokens)) config["maxTokens"] = Number(maxTokens);
-  const mcpRaw = env["SS_MCP_SECRET_CONFIG"];
+  const mcpRaw = env["GPS_MCP_SECRET_CONFIG"];
   if (mcpRaw) {
     try {
       const parsed = JSON.parse(mcpRaw);

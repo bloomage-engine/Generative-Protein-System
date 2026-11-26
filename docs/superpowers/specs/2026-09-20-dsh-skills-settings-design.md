@@ -26,7 +26,7 @@
   shows a neutral message rather than a runtime-specific branch — the same shape
   the Subagents panel uses (`typeof adapter.subagents !== "function"`).
 - **GLOBAL = read-only inventory; PROJECT = install / edit / remove.**
-  Science Studio never writes outside the Project Workspace, so the global list
+  Generative Protein System never writes outside the Project Workspace, so the global list
   (`<dshHome>/skills`, `<agentsHome>/skills`) is display-only. The project list
   (`.dsh/skills`, `.agents/skills`) adds install / remove, but only
   `.dsh/skills` is written: `.agents/skills` is a cross-agent shared convention
@@ -175,7 +175,7 @@ export interface SkillInstallInput {
 
 - **Global `customSkillDirs`** — a `skill-filesystem` config injected through a
   `- id: skill-filesystem` launch patch. A patch replaces the row's whole
-  `config`, coupling Science Studio to the harness profile's current shape; not
+  `config`, coupling Generative Protein System to the harness profile's current shape; not
   worth it until a concrete need exists.
 - Editing the global roots, writing `.agents/skills`, uploading a packed bundle,
   and any skill registry/marketplace.

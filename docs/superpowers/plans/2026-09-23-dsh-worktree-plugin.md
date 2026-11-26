@@ -15,8 +15,8 @@
 ## Global Constraints
 
 - Child-plugin rules (from `bridge-plugin.ts`): import NOTHING from `@deepseek-ai/*`; never write to stdout (it is the JSON-RPC wire — diagnostics go to stderr); `apply` fails soft.
-- `name = "science-studio-worktree"`; `inject = ["commands", "tools", "systemPrompt"]`.
-- The service base URL resolves `config.service ?? process.env.SCIENCE_STUDIO_SERVICE_URL ?? "http://127.0.0.1:3001"`, trailing slashes stripped (same as `hpc-plugin.ts`).
+- `name = "gps-worktree"`; `inject = ["commands", "tools", "systemPrompt"]`.
+- The service base URL resolves `config.service ?? process.env.GPS_SERVICE_URL ?? "http://127.0.0.1:3001"`, trailing slashes stripped (same as `hpc-plugin.ts`).
 - Prompt section order `470` (project is 450, hpc is 465).
 - The agent CANNOT change its own cwd; the prompt must say so plainly.
 
@@ -109,7 +109,7 @@ test("a project config registers the three tools, the command and the prompt sec
     "worktree_remove",
   ]);
   assert.deepEqual(host.commands().map((c) => c.name), ["worktree"]);
-  assert.deepEqual(host.sections().map((s) => s.name), ["science-studio-worktree"]);
+  assert.deepEqual(host.sections().map((s) => s.name), ["gps-worktree"]);
   assert.equal(host.sections()[0]?.order, 470);
 });
 
@@ -218,7 +218,7 @@ Expected: FAIL — module not found.
 Create `packages/transport-dsh/src/worktree-plugin.ts`, mirroring `hpc-plugin.ts`'s structure and fail-soft style:
 
 - Header comment: a thin fetch channel; the service owns git (docs/adr/0025); inert without Project; no `@deepseek-ai/*` imports; no stdout.
-- Exports: `name = "science-studio-worktree"`, `inject = ["commands", "tools", "systemPrompt"]`.
+- Exports: `name = "gps-worktree"`, `inject = ["commands", "tools", "systemPrompt"]`.
 - `DEFAULT_SERVICE = "http://127.0.0.1:3001"`, `READ_TIMEOUT_MS = 15_000`, `WRITE_TIMEOUT_MS = 30_000`.
 - `WorktreePluginConfig { project?: { id: string; name?: string; createdAt?: string }; worktree?: { id: string; name: string; branch: string; root: string }; service?: string }`.
 - `WorktreeHost { tools?: { register(d: WorktreeToolDefinition): () => void }; systemPrompt?: { section(s: WorktreePromptSection): () => void }; commands?: { register(d: WorktreeCommandDefinition): () => void }; effect?(body: () => () => void, label?: string): unknown }`.
@@ -232,10 +232,10 @@ Create `packages/transport-dsh/src/worktree-plugin.ts`, mirroring `hpc-plugin.ts
   - `worktree_list`: description "列出本项目的 worktree（git 分支）及其当前所在。" — render the list, marking `config.worktree?.id`; empty → "本项目只有默认 worktree main。"
   - `worktree_create`: parameters `{ name (required), branch?, base? }`; POST `/api/worktrees` with those fields (omit empty branch/base); on success render the created row; description must state it does NOT change the agent's own working directory.
   - `worktree_remove`: parameters `{ worktree (required) }`; validate with `/^[a-z0-9][a-z0-9-]*$/` (else "参数无效：worktree 应为 slug 形式的 id。"); POST `/api/worktrees/${encodeURIComponent(id)}/delete`; success → "已删除 worktree …". Description warns it deletes the branch's sessions too.
-- Prompt section `{ name: "science-studio-worktree", order: 470, text: [...] }`, text lines:
+- Prompt section `{ name: "gps-worktree", order: 470, text: [...] }`, text lines:
   - `你当前在 worktree「${worktree.name}」（分支 ${worktree.branch}），根路径 ${worktree.root}。`
   - `同一项目的其他 worktree 是同一 git 仓库的独立 checkout，位于 .worktrees/ 下，各自拥有一组会话。`
-  - `你可以用 worktree_list / worktree_create / worktree_remove 查看与增删 worktree，但无法切换自己的工作目录——要换到别的 worktree，请在 Science Studio 界面上打开那个 worktree。`
+  - `你可以用 worktree_list / worktree_create / worktree_remove 查看与增删 worktree，但无法切换自己的工作目录——要换到别的 worktree，请在 Generative Protein System 界面上打开那个 worktree。`
   - When `config.worktree` is absent, omit the first line and use a generic phrasing.
 - `/worktree` command `{ name: "worktree", description: "列出本项目的 worktree 分支", handler: async () => ... }` — fetch and render, returning `{ kind: "success", text }` (or `{ kind: "error", text }` on failure).
 - Registration: the same `disposers`/`tryRegister`/`effect` shape as `hpc-plugin.ts` (`apply` fails soft).
@@ -291,7 +291,7 @@ test("writeWorktreePatch inserts the plugin by file URL with a JSON config", asy
     });
     const patch = await readFile(file, "utf8");
     assert.match(patch, /- insert:/);
-    assert.match(patch, /id: science-studio-worktree/);
+    assert.match(patch, /id: gps-worktree/);
     assert.match(patch, /worktree-plugin\.js/);
     assert.match(patch, /"worktree":\{"id":"exp-a"/);
     assert.match(patch, /"service":"http:\/\/127\.0\.0\.1:3123"/);
@@ -308,7 +308,7 @@ Expected: FAIL — `writeWorktreePatch` is not exported.
 
 - [ ] **Step 3: Implement**
 
-In `packages/transport-dsh/src/bridge.ts`, after `writeHpcPatch`, add `WorktreePluginLaunchConfig` and `writeWorktreePatch` by copying `writeHpcPatch`'s body and changing: the filename prefix (`worktree-${randomUUID().slice(0, 8)}.cordis.patch.yml`) and the patch id (`science-studio-worktree`). Keep the `file:` URL name and the single JSON `config` node.
+In `packages/transport-dsh/src/bridge.ts`, after `writeHpcPatch`, add `WorktreePluginLaunchConfig` and `writeWorktreePatch` by copying `writeHpcPatch`'s body and changing: the filename prefix (`worktree-${randomUUID().slice(0, 8)}.cordis.patch.yml`) and the patch id (`gps-worktree`). Keep the `file:` URL name and the single JSON `config` node.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -331,7 +331,7 @@ git commit -m "feat(dsh): writeWorktreePatch launch artifact"
 - Test: `packages/transport-dsh/test/worktree-launch.test.ts` (extend with the adapter assertion)
 
 **Interfaces:**
-- Consumes: `writeWorktreePatch` (Task 2), `WorktreeContext` from `@science-studio/transport`.
+- Consumes: `writeWorktreePatch` (Task 2), `WorktreeContext` from `@gps/transport`.
 - Produces: `DshRuntimeAdapterOptions.worktreePluginPath?: string`; the adapter writes the worktree patch whenever `opts.project` exists.
 
 - [ ] **Step 1: Write the failing test**
@@ -368,13 +368,13 @@ async function mountedPatches(opts: {
 
 test("the adapter mounts the worktree plugin for a real project", async () => {
   const patches = await mountedPatches({ project: META, worktree: WT });
-  assert.ok(patches.some((p) => /science-studio-worktree/.test(p)));
+  assert.ok(patches.some((p) => /gps-worktree/.test(p)));
   assert.ok(patches.some((p) => /"worktree":\{"id":"exp-a"/.test(p)));
 });
 
 test("without a project the worktree plugin is not mounted", async () => {
   const patches = await mountedPatches({});
-  assert.ok(!patches.some((p) => /science-studio-worktree/.test(p)));
+  assert.ok(!patches.some((p) => /gps-worktree/.test(p)));
 });
 ```
 
@@ -418,7 +418,7 @@ In `packages/transport-dsh/src/adapter.ts`:
     // one.
     if (opts.project) {
       try {
-        const service = process.env.SCIENCE_STUDIO_SERVICE_URL;
+        const service = process.env.GPS_SERVICE_URL;
         patches.push(
           await writeWorktreePatch({
             dir: this.bridgeDir,
@@ -521,7 +521,7 @@ In the `packages/transport-dsh` paragraph, add a sentence naming the FIFTH depen
 
 - [ ] **Step 2: Run the package tests**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: PASS.
 
 - [ ] **Step 3: Run the root build gate**

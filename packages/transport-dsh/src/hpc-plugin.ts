@@ -11,9 +11,9 @@
  * this file by `file:` URL from the adapter's own `dist/`), never writes to
  * stdout, fails soft, and is inert without Project config.
  */
-import { isValidComputeJobId } from "@science-studio/hpc";
+import { isValidComputeJobId } from "@gps/hpc";
 
-export const name = "science-studio-hpc";
+export const name = "gps-hpc";
 export const inject = ["tools", "systemPrompt"];
 
 /** Same env + default as the molql plugin: the service the child talks to. */
@@ -113,7 +113,7 @@ async function callService(
     }
     return { ok: true, data };
   } catch (err) {
-    return { ok: false, error: `无法连接 Science Studio 服务（${err instanceof Error ? err.message : String(err)}）` };
+    return { ok: false, error: `无法连接 Generative Protein System 服务（${err instanceof Error ? err.message : String(err)}）` };
   }
 }
 
@@ -127,7 +127,7 @@ function describeJob(job: Record<string, unknown>): string {
 export function apply(ctx: HpcHost, config: HpcPluginConfig | undefined): void {
   const projectId = config?.project?.id;
   if (!projectId) return;
-  const service = (config?.service ?? process.env.SCIENCE_STUDIO_SERVICE_URL ?? DEFAULT_SERVICE).replace(/\/+$/, "");
+  const service = (config?.service ?? process.env.GPS_SERVICE_URL ?? DEFAULT_SERVICE).replace(/\/+$/, "");
 
   const submitTool: HpcToolDefinition = {
     name: "hpc_submit",
@@ -265,11 +265,11 @@ export function apply(ctx: HpcHost, config: HpcPluginConfig | undefined): void {
   };
 
   const prompt: HpcPromptSection = {
-    name: "science-studio-hpc",
+    name: "gps-hpc",
     order: 465,
     text: [
-      "本项目可把计算提交到外部 HPC 集群（Compute Job），由 Science Studio 服务通过 SSH 代你执行与对账。",
-      "端点与默认参数由研究者在 设置 → HPC 中配置，本项目的绑定写在 `.science-studio/hpc.md`（只读）。",
+      "本项目可把计算提交到外部 HPC 集群（Compute Job），由 Generative Protein System 服务通过 SSH 代你执行与对账。",
+      "端点与默认参数由研究者在 设置 → HPC 中配置，本项目的绑定写在 `.gps/hpc.md`（只读）。",
       "Remote Work Dir 是本项目在集群上的家目录；Compute Job 只看得见它，看不见 Project Workspace——大文件请在集群上就位，或用 hpc_files 显式搬运。",
       `工作约定：提交前先 \`hpc_jobs\` 查看现状，在对话中说明申请的资源再调用 \`hpc_submit\`；绝不重复提交。提交返回 502「may be queued」时先去集群确认，不要盲目重试。`,
       "运行状态由服务每 15 秒对账一次；日志用 hpc_logs，取消用 hpc_cancel。",
@@ -307,7 +307,7 @@ export function apply(ctx: HpcHost, config: HpcPluginConfig | undefined): void {
   };
 
   try {
-    if (ctx.effect) ctx.effect(register, "science-studio-hpc");
+    if (ctx.effect) ctx.effect(register, "gps-hpc");
     else register();
   } catch (err) {
     warn("hpc plugin disabled", err);

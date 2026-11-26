@@ -6,13 +6,13 @@
 
 **Architecture:** The `Preview` component gains `sourceView` state and renders toggle/save buttons in its header. `TextPreview` accepts a `sourceView` prop and renders an editable `<textarea>` when true. A new `isTextEditable` helper determines which file kinds support source view.
 
-**Tech Stack:** React, lucide-react icons, existing `uploadWorkspaceFile` from `@science-studio/transport-client`
+**Tech Stack:** React, lucide-react icons, existing `uploadWorkspaceFile` from `@gps/transport-client`
 
 ## Global Constraints
 
 - Files to modify: `apps/web/components/studio/file-preview-pane.tsx`, `apps/web/components/studio/file-utils.ts`
 - Icons from `lucide-react` (already a dependency)
-- Save uses `uploadWorkspaceFile` from `@science-studio/transport-client` (already exported)
+- Save uses `uploadWorkspaceFile` from `@gps/transport-client` (already exported)
 - No new dependencies
 - Follow existing code style (no comments unless asked)
 
@@ -108,7 +108,7 @@ Add the required imports at the top of the file:
 import { useCallback, useState } from "react";
 ```
 
-And add `uploadWorkspaceFile` to the `@science-studio/transport-client` import:
+And add `uploadWorkspaceFile` to the `@gps/transport-client` import:
 
 ```typescript
 import {
@@ -119,7 +119,7 @@ import {
   useWorkspaceFile,
   uploadWorkspaceFile,
   workspaceFileUrl,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 ```
 
 - [ ] **Step 3: Render toggle and save buttons in the header**
@@ -323,7 +323,7 @@ Expected: no new errors
 
 - [ ] **Step 3: Verify the full component renders correctly**
 
-Run: `npm run dev -w @science-studio/web` and open a markdown file in the preview pane. Verify:
+Run: `npm run dev -w @gps/web` and open a markdown file in the preview pane. Verify:
 - Toggle button appears in header
 - Clicking toggle shows textarea with raw markdown
 - Editing text makes save button appear
@@ -348,7 +348,7 @@ Expected: no errors
 
 - [ ] **Step 2: Run existing tests**
 
-Run: `npm run test:e2e -w @science-studio/web` (if Chromium available)
+Run: `npm run test:e2e -w @gps/web` (if Chromium available)
 Expected: existing tests pass (file-kinds, tab-state, etc.)
 
 - [ ] **Step 3: Manual verification**

@@ -5,8 +5,8 @@ import type {
   StateDelta,
   TransportCommand,
   Workspace,
-} from "@science-studio/transport";
-import { sessionState } from "@science-studio/contract-tests";
+} from "@gps/transport";
+import { sessionState } from "@gps/contract-tests";
 import { OpenClawRuntimeAdapter } from "../src/index.js";
 import type { BackendGateway, BackendGatewayOptions } from "../src/connection.js";
 

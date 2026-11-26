@@ -1,7 +1,7 @@
 /**
  * End-to-end test of this example's wiring: the dsh adapter driven by a
  * SCRIPTED turn client (via the adapter's `createClient` test seam) behind
- * @science-studio/transport-service, speaking the assistant-transport SSE
+ * @gps/transport-service, speaking the assistant-transport SSE
  * wire protocol to a plain fetch client. No live dsh process needed.
  *
  * Prereq: `npm run build` at the repo root (the workspace deps are imported
@@ -13,9 +13,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
-import { DshRuntimeAdapter } from "@science-studio/transport-dsh";
-import type { DshTurnClient } from "@science-studio/transport-dsh";
-import { createTransportService } from "@science-studio/transport-service";
+import { DshRuntimeAdapter } from "@gps/transport-dsh";
+import type { DshTurnClient } from "@gps/transport-dsh";
+import { createTransportService } from "@gps/transport-service";
 
 const SESSION = "sess-1";
 

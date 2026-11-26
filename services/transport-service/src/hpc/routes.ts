@@ -11,8 +11,8 @@ import { Readable } from "node:stream";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ComputeJob, RecordStore } from "@science-studio/record";
-import { isOpenComputeJobState } from "@science-studio/hpc";
+import type { ComputeJob, RecordStore } from "@gps/record";
+import { isOpenComputeJobState } from "@gps/hpc";
 import {
   HPC_BINDING_PATH,
   isSafeRemotePath,
@@ -21,13 +21,13 @@ import {
   parseHpcBinding,
   serializeHpcBinding,
   type HpcBinding,
-} from "@science-studio/hpc";
+} from "@gps/hpc";
 import {
   WorkspaceNotFoundError,
   type HpcEndpointSettings,
   type Workspace,
   type WorkspaceLimits,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import { loadSettings } from "../settings.js";
 import type { ProjectScopes } from "../project-scope.js";
 import type { HpcJobPoller } from "./poller.js";
@@ -128,8 +128,8 @@ export function registerHpcRoutes(app: FastifyInstance, deps: HpcRouteDeps): voi
       }
     }
     // Prove the remote home is writable without touching a Project's dir.
-    const touch = await ssh.run(endpoint, `mkdir -p ${remotePath("~/science-studio")}`);
-    if (touch.code !== 0) errors.push(`~/science-studio: ${touch.stderr.trim() || `exit ${touch.code}`}`);
+    const touch = await ssh.run(endpoint, `mkdir -p ${remotePath("~/gps")}`);
+    if (touch.code !== 0) errors.push(`~/gps: ${touch.stderr.trim() || `exit ${touch.code}`}`);
     out.ok = errors.length === 0;
     return out;
   });
@@ -300,11 +300,11 @@ export function registerHpcRoutes(app: FastifyInstance, deps: HpcRouteDeps): voi
         if ("error" in parsed) throw new HpcError(400, `binding: ${parsed.error}`);
         const binding = parsed.binding;
         const endpoint = resolveEndpoint(await endpoints(), bindingView(binding));
-        const workDir = binding.workDir ?? `~/science-studio/${projectId}`;
+        const workDir = binding.workDir ?? `~/gps/${projectId}`;
         if (!isSafeRemotePath(workDir)) throw new HpcError(400, "the Binding's workDir is not a safe remote path");
         const remote = `${workDir.endsWith("/") ? workDir.slice(0, -1) : workDir}/${remoteRel}`;
 
-        const dir = await mkdtemp(join(tmpdir(), "ss-hpc-stage-"));
+        const dir = await mkdtemp(join(tmpdir(), "gps-hpc-stage-"));
         const staging = join(dir, "file");
         try {
           if (action === "upload") {

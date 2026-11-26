@@ -1,8 +1,8 @@
 "use client";
 
 import { Bot, History } from "lucide-react";
-import { useSubagents, useSubagentsWindow } from "@science-studio/transport-client";
-import type { SubagentRun } from "@science-studio/transport";
+import { useSubagents, useSubagentsWindow } from "@gps/transport-client";
+import type { SubagentRun } from "@gps/transport";
 import { isRecent, windowMsFromHours } from "./subagents-window";
 import { Button } from "@/components/ui/button";
 import { ModuleEmptyState, SidebarSection } from "./sidebar-section";

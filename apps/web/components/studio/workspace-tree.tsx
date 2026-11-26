@@ -28,7 +28,7 @@ import {
   type ClientScope,
   type DirListing,
   type Entry,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { Download, FolderTree, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
 import { Tree, TreeItem, TreeItemLabel } from "@/components/ui/tree";
 import { cn } from "@/lib/utils";

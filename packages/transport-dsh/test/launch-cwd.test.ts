@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { NullWorkspace, type RecordStoreLike, type Workspace } from "@science-studio/transport";
+import { NullWorkspace, type RecordStoreLike, type Workspace } from "@gps/transport";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
 
 /**
@@ -23,7 +23,7 @@ import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
  * no-workspace deployment keeps the standalone binding/env/cwd fallback.
  */
 
-const TRANSCRIPT_DIR = join(tmpdir(), "science-studio-launch-cwd-test");
+const TRANSCRIPT_DIR = join(tmpdir(), "gps-launch-cwd-test");
 
 /** A workspace whose agent view is rooted at `agentRoot`. */
 function workspaceAt(agentRoot: string): Workspace {

@@ -17,7 +17,7 @@ test("writeHpcPatch inserts the hpc plugin by file URL with a JSON config", asyn
     });
     const patch = await readFile(file, "utf8");
     assert.match(patch, /- insert:/);
-    assert.match(patch, /id: science-studio-hpc/);
+    assert.match(patch, /id: gps-hpc/);
     assert.match(patch, /hpc-plugin\.js/);
     assert.match(patch, /"service":"http:\/\/127\.0\.0\.1:3123"/);
     assert.match(patch, /"id":"drought-screen"/);

@@ -1,4 +1,4 @@
-import type { RuntimePlugin } from "@science-studio/transport";
+import type { RuntimePlugin } from "@gps/transport";
 import { createDshRuntimeFactory } from "./adapter.js";
 import { dshLocalBinding } from "./binding.js";
 

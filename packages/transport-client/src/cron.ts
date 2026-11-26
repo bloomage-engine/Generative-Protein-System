@@ -16,7 +16,7 @@ import {
   type CronRunStatus,
   type CronTask,
   type SchedulePreset,
-} from "@science-studio/cron";
+} from "@gps/cron";
 import { scopedUrl, type ClientScope } from "./scope.js";
 
 export {

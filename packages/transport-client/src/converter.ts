@@ -2,7 +2,7 @@
 
 import { unstable_createMessageConverter } from "@assistant-ui/react";
 import type { AssistantTransportCommand } from "@assistant-ui/react";
-import type { Message, MessagePart } from "@science-studio/transport";
+import type { Message, MessagePart } from "@gps/transport";
 
 function tryParse(value: string): unknown {
   try {

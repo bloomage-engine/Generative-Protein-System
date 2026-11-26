@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { SubagentRun, SubagentTranscript } from "@science-studio/transport";
+import type { SubagentRun, SubagentTranscript } from "@gps/transport";
 import { withScope, type ClientScope } from "./scope.js";
 
 /** The same-origin transport base (the web proxy path). */

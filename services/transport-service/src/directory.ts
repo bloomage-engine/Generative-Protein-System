@@ -1,7 +1,7 @@
 /**
  * The record-backed Project / Session / Run directory.
  *
- * Science Studio owns the record (docs/adr/0002): the Project and Session
+ * Generative Protein System owns the record (docs/adr/0002): the Project and Session
  * identity a run is driven with must come from the record layer rather than
  * fabricated constants. Sessions are created EXPLICITLY under a Project
  * (docs/adr/0007) — `POST /api/projects/:id/sessions` — and the transport route
@@ -11,8 +11,8 @@
  * Project ids are filesystem-safe slugs because a Project's id names its
  * workspace directory (`<PROJECT_ROOT>/<projectId>/`, docs/adr/0006).
  */
-import type { Id, Project, RecordStore, Run, Session, Worktree } from "@science-studio/record";
-import { DEFAULT_WORKTREE_ID, MAIN_BRANCH } from "@science-studio/record";
+import type { Id, Project, RecordStore, Run, Session, Worktree } from "@gps/record";
+import { DEFAULT_WORKTREE_ID, MAIN_BRANCH } from "@gps/record";
 
 export interface RecordDefaults {
   projectId: Id;

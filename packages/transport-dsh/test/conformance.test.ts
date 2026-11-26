@@ -3,7 +3,7 @@ import {
   testResolveSessionKey,
   testRuntimeFactory,
   testSubagents,
-} from "@science-studio/contract-tests";
+} from "@gps/contract-tests";
 import { createDshRuntimeFactory, dshBinding, DshRuntimeAdapter } from "../src/index.js";
 import { dshLifecycleCase } from "./lifecycle-case.js";
 

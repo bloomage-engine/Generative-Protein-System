@@ -1,8 +1,8 @@
 {
-  "name": "@science-studio/desktop",
+  "name": "@gps/desktop",
   "version": "0.0.0",
   "private": true,
-  "description": "Science Studio desktop app",
+  "description": "Generative Protein System desktop app",
   "author": "zhonghua-wang <zhonghua.wang@outlook.com>",
   "homepage": "https://hx-engine.com",
   "type": "module",
@@ -19,9 +19,9 @@
     "pack": "npm --prefix ../.. run build && npm run build && npm run build:desktop && electron-builder"
   },
   "dependencies": {
-    "@science-studio/transport": "*",
-    "@science-studio/transport-dsh": "*",
-    "@science-studio/transport-service": "*"
+    "@gps/transport": "*",
+    "@gps/transport-dsh": "*",
+    "@gps/transport-service": "*"
   },
   "devDependencies": {
     "@types/node": "20.19.43",

@@ -1,5 +1,5 @@
 /**
- * Conformance suites for the Science Studio seams.
+ * Conformance suites for the Generative Protein System seams.
  *
  * These are not tests of this package — they are the SHARED contract every
  * implementation must satisfy, published so the open-core boundary is

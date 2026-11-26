@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createWorktree, type Worktree } from "@science-studio/transport-client";
+import { createWorktree, type Worktree } from "@gps/transport-client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

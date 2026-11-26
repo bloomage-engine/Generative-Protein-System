@@ -2,16 +2,16 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Per-Project scheduled agent runs: a `.science-studio/cron/<id>.md` task fires at a cron schedule, the service drives a normal run on its target Session with the task's prompt, the run is logged to a sibling `.log.md`, and the right-pane Cron module lists tasks and opens them in a form tab.
+**Goal:** Per-Project scheduled agent runs: a `.gps/cron/<id>.md` task fires at a cron schedule, the service drives a normal run on its target Session with the task's prompt, the run is logged to a sibling `.log.md`, and the right-pane Cron module lists tasks and opens them in a form tab.
 
-**Architecture:** A new pure package `@science-studio/cron` owns the task-document codec, the 5-field schedule grammar and the run-log format. The transport-service owns a workspace-backed store, CRUD routes, and a scheduler that calls `adapter.run()` and shares the existing one-in-flight `activeRuns` lock. A dsh child plugin (mounted by a third per-launch `--patch`) gives the agent `schedule_*` tools and a `/cron` command. The web reaches the routes through one proxy hop and `transport-client` hooks.
+**Architecture:** A new pure package `@gps/cron` owns the task-document codec, the 5-field schedule grammar and the run-log format. The transport-service owns a workspace-backed store, CRUD routes, and a scheduler that calls `adapter.run()` and shares the existing one-in-flight `activeRuns` lock. A dsh child plugin (mounted by a third per-launch `--patch`) gives the agent `schedule_*` tools and a `/cron` command. The web reaches the routes through one proxy hop and `transport-client` hooks.
 
 **Tech Stack:** TypeScript (strict, ESM, `.js` import suffixes), Node 18+, Fastify 5, node:test + tsx, React 19 / Next 15 / Zustand, shadcn/ui, the existing dsh cordis child-plugin mechanism.
 
 ## Global Constraints
 
 - Node >= 18, `"type": "module"`, TypeScript strict with `noUncheckedIndexedAccess`; relative imports carry the `.js` suffix.
-- `@science-studio/cron` is pure and zero-dependency: **no `node:` imports** (it is imported by the browser bundle), no external packages.
+- `@gps/cron` is pure and zero-dependency: **no `node:` imports** (it is imported by the browser bundle), no external packages.
 - dsh child plugins import **nothing** from `@deepseek-ai/*`; they never write to **stdout** (it is the child's JSON-RPC wire, use `process.stderr`); every registration is guarded so a failure never kills the child.
 - Schedule grammar: exactly 5 fields `minute hour day-of-month month day-of-week`, each `*`, `n`, `a-b`, `a,b`, `*/n`, `a-b/n`; a task fires when ALL five match (NOT the standard cron OR between day-of-month and day-of-week). Local time.
 - Tests run with `node --import tsx --test test/*.test.ts` inside each package. Cross-package imports resolve to `dist`, so build a dependency package before running its consumers' tests.
@@ -20,7 +20,7 @@
 
 ---
 
-### Task 1: `@science-studio/cron` package + schedule grammar
+### Task 1: `@gps/cron` package + schedule grammar
 
 **Files:**
 - Create: `packages/cron/package.json`
@@ -40,7 +40,7 @@
 
 ```json
 {
-  "name": "@science-studio/cron",
+  "name": "@gps/cron",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -78,7 +78,7 @@
 }
 ```
 
-Modify the root `package.json` `build` script: insert `npm run build -w @science-studio/cron &&` immediately after `npm run build -w @science-studio/workspace &&` (the package has no deps; it must build before `transport-client`/`transport-dsh`/`transport-service`).
+Modify the root `package.json` `build` script: insert `npm run build -w @gps/cron &&` immediately after `npm run build -w @gps/workspace &&` (the package has no deps; it must build before `transport-client`/`transport-dsh`/`transport-service`).
 
 - [ ] **Step 2: Write the failing test**
 
@@ -131,7 +131,7 @@ test("describeSchedule names the common shapes and falls back to the expression"
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `npm run test -w @science-studio/cron`
+Run: `npm run test -w @gps/cron`
 Expected: FAIL — `Cannot find module '../src/schedule.js'` (or the package's `test` script missing).
 
 - [ ] **Step 4: Implement the schedule grammar**
@@ -312,12 +312,12 @@ export {
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `npm run test -w @science-studio/cron`
+Run: `npm run test -w @gps/cron`
 Expected: PASS (4 tests).
 
 - [ ] **Step 6: Build and typecheck the package**
 
-Run: `npm run build -w @science-studio/cron`
+Run: `npm run build -w @gps/cron`
 Expected: exits 0, creates `packages/cron/dist`.
 
 - [ ] **Step 7: Commit**
@@ -378,14 +378,14 @@ test("a task document round-trips through serialize/parse", () => {
 });
 
 test("paths are recognized and the log file is never a task", () => {
-  assert.equal(CRON_DIR, ".science-studio/cron");
-  assert.equal(cronTaskPath("x1"), ".science-studio/cron/x1.md");
-  assert.equal(cronLogPath("x1"), ".science-studio/cron/x1.log.md");
+  assert.equal(CRON_DIR, ".gps/cron");
+  assert.equal(cronTaskPath("x1"), ".gps/cron/x1.md");
+  assert.equal(cronLogPath("x1"), ".gps/cron/x1.log.md");
   assert.equal(taskIdFromPath(cronTaskPath("x1")), "x1");
   assert.equal(isCronTaskPath(cronTaskPath("x1")), true);
   assert.equal(isCronTaskPath(cronLogPath("x1")), false);
   assert.equal(isCronTaskPath("notes.md"), false);
-  assert.equal(taskIdFromPath(".science-studio/cron/sub/x.md"), null);
+  assert.equal(taskIdFromPath(".gps/cron/sub/x.md"), null);
 });
 
 test("parse rejects malformed documents with a reason", () => {
@@ -444,7 +444,7 @@ test("appending and reading back the latest entry", () => {
 
 - [ ] **Step 3: Run the tests to verify they fail**
 
-Run: `npm run test -w @science-studio/cron`
+Run: `npm run test -w @gps/cron`
 Expected: FAIL — `Cannot find module '../src/task-doc.js'`.
 
 - [ ] **Step 4: Implement the codec and the log**
@@ -454,7 +454,7 @@ Expected: FAIL — `Cannot find module '../src/task-doc.js'`.
 ```ts
 import { isValidSchedule } from "./schedule.js";
 
-export const CRON_DIR = ".science-studio/cron";
+export const CRON_DIR = ".gps/cron";
 
 const TASK_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const TASK_SUFFIX = ".md";
@@ -638,12 +638,12 @@ export {
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `npm run test -w @science-studio/cron`
+Run: `npm run test -w @gps/cron`
 Expected: PASS (all schedule + task-doc + log tests).
 
 - [ ] **Step 6: Build**
 
-Run: `npm run build -w @science-studio/cron`
+Run: `npm run build -w @gps/cron`
 Expected: exits 0.
 
 - [ ] **Step 7: Commit**
@@ -658,13 +658,13 @@ git commit -m "feat(cron): parse/serialize task documents and append run logs"
 ### Task 3: Service cron store (workspace-backed)
 
 **Files:**
-- Modify: `services/transport-service/package.json` (add `@science-studio/cron`)
+- Modify: `services/transport-service/package.json` (add `@gps/cron`)
 - Modify: `services/transport-service/tsconfig.json` (add the `../../packages/cron` reference)
 - Create: `services/transport-service/src/cron/store.ts`
 - Create: `services/transport-service/test/cron-store.test.ts`
 
 **Interfaces:**
-- Consumes: `@science-studio/cron` (Tasks 1-2), `Workspace` from `@science-studio/transport`.
+- Consumes: `@gps/cron` (Tasks 1-2), `Workspace` from `@gps/transport`.
 - Produces: `CronTaskSummary`, `CronListResult`, `CronStore` (`list`, `read`, `write`, `remove`, `appendLog`), `createCronStore(opts?)`.
 
 - [ ] **Step 1: Add the dependency**
@@ -672,7 +672,7 @@ git commit -m "feat(cron): parse/serialize task documents and append run logs"
 In `services/transport-service/package.json` `dependencies`, add:
 
 ```json
-"@science-studio/cron": "*",
+"@gps/cron": "*",
 ```
 
 In `services/transport-service/tsconfig.json` `references`, add (following the existing workspace-package references):
@@ -691,13 +691,13 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FsWorkspace } from "@science-studio/workspace";
+import { FsWorkspace } from "@gps/workspace";
 import { createCronStore, type CronStore } from "../src/cron/store.js";
 
 async function fixture<T>(
   fn: (store: CronStore, workspace: FsWorkspace, root: string) => Promise<T>,
 ): Promise<T> {
-  const root = await mkdtemp(join(tmpdir(), "ss-cron-store-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-cron-store-"));
   const workspace = new FsWorkspace(root);
   const store = createCronStore({ now: () => "2026-09-18T00:00:00.000Z" });
   try {
@@ -728,8 +728,8 @@ test("write/read/list round-trips a task and a missing log is empty", async () =
 test("a malformed file is reported as invalid, never as a task", async () => {
   await fixture(async (store, workspace, root) => {
     await store.write(workspace, { id: "ok", name: "OK", schedule: "0 9 * * *", enabled: true, prompt: "" });
-    await mkdir(join(root, ".science-studio", "cron"), { recursive: true });
-    await writeFile(join(root, ".science-studio", "cron", "broken.md"), "not a task");
+    await mkdir(join(root, ".gps", "cron"), { recursive: true });
+    await writeFile(join(root, ".gps", "cron", "broken.md"), "not a task");
     const listing = await store.list(workspace);
     assert.deepEqual(listing.tasks.map((t) => t.id), ["ok"]);
     assert.equal(listing.invalid.length, 1);
@@ -757,7 +757,7 @@ test("appendLog records the latest run on the listing, and remove deletes both f
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `npm run build -w @science-studio/cron && npm run test -w @science-studio/transport-service`
+Run: `npm run build -w @gps/cron && npm run test -w @gps/transport-service`
 Expected: FAIL — `Cannot find module '../src/cron/store.js'`.
 
 - [ ] **Step 4: Implement the store**
@@ -776,8 +776,8 @@ import {
   taskIdFromPath,
   type CronLogEntry,
   type CronTask,
-} from "@science-studio/cron";
-import { WorkspaceNotFoundError, type Workspace } from "@science-studio/transport";
+} from "@gps/cron";
+import { WorkspaceNotFoundError, type Workspace } from "@gps/transport";
 
 export interface CronTaskSummary extends CronTask {
   path: string;
@@ -875,7 +875,7 @@ Fix the test file so every `fixture` callback receives `workspace` (e.g. `async 
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `npm run test -w @science-studio/transport-service`
+Run: `npm run test -w @gps/transport-service`
 Expected: PASS (the new cron-store tests and all existing service tests).
 
 - [ ] **Step 6: Commit**
@@ -913,8 +913,8 @@ import {
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
   type RuntimeAdapter,
-} from "@science-studio/transport";
-import { FsWorkspace } from "@science-studio/workspace";
+} from "@gps/transport";
+import { FsWorkspace } from "@gps/workspace";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 
@@ -947,7 +947,7 @@ async function withServer<T>(root: string, fn: (base: string) => Promise<T>): Pr
 }
 
 test("cron CRUD creates, lists, reads, updates and deletes a task file", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ss-cron-routes-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-cron-routes-"));
   try {
     await withServer(root, async (base) => {
       const created = await fetch(`${base}/api/cron/task?projectId=p1`, {
@@ -983,7 +983,7 @@ test("cron CRUD creates, lists, reads, updates and deletes a task file", async (
 });
 
 test("an invalid schedule is a 400, an unknown id a 404", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ss-cron-routes-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-cron-routes-"));
   try {
     await withServer(root, async (base) => {
       const bad = await fetch(`${base}/api/cron/task?projectId=p1`, {
@@ -1003,7 +1003,7 @@ test("an invalid schedule is a 400, an unknown id a 404", async () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npm run build -w @science-studio/cron && npm run test -w @science-studio/transport-service`
+Run: `npm run build -w @gps/cron && npm run test -w @gps/transport-service`
 Expected: FAIL — `/api/cron` answers 404.
 
 - [ ] **Step 3: Implement the routes**
@@ -1012,7 +1012,7 @@ Expected: FAIL — `/api/cron` answers 404.
 
 ```ts
 import type { FastifyInstance } from "fastify";
-import { isValidSchedule, isValidTaskId, type CronTask } from "@science-studio/cron";
+import { isValidSchedule, isValidTaskId, type CronTask } from "@gps/cron";
 import type { ProjectScopes } from "../project-scope.js";
 import type { CronStore } from "./store.js";
 
@@ -1151,7 +1151,7 @@ and after `activeRuns` is declared:
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `npm run test -w @science-studio/transport-service`
+Run: `npm run test -w @gps/transport-service`
 Expected: PASS (cron routes + all existing service tests).
 
 - [ ] **Step 5: Commit**
@@ -1194,9 +1194,9 @@ import {
   type SessionState,
   type StateDelta,
   type TransportCommand,
-} from "@science-studio/transport";
-import { createInMemoryRecordStore, type RecordStore } from "@science-studio/record";
-import { FsWorkspace } from "@science-studio/workspace";
+} from "@gps/transport";
+import { createInMemoryRecordStore, type RecordStore } from "@gps/record";
+import { FsWorkspace } from "@gps/workspace";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 import { createRecordDirectory } from "../src/directory.js";
@@ -1210,7 +1210,7 @@ type ServiceApp = Awaited<ReturnType<typeof createTransportService>>;
 async function fixture<T>(
   fn: (ctx: { base: string; records: RecordStore; app: ServiceApp; prompts: string[] }) => Promise<T>,
 ): Promise<T> {
-  const root = await mkdtemp(join(tmpdir(), "ss-cron-sched-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-cron-sched-"));
   const records = createInMemoryRecordStore();
   const prompts: string[] = [];
   const adapter: RuntimeAdapter = {
@@ -1302,7 +1302,7 @@ test("fire() on an unknown task is an error", async () => {
 });
 
 test("a busy target is skipped and logged as skipped-busy", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ss-cron-busy-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-cron-busy-"));
   try {
     const store = createCronStore({ now: () => "2026-09-18T00:00:00.000Z" });
     const workspace = new FsWorkspace(root);
@@ -1384,7 +1384,7 @@ test("a named session in another project is an error and logs nothing to the tra
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npm run build -w @science-studio/cron && npm run test -w @science-studio/transport-service`
+Run: `npm run build -w @gps/cron && npm run test -w @gps/transport-service`
 Expected: FAIL — `app.cronScheduler` is undefined / `scheduler.js` missing.
 
 - [ ] **Step 3: Implement the scheduler**
@@ -1392,15 +1392,15 @@ Expected: FAIL — `app.cronScheduler` is undefined / `scheduler.js` missing.
 `services/transport-service/src/cron/scheduler.ts`:
 
 ```ts
-import type { Id, RecordStore } from "@science-studio/record";
-import { matchesSchedule, type CronRunStatus, type CronTask } from "@science-studio/cron";
+import type { Id, RecordStore } from "@gps/record";
+import { matchesSchedule, type CronRunStatus, type CronTask } from "@gps/cron";
 import type {
   Environment,
   EnvironmentProvider,
   MessagePart,
   Principal,
   SessionState,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { RecordDirectory } from "../directory.js";
 import type { CronStore } from "./store.js";
 
@@ -1625,7 +1625,7 @@ Then in `services/transport-service/src/index.ts`, `isMain` block:
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `npm run test -w @science-studio/transport-service`
+Run: `npm run test -w @gps/transport-service`
 Expected: PASS.
 
 - [ ] **Step 5: Typecheck the service (the real gate rebuilds it)**
@@ -1645,7 +1645,7 @@ git commit -m "feat(service): schedule due cron tasks through adapter.run"
 ### Task 6: Web cron proxy route + transport-client hooks
 
 **Files:**
-- Modify: `packages/transport-client/package.json` (add `@science-studio/cron`)
+- Modify: `packages/transport-client/package.json` (add `@gps/cron`)
 - Modify: `packages/transport-client/tsconfig.json` (add the `../cron` reference)
 - Create: `packages/transport-client/src/cron.ts`
 - Modify: `packages/transport-client/src/index.ts` (export the cron module)
@@ -1653,15 +1653,15 @@ git commit -m "feat(service): schedule due cron tasks through adapter.run"
 - Create: `packages/transport-client/test/cron.test.ts`
 
 **Interfaces:**
-- Consumes: `@science-studio/cron`; `proxyToService` from `@/lib/service-proxy`.
-- Produces (from `@science-studio/transport-client`): `DEFAULT_CRON_API`, `useCronTasks`, `fetchCronTasks`, `fetchCronTask`, `createCronTask`, `saveCronTask`, `deleteCronTask`, `runCronTask`, and re-exports `CRON_DIR`, `cronLogPath`, `cronTaskPath`, `describeSchedule`, `isCronTaskPath`, `isValidSchedule`, `presetToExpression`, `SCHEDULE_PRESETS`, `taskIdFromPath`, types `CronTask`, `CronTaskSummary`, `CronLogEntry`, `CronRunStatus`, `CronTaskInput`, `CronInvalidFile`, `SchedulePreset`.
+- Consumes: `@gps/cron`; `proxyToService` from `@/lib/service-proxy`.
+- Produces (from `@gps/transport-client`): `DEFAULT_CRON_API`, `useCronTasks`, `fetchCronTasks`, `fetchCronTask`, `createCronTask`, `saveCronTask`, `deleteCronTask`, `runCronTask`, and re-exports `CRON_DIR`, `cronLogPath`, `cronTaskPath`, `describeSchedule`, `isCronTaskPath`, `isValidSchedule`, `presetToExpression`, `SCHEDULE_PRESETS`, `taskIdFromPath`, types `CronTask`, `CronTaskSummary`, `CronLogEntry`, `CronRunStatus`, `CronTaskInput`, `CronInvalidFile`, `SchedulePreset`.
 
 - [ ] **Step 1: Add the dependency**
 
 In `packages/transport-client/package.json` `dependencies`, add:
 
 ```json
-"@science-studio/cron": "*",
+"@gps/cron": "*",
 ```
 
 In `packages/transport-client/tsconfig.json` `references`, add:
@@ -1680,15 +1680,15 @@ import assert from "node:assert/strict";
 import { isCronTaskPath, taskIdFromPath } from "../src/cron.js";
 
 test("the client re-exports the pure task-path predicate", () => {
-  assert.equal(isCronTaskPath(".science-studio/cron/x.md"), true);
-  assert.equal(taskIdFromPath(".science-studio/cron/x.md"), "x");
-  assert.equal(isCronTaskPath(".science-studio/cron/x.log.md"), false);
+  assert.equal(isCronTaskPath(".gps/cron/x.md"), true);
+  assert.equal(taskIdFromPath(".gps/cron/x.md"), "x");
+  assert.equal(isCronTaskPath(".gps/cron/x.log.md"), false);
 });
 ```
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `npm run build -w @science-studio/cron && npm run test -w @science-studio/transport-client`
+Run: `npm run build -w @gps/cron && npm run test -w @gps/transport-client`
 Expected: FAIL — `Cannot find module '../src/cron.js'`.
 
 - [ ] **Step 4: Implement the hooks and the proxy**
@@ -1713,7 +1713,7 @@ import {
   type CronRunStatus,
   type CronTask,
   type SchedulePreset,
-} from "@science-studio/cron";
+} from "@gps/cron";
 
 export {
   CRON_DIR,
@@ -1961,7 +1961,7 @@ export async function PUT(
 
 - [ ] **Step 5: Run the test and build**
 
-Run: `npm run test -w @science-studio/transport-client && npm run build -w @science-studio/cron && npm run build -w @science-studio/transport-client`
+Run: `npm run test -w @gps/transport-client && npm run build -w @gps/cron && npm run build -w @gps/transport-client`
 Expected: PASS and both builds exit 0.
 
 - [ ] **Step 6: Commit**
@@ -1980,7 +1980,7 @@ git commit -m "feat(transport-client): poll and edit cron tasks over the web pro
 - Create: `apps/web/components/studio/cron-new-task-dialog.tsx`
 
 **Interfaces:**
-- Consumes: `useCronTasks`, `createCronTask`, `describeSchedule`, `cronTaskPath` from `@science-studio/transport-client`; `SidebarSection`/`ModuleEmptyState`; `useStudioStore` (`projectId`, `openFile`, `rightSections.cron`, `rightHeights.cron`, `toggleRightSection`).
+- Consumes: `useCronTasks`, `createCronTask`, `describeSchedule`, `cronTaskPath` from `@gps/transport-client`; `SidebarSection`/`ModuleEmptyState`; `useStudioStore` (`projectId`, `openFile`, `rightSections.cron`, `rightHeights.cron`, `toggleRightSection`).
 - Produces: the list UI and dialog used by the web test.
 
 - [ ] **Step 1: Implement the New-task dialog**
@@ -1991,7 +1991,7 @@ git commit -m "feat(transport-client): poll and edit cron tasks over the web pro
 "use client";
 
 import { useState } from "react";
-import { createCronTask, SCHEDULE_PRESETS, presetToExpression, type SchedulePreset } from "@science-studio/transport-client";
+import { createCronTask, SCHEDULE_PRESETS, presetToExpression, type SchedulePreset } from "@gps/transport-client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -2128,7 +2128,7 @@ Replace `apps/web/components/studio/cron-view.tsx` with:
 
 import { useState } from "react";
 import { CalendarClock, Plus } from "lucide-react";
-import { cronTaskPath, describeSchedule, useCronTasks } from "@science-studio/transport-client";
+import { cronTaskPath, describeSchedule, useCronTasks } from "@gps/transport-client";
 import { Button } from "@/components/ui/button";
 import { ModuleEmptyState, SidebarSection } from "./sidebar-section";
 import { NewCronTaskDialog } from "./cron-new-task-dialog";
@@ -2235,7 +2235,7 @@ export function CronView() {
 
 - [ ] **Step 3: Typecheck the web app**
 
-Run: `npm run typecheck -w @science-studio/web`
+Run: `npm run typecheck -w @gps/web`
 Expected: exits 0.
 
 - [ ] **Step 4: Commit**
@@ -2257,7 +2257,7 @@ git commit -m "feat(web): list scheduled tasks and create them from the Cron pan
 - Create: `apps/web/test/cron-panel.test.mjs`
 
 **Interfaces:**
-- Consumes: `fetchCronTask`, `saveCronTask`, `deleteCronTask`, `runCronTask`, `taskIdFromPath`, `cronLogPath`, `isCronTaskPath`, `describeSchedule` from `@science-studio/transport-client`; `DEFAULT_CRON_API`.
+- Consumes: `fetchCronTask`, `saveCronTask`, `deleteCronTask`, `runCronTask`, `taskIdFromPath`, `cronLogPath`, `isCronTaskPath`, `describeSchedule` from `@gps/transport-client`; `DEFAULT_CRON_API`.
 - Produces: the tab renderer and end-to-end panel behavior.
 
 - [ ] **Step 1: Add the cron icon**
@@ -2277,7 +2277,7 @@ In `apps/web/components/studio/file-preview-pane.tsx`:
 Import:
 
 ```ts
-import { isCronTaskPath } from "@science-studio/transport-client";
+import { isCronTaskPath } from "@gps/transport-client";
 import { CronTaskRenderer } from "./renderers/CronTaskRenderer";
 ```
 
@@ -2303,7 +2303,7 @@ In `apps/web/components/studio/tab-strip.tsx`:
 
 ```ts
 import { cronIcon, fileIcon } from "./file-icons";
-import { isCronTaskPath } from "@science-studio/transport-client";
+import { isCronTaskPath } from "@gps/transport-client";
 ```
 
 and replace the icon call with:
@@ -2331,7 +2331,7 @@ import {
   saveCronTask,
   taskIdFromPath,
   type CronTask,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -2497,7 +2497,7 @@ export function CronTaskRenderer({ path }: { path: string }) {
 /**
  * Regression: the Cron module lists scheduled tasks, a double click opens the
  * task tab with its form renderer, and Save PUTs the task. Prereq:
- * `npm run build -w @science-studio/transport-client`. Chromium-gated.
+ * `npm run build -w @gps/transport-client`. Chromium-gated.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -2522,7 +2522,7 @@ const TASKS = {
       schedule: "0 9 * * *",
       enabled: true,
       prompt: "Summarize.",
-      path: ".science-studio/cron/daily-digest.md",
+      path: ".gps/cron/daily-digest.md",
     },
   ],
   invalid: [],
@@ -2596,7 +2596,7 @@ test(
 
 - [ ] **Step 6: Run the web test**
 
-Run: `npm run build -w @science-studio/cron && npm run build -w @science-studio/transport-client && npm run test:e2e -w @science-studio/web`
+Run: `npm run build -w @gps/cron && npm run build -w @gps/transport-client && npm run test:e2e -w @gps/web`
 Expected: PASS (or SKIP without Chromium). The suite runs its own `next dev` on a private build dir.
 
 - [ ] **Step 7: Commit**
@@ -2611,13 +2611,13 @@ git commit -m "feat(web): edit scheduled tasks in a file tab"
 ### Task 9: dsh child cron plugin
 
 **Files:**
-- Modify: `packages/transport-dsh/package.json` (add `@science-studio/cron`)
+- Modify: `packages/transport-dsh/package.json` (add `@gps/cron`)
 - Modify: `packages/transport-dsh/tsconfig.json` (add the `../cron` reference)
 - Create: `packages/transport-dsh/src/cron-plugin.ts`
 - Create: `packages/transport-dsh/test/cron-plugin.test.ts`
 
 **Interfaces:**
-- Consumes: `@science-studio/cron` (codec/schedule), `node:fs`.
+- Consumes: `@gps/cron` (codec/schedule), `node:fs`.
 - Produces: `name`, `inject`, `apply(ctx, config)`, `CronPluginConfig`, tool/command/prompt definitions; the file `dist/cron-plugin.js` mounted by Task 10.
 
 - [ ] **Step 1: Add the dependency**
@@ -2625,7 +2625,7 @@ git commit -m "feat(web): edit scheduled tasks in a file tab"
 In `packages/transport-dsh/package.json` `dependencies`, add:
 
 ```json
-"@science-studio/cron": "*",
+"@gps/cron": "*",
 ```
 
 In `packages/transport-dsh/tsconfig.json` `references`, add:
@@ -2652,7 +2652,7 @@ import {
   type CronPromptSection,
   type CronToolDefinition,
 } from "../src/cron-plugin.js";
-import { parseTaskDoc } from "@science-studio/cron";
+import { parseTaskDoc } from "@gps/cron";
 
 const META = { id: "drought-screen", name: "抗旱基因筛选", createdAt: "2026-09-01T00:00:00.000Z" };
 
@@ -2692,7 +2692,7 @@ test("a project config registers the four tools, /cron and the prompt", async ()
       "schedule_set_enabled",
     ]);
     assert.deepEqual(host.commands().map((c) => c.name), ["cron"]);
-    assert.deepEqual(host.sections().map((s) => s.name), ["science-studio-cron"]);
+    assert.deepEqual(host.sections().map((s) => s.name), ["gps-cron"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -2709,7 +2709,7 @@ test("schedule_create writes a parseable task file; list and delete see it", asy
       {},
     );
     assert.match(String(created), /daily-digest/);
-    const path = join(root, ".science-studio", "cron", "daily-digest.md");
+    const path = join(root, ".gps", "cron", "daily-digest.md");
     assert.ok(existsSync(path));
     const parsed = parseTaskDoc("daily-digest", readFileSync(path, "utf8"));
     assert.ok("task" in parsed);
@@ -2733,7 +2733,7 @@ test("schedule_create rejects an invalid schedule", async () => {
       {},
     );
     assert.match(String(outcome), /schedule/i);
-    assert.equal(existsSync(join(root, ".science-studio")), false);
+    assert.equal(existsSync(join(root, ".gps")), false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -2742,7 +2742,7 @@ test("schedule_create rejects an invalid schedule", async () => {
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `npm run build -w @science-studio/cron && npm run test -w @science-studio/transport-dsh`
+Run: `npm run build -w @gps/cron && npm run test -w @gps/transport-dsh`
 Expected: FAIL — `Cannot find module '../src/cron-plugin.js'`.
 
 - [ ] **Step 4: Implement the plugin**
@@ -2771,9 +2771,9 @@ import {
   serializeTaskDoc,
   taskIdFromPath,
   type CronTask,
-} from "@science-studio/cron";
+} from "@gps/cron";
 
-export const name = "science-studio-cron";
+export const name = "gps-cron";
 export const inject = ["commands", "tools", "systemPrompt"];
 
 export interface CronPluginConfig {
@@ -3012,7 +3012,7 @@ export function apply(ctx: CronHost, config: CronPluginConfig | undefined): void
   };
 
   const prompt: CronPromptSection = {
-    name: "science-studio-cron",
+    name: "gps-cron",
     order: 460,
     text: [
       "本项目支持定时任务：到点后由服务向目标会话发送一条 prompt 并执行一次，结果记录在会话中，同时写入任务日志文件。",
@@ -3050,7 +3050,7 @@ export function apply(ctx: CronHost, config: CronPluginConfig | undefined): void
   };
 
   try {
-    if (ctx.effect) ctx.effect(register, "science-studio-cron");
+    if (ctx.effect) ctx.effect(register, "gps-cron");
     else register();
   } catch (err) {
     warn("cron plugin disabled", err);
@@ -3060,7 +3060,7 @@ export function apply(ctx: CronHost, config: CronPluginConfig | undefined): void
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: PASS (cron plugin + all existing dsh tests).
 
 - [ ] **Step 6: Commit**
@@ -3109,7 +3109,7 @@ test("writeCronPatch inserts the cron plugin by file URL with a JSON config", as
     });
     const patch = await readFile(file, "utf8");
     assert.match(patch, /- insert:/);
-    assert.match(patch, /id: science-studio-cron/);
+    assert.match(patch, /id: gps-cron/);
     assert.match(patch, /cron-plugin\.js/);
     assert.match(patch, /"root":"\/w\/project"/);
   } finally {
@@ -3120,7 +3120,7 @@ test("writeCronPatch inserts the cron plugin by file URL with a JSON config", as
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: FAIL — `writeCronPatch` is not exported.
 
 - [ ] **Step 3: Add the patch writer**
@@ -3150,7 +3150,7 @@ export async function writeCronPatch(opts: {
   const file = join(dir, `cron-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
   const document = [
     "- insert:",
-    "    - id: science-studio-cron",
+    "    - id: gps-cron",
     `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
     `      config: ${JSON.stringify(config)}`,
     "",
@@ -3227,14 +3227,14 @@ In `packages/transport-dsh/test/project-launch.test.ts`:
     const patches = await launchedPatches(META);
     assert.equal(patches.length, 3, "the bridge, project and cron patches");
     assert.ok(patches.some((text) => text.includes("drought-screen")), "the project identity rides the launch");
-    assert.ok(patches.some((text) => text.includes("science-studio-cron")), "the cron plugin is mounted");
+    assert.ok(patches.some((text) => text.includes("gps-cron")), "the cron plugin is mounted");
 ```
 
 and pass `cronPluginPath: "/opt/ss/cron-plugin.js"` in the `DshRuntimeAdapter` options inside `launchedPatches`.
 
 - [ ] **Step 7: Run the dsh tests**
 
-Run: `npm run test -w @science-studio/transport-dsh`
+Run: `npm run test -w @gps/transport-dsh`
 Expected: PASS.
 
 - [ ] **Step 8: Commit**
@@ -3260,7 +3260,7 @@ git commit -m "feat(dsh): mount the cron plugin through a launch patch"
 
 `docs/adr/0017-cron-scheduling-is-service-owned-and-task-as-file.md` — follow the existing ADR format (Status / Context / Decision / Consequences), recording:
 
-- Tasks are workspace files (`.science-studio/cron/<id>.md` frontmatter + prompt body) plus a sibling `.log.md`; the file is the authority, no record type.
+- Tasks are workspace files (`.gps/cron/<id>.md` frontmatter + prompt body) plus a sibling `.log.md`; the file is the authority, no record type.
 - The scheduler is service-owned (reliability across cold children, restart recovery of the store), drives `adapter.run()` and shares the server's one-in-flight `activeRuns` lock.
 - The dsh child plugin is the agent surface only (tools + `/cron` + prompt), mounted by a third per-launch patch alongside the bridge and project plugins.
 - Cron semantics: 5-field restricted grammar with AND across day-of-month/day-of-week (documented deviation), local time.
@@ -3268,11 +3268,11 @@ git commit -m "feat(dsh): mount the cron plugin through a launch patch"
 
 - [ ] **Step 2: Update AGENTS.md**
 
-- Add `packages/cron` to the Structure block: `@science-studio/cron` — pure task-document codec, 5-field schedule grammar and run-log format shared by transport-service and the dsh child plugin.
+- Add `packages/cron` to the Structure block: `@gps/cron` — pure task-document codec, 5-field schedule grammar and run-log format shared by transport-service and the dsh child plugin.
 - Note the cron surface in `services/transport-service`: `src/cron/{store,routes,scheduler}.ts`, the `/api/cron*` routes, the `cronScheduler` decorator started only by the entrypoint.
 - Note the dsh child plugin `cron-plugin.ts` (tools `schedule_*`, `/cron`) and the third launch patch.
-- Note `.science-studio/cron/` in the workspace description and the `apps/web/app/api/cron` proxy.
-- Mention the root build chain now includes `@science-studio/cron`.
+- Note `.gps/cron/` in the workspace description and the `apps/web/app/api/cron` proxy.
+- Mention the root build chain now includes `@gps/cron`.
 
 - [ ] **Step 3: Verify the docs build/lint**
 
@@ -3301,7 +3301,7 @@ git commit -m "docs(cron): record the service-owned scheduling decision"
 - CRUD + run-now routes and web proxy → Tasks 4, 6.
 - Presets + custom cron, AND semantics, local time → Task 1.
 - Skip missed / skip busy → Task 5.
-- `@science-studio/cron` shared package, build chain, deps → Tasks 1, 3, 6, 9.
+- `@gps/cron` shared package, build chain, deps → Tasks 1, 3, 6, 9.
 - Error handling (invalid file surfaced, 400/404/503, per-fire error log) → Tasks 3, 4, 5.
 - Tests at every layer → each task.
 - ADR + AGENTS.md → Task 11.

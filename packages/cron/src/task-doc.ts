@@ -1,6 +1,6 @@
 import { isValidSchedule } from "./schedule.js";
 
-export const CRON_DIR = ".science-studio/cron";
+export const CRON_DIR = ".gps/cron";
 
 const TASK_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const TASK_SUFFIX = ".md";
@@ -46,7 +46,7 @@ export function isCronTaskPath(path: string): boolean {
 }
 
 /**
- * True for a cron run-log path (`.science-studio/cron/<id>.log.md`) with a valid
+ * True for a cron run-log path (`.gps/cron/<id>.log.md`) with a valid
  * task id. Mirrors `taskIdFromPath`'s safety: a nested path is not a log, and a
  * task document (`<id>.md`) is never one either.
  */

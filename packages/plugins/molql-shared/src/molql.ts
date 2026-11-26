@@ -3,11 +3,11 @@
  * plugins.  Pure functions only — no framework coupling.
  */
 
-export { MOLQL_TOOL_RESULT_TYPE, MOLQL_TOOL_NAME } from "@science-studio/molstar-viewer/directive";
-import type { MolqlDirective } from "@science-studio/molstar-viewer/directive";
+export { MOLQL_TOOL_RESULT_TYPE, MOLQL_TOOL_NAME } from "@gps/molstar-viewer/directive";
+import type { MolqlDirective } from "@gps/molstar-viewer/directive";
 
 /** Compact cheat-sheet for the common cases; the skill carries the full manual. */
-export const TOOL_DESCRIPTION = `Select and highlight atoms in the molecular structure currently open in the Science Studio viewer.
+export const TOOL_DESCRIPTION = `Select and highlight atoms in the molecular structure currently open in the Generative Protein System viewer.
 
 Provide a MolQL (Mol* mol-script) expression. The viewer compiles it and highlights/focuses the matching atoms. Common forms:
 - chain: (sel.atom.chains (= atom.chain A))
@@ -26,7 +26,7 @@ The tool targets the structure file the user is currently viewing. If no structu
 
 Symbols are bare; element symbols take a leading underscore (_Fe). Load the "molql" skill for the complete syntax reference.`;
 
-/** The interaction tool asks the Science Studio service, which owns file access. */
+/** The interaction tool asks the Generative Protein System service, which owns file access. */
 export const INTERACTION_TOOL_NAME = "computeInteraction";
 
 export const INTERACTION_DESCRIPTION = `Compute the non-covalent interactions (hydrogen bonds, pi-stacking, cation-pi, halogen bonds, metal coordination) that involve a selection in a workspace structure file, using Mol*'s interaction module.
@@ -43,7 +43,7 @@ Returns a Markdown table: interaction type, the two atom/residue endpoints, and 
 /** The measurement tool; the service computes the numbers and the viewer draws them. */
 export const MEASUREMENTS_TOOL_NAME = "measurements";
 
-export const MEASUREMENTS_DESCRIPTION = `Measure a molecular structure in the Science Studio viewer: return the numeric result and draw the same measurement in the 3D view.
+export const MEASUREMENTS_DESCRIPTION = `Measure a molecular structure in the Generative Protein System viewer: return the numeric result and draw the same measurement in the 3D view.
 
 Provide the ordered selection items as MolQL (mol-script) expressions, or as full \`@<project>/<path>/<molql>\` mentions produced by clicking in the viewer. Order matters (A, B, C, D). Kinds and how many selections each needs:
 - label: 1 selection
@@ -57,7 +57,7 @@ For a verbal request (e.g. "residue 42"), translate it to MolQL first, e.g. \`(s
 
 Returns the value plus a one-line summary.`;
 
-export const SERVICE_URL = process.env.SCIENCE_STUDIO_SERVICE_URL ?? "http://127.0.0.1:3001";
+export const SERVICE_URL = process.env.GPS_SERVICE_URL ?? "http://127.0.0.1:3001";
 
 /** A JSON value, so tool results satisfy the harness's tool-output schemas. */
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -72,7 +72,7 @@ export function stripMentionLabel(molql: string): string {
  *
  * This is the core execute logic shared by both runtime plugins.  The output
  * conforms to the `MolqlDirective` wire contract parsed by
- * `@science-studio/molstar-viewer`'s `parseMolqlToolResult`.
+ * `@gps/molstar-viewer`'s `parseMolqlToolResult`.
  */
 export function createMolqlResult(args: {
   molql: string;
@@ -153,7 +153,7 @@ export function parseSelectionItem(item: string): { project?: string; path?: str
 }
 
 /**
- * Fetch computed measurement values from the Science Studio service.
+ * Fetch computed measurement values from the Generative Protein System service.
  *
  * Called by the `measurements` tool — the service owns file access and runs the
  * headless Mol* computation (the same formulas the viewer draws with).
@@ -213,7 +213,7 @@ export async function fetchMeasurements(args: {
 }
 
 /**
- * Fetch non-covalent interaction data from the Science Studio service.
+ * Fetch non-covalent interaction data from the Generative Protein System service.
  *
  * Called by the `computeInteraction` tool — the tool that needs server-side
  * file access and a headless Mol* computation. `project`/`path` are optional:

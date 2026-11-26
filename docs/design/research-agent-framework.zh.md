@@ -7,7 +7,7 @@
 的维护者。术语体系：`codebase-design`（模块 module / 接口 interface / 接缝 seam /
 适配器 adapter / 深度 depth）。领域术语：`/CONTEXT.md`。
 
-本文在既有 transport 接缝之上，设计 Science Studio 目前缺少的两项能力：
+本文在既有 transport 接缝之上，设计 Generative Protein System 目前缺少的两项能力：
 
 1. **部署模式** — 一套本地单用户安装（免登录，runtime 运行在用户自己的机器上），
    以及一套托管的多用户服务（每个用户一个 runtime，运行在服务器端的隔离沙盒中），
@@ -35,7 +35,7 @@ openclaw 与 dsh 是同一接缝下的两个适配器，而新增第三个不得
   目录和文件工具运行（`CONTEXT.md` 中的 `Workspace`/cwd）。所以交给 agent 的文件是
   一个**引用**，指向它本来就能打开的东西，而不是一次上传。
 - **多租户是敌意边界。** openclaw `fleet` 明确警告：一个共享的 Gateway 不是多租户
-  边界；每个信任边界各自拥有一个 **cell**。Science Studio 必须如实映射这条边界，
+  边界；每个信任边界各自拥有一个 **cell**。Generative Protein System 必须如实映射这条边界，
   而不是假装自己比它更强。
 - **开源核心（open core）。** 开源仓库必须仍是完整的单用户产品。企业模块从外部接入
   开源核心声明的接缝；开源核心从不依赖它，它的缺席对单用户安装没有任何影响。
@@ -48,7 +48,7 @@ openclaw 与 dsh 是同一接缝下的两个适配器，而新增第三个不得
 | `RuntimeAdapter`（`packages/transport/src/types.ts`） | 换 runtime 仍然是换适配器。 |
 | `Transcript` + `RunFlow` 套件 | 适配器继续共享同一套 fold-and-fan-out，不重复实现。 |
 | reconcile-first + 常驻 watch | 历史收敛语义，不动。 |
-| record 归属（`docs/adr/0002`） | `Run`/`Artifact` 由 Science Studio 拥有，而非 runtime。 |
+| record 归属（`docs/adr/0002`） | `Run`/`Artifact` 由 Generative Protein System 拥有，而非 runtime。 |
 | assistant-transport 线协议（SSE 帧、`[DONE]`） | 迁移到 Fastify 是实现层变更，不是协议变更。 |
 
 本设计**新增**接缝，不移动以上任何一条。
@@ -250,7 +250,7 @@ export interface RuntimeCapabilities {
 映射。
 
 ```ts
-// packages/transport/src/workspace.ts  （接缝类型；实现位于 @science-studio/workspace）
+// packages/transport/src/workspace.ts  （接缝类型；实现位于 @gps/workspace）
 export interface Entry {
   /** 工作区相对路径，POSIX 风格（绝不为绝对路径、绝不含 `..`）。 */
   path: string;
@@ -363,7 +363,7 @@ Session A 写的那些文件（docs/adr/0006）。agent 的 cwd 是项目根，�
 哪里？* 接口与 runtime 无关；连接材料不在接口上。
 
 ```ts
-// 接缝类型在 @science-studio/transport；Local/Dsh providers 在 @science-studio/sandbox
+// 接缝类型在 @gps/transport；Local/Dsh providers 在 @gps/sandbox
 export interface Sandbox {
   tenant: string;
   /** 该 sandbox 运行哪个 runtime 产品 —— 即 runtime 工厂 id（§4.3）。 */
@@ -398,7 +398,7 @@ Docker、k8s pod）、受限子进程（dsh 配独立 uid 或 nsjail）、或最
   - `ensure` 在首次使用时执行 `openclaw fleet create <tenant> --json`，把**只打印一次
     的 Gateway token** 捕获进 secret store；后续调用读注册表。`binding` 返回
     `{ runtime: "openclaw", config: { url, tokenRef } }`。
-  - `remove` 在完成 Science Studio 侧的级联删除后执行
+  - `remove` 在完成 Generative Protein System 侧的级联删除后执行
     `openclaw fleet rm <tenant> --purge-data --force`。
   - `status` 把 `fleet status` 映射到 `Sandbox["state"]`。
   - 用 digest 固定镜像（`--image …@sha256:…`），并依赖 fleet 带健康门禁的
@@ -408,7 +408,7 @@ Docker、k8s pod）、受限子进程（dsh 配独立 uid 或 nsjail）、或最
   `{ runtime: "dsh", config: { home, profile, apiKeyRef } }`。
 
 **token 问题真实存在，必须被设计，不能含糊带过。** Fleet 的注册表刻意*不*存 token，
-所以 Science Studio 需要自己的 `SandboxRegistry`（tenant → port、`tokenRef`、
+所以 Generative Protein System 需要自己的 `SandboxRegistry`（tenant → port、`tokenRef`、
 workspaceRoot、state，**私有**）。要么自己生成 token 并传 `--gateway-token`，要么把
 create 输出捕获一次。无论哪种：**token 只写入一次，之后绝不从 fleet 的输出中回读**，
 且它始终留在 provider 的注册表内。
@@ -545,7 +545,7 @@ RequestContext → PrincipalResolver.resolve → (401 | Principal)
 
 把文件服务放在 transport 服务里、而不是一个独立进程，是有意为之：文件服务需要与
 transport *完全相同*的 principal 与沙盒解析。独立进程会迫使注册表出现第二份拷贝，
-并多出一跳服务间信任。模块是独立的（`@science-studio/workspace`）；部署仍是同一个
+并多出一跳服务间信任。模块是独立的（`@gps/workspace`）；部署仍是同一个
 进程。
 
 ### 9.1 Fastify
@@ -617,7 +617,7 @@ export interface EnterpriseModule {
 function localBackend(env: NodeJS.ProcessEnv): Backend { /* Local* + FsWorkspace */ }
 
 export async function createBackend(env = process.env): Promise<Backend> {
-  const specifier = env.SS_ENTERPRISE_MODULE;
+  const specifier = env.GPS_ENTERPRISE_MODULE;
   if (!specifier) return localBackend(env);
   const mod = (await import(specifier)) as EnterpriseModule;
   return mod.createBackend(env);
@@ -630,7 +630,7 @@ export async function createBackend(env = process.env): Promise<Backend> {
 **保证单用户不受影响的几条不变量**（值得加一道 CI 门禁）：
 
 1. 任何开源包都不依赖企业产物。
-2. 在 `SS_ENTERPRISE_MODULE` 未设置时，开源测试套件通过。
+2. 在 `GPS_ENTERPRISE_MODULE` 未设置时，开源测试套件通过。
 3. 每个企业实现都满足开源声明的接口，因此核心在没有它的情况下可编译、可运行。
 4. 已发布的公开接缝类型被当作公共契约 —— 有意保持精简并版本化，因为私有仓库要对它
    编译。
@@ -689,7 +689,7 @@ apps/web                              + workspace 浏览器/查看器, @-mention
                                         + 可选的企业 UI 插槽（默认缺席）
 
 私有（企业仓库）
-@acme/ss-enterprise                     BearerPrincipalResolver, FleetSandboxProvider + SandboxRegistry,
+@acme/gps-enterprise                     BearerPrincipalResolver, FleetSandboxProvider + SandboxRegistry,
                                         SchemaRecordStore（+ 迁移）, QuotaPolicy, 企业 Fastify 插件,
                                         登录门 + 配额计量
 ```
@@ -717,11 +717,11 @@ Phase 0 已**落地**；实时状态与清单见 [`implementation-plan.md`](./im
 3. 引入 `RuntimeBinding`/`RuntimeFactory`/`RuntimeCapabilities`；把每个 runtime 的启动面
    移入各自的包（`GatewayBinding`、`DshBinding`），并从配置注册工厂 —— 删除
    `RuntimeInitOptions.gateway` 与静态 runtime import（§4.3–4.4）。
-4. 发布 `@science-studio/contract-tests` 的骨架，覆盖 `PrincipalResolver`、`Workspace`、
+4. 发布 `@gps/contract-tests` 的骨架，覆盖 `PrincipalResolver`、`Workspace`、
    `SandboxProvider` 与 runtime 工厂（§15.1）。
 
 **阶段 1 — workspace（单用户）。**
-5. 创建 `@science-studio/workspace`，含 `FsWorkspace`、`WorkspaceLimits` 及针对
+5. 创建 `@gps/workspace`，含 `FsWorkspace`、`WorkspaceLimits` 及针对
    包含/symlink/大小不变量的测试。
 6. 新增 `/api/workspace/*` 与对应 Next 路由；强制 `maxUploadBytes`；构建浏览器面板
    与查看器（文本内联，其余一律下载）。
@@ -735,9 +735,9 @@ Phase 0 已**落地**；实时状态与清单见 [`implementation-plan.md`](./im
     `capabilities.approvals` 门控 `approve`。
 
 **阶段 3 — 企业模块（私有仓库）。**
-12. 创建 `@acme/ss-enterprise`：`BearerPrincipalResolver`（OIDC/JWKS）+
+12. 创建 `@acme/gps-enterprise`：`BearerPrincipalResolver`（OIDC/JWKS）+
     `PrincipalDirectory`、`SecretStore`、`SandboxRegistry` + `FleetSandboxProvider`、
-    `SchemaRecordStore`、企业 Fastify 插件；通过 `SS_ENTERPRISE_MODULE` 接线。
+    `SchemaRecordStore`、企业 Fastify 插件；通过 `GPS_ENTERPRISE_MODULE` 接线。
 13. control schema + 迁移 runner（§14.5）；两层配额强制（§14.2）。
 14. 锁定 origin 的 CORS、web 应用企业 UI 插槽（§14.4）中的登录门 + 配额计量。
 15. 为 §9.2 的开源不变量加 CI 门禁（无企业依赖、新增 runtime 不改核心、模块未设置时
@@ -863,7 +863,7 @@ export interface EnterpriseUIExtension {
 
 插槽只允许**包裹或扩展**，绝不改变开源行为；缺席时，应用与单用户产品逐字节一致。以
 merge 负担为由否决 fork。退路：若插槽增长到超出少量组件，就把开源外壳抽成
-`@science-studio/web-app`，由企业应用组合它。
+`@gps/web-app`，由企业应用组合它。
 
 ### 14.5 大规模下的 Postgres schema 迁移
 
@@ -889,7 +889,7 @@ merge 负担为由否决 fork。退路：若插槽增长到超出少量组件，
 
 ## 15. 进一步优化
 
-1. **接缝的一致性测试套件**（`@science-studio/contract-tests`，开源）。开源核心边界
+1. **接缝的一致性测试套件**（`@gps/contract-tests`，开源）。开源核心边界
    的成色取决于私有模块是否符合契约。为 `PrincipalResolver`、`SandboxProvider`、
    `Workspace`、`QuotaPolicy`、`RuntimeFactory` 发布可复用的测试套件；企业仓库与
    第三方 runtime 仓库在 CI 中运行它们。这是对分层最有杠杆的单点补强。

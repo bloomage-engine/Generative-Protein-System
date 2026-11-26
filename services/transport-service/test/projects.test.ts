@@ -4,14 +4,14 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-import { createInMemoryRecordStore, type Project, type Run } from "@science-studio/record";
+import { createInMemoryRecordStore, type Project, type Run } from "@gps/record";
 import {
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
   NullWorkspace,
   type RuntimeAdapter,
-} from "@science-studio/transport";
-import { FsWorkspace } from "@science-studio/workspace";
+} from "@gps/transport";
+import { FsWorkspace } from "@gps/workspace";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 
@@ -377,7 +377,7 @@ test("a Session can be renamed/archived/unarchived/deleted; a deleted Session ta
 });
 
 test("deleting a Project recycles its workspace and releases its environment", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-recycle-api-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-recycle-api-"));
   const root = join(dir, "projects");
   await mkdir(join(root, "p1"), { recursive: true });
   await writeFile(join(root, "p1", "data.csv"), "a,b\n1,2\n");

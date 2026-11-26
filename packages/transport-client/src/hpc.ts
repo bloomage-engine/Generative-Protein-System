@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ComputeJob } from "@science-studio/record";
-import type { HpcEndpointSettings } from "@science-studio/transport";
+import type { ComputeJob } from "@gps/record";
+import type { HpcEndpointSettings } from "@gps/transport";
 import { scopedUrl, type ClientScope } from "./scope.js";
-export { isOpenComputeJobState } from "@science-studio/hpc";
+export { isOpenComputeJobState } from "@gps/hpc";
 
 /** The same-origin HPC proxy base (the web hop). */
 export const DEFAULT_HPC_API = "/api/hpc";

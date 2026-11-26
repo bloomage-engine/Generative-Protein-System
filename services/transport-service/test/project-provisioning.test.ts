@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_WORKTREE_ID } from "@science-studio/record";
+import { DEFAULT_WORKTREE_ID } from "@gps/record";
 import type { Backend } from "../src/composition.js";
 import { createBackend } from "../src/composition.js";
 import type { RecordingAdapter } from "./fixtures/per-project-runtime.js";
@@ -28,7 +28,7 @@ const MODULE_URL = new URL("./fixtures/per-project-runtime.ts", import.meta.url)
 async function backendOver(env: NodeJS.ProcessEnv): Promise<Backend> {
   return createBackend({
     TRANSPORT_RUNTIME: RUNTIME,
-    SS_RUNTIME_MODULES: MODULE_URL,
+    GPS_RUNTIME_MODULES: MODULE_URL,
     RECORD_STORE: "memory",
     ...env,
   });
@@ -41,7 +41,7 @@ async function principalOf(backend: Backend) {
 }
 
 test("every Project gets its own adapter, launched in that Project's directory", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "ss-provisioning-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-provisioning-"));
   t.after(() => rm(root, { recursive: true, force: true }));
 
   const backend = await backendOver({
@@ -85,7 +85,7 @@ test("every Project gets its own adapter, launched in that Project's directory",
 });
 
 test("an adapter is initialized with the record-owned Project identity", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "ss-provisioning-identity-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-provisioning-identity-"));
   t.after(() => rm(root, { recursive: true, force: true }));
 
   const backend = await backendOver({
@@ -110,7 +110,7 @@ test("an adapter is initialized with the record-owned Project identity", async (
 });
 
 test("an unconfigured root stays a NullWorkspace for every Project", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "ss-provisioning-none-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-provisioning-none-"));
   t.after(() => rm(root, { recursive: true, force: true }));
 
   const backend = await backendOver({});
@@ -125,7 +125,7 @@ test("an unconfigured root stays a NullWorkspace for every Project", async (t) =
 });
 
 test("the default Project is provisioned like any other", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "ss-provisioning-default-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-provisioning-default-"));
   t.after(() => rm(root, { recursive: true, force: true }));
 
   const backend = await backendOver({

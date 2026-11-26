@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { HpcEndpointSettings } from "@science-studio/transport";
-import type { ComputeJob, RecordStore } from "@science-studio/record";
-import { createInMemoryRecordStore } from "@science-studio/record";
-import { jobPaths } from "@science-studio/hpc";
+import type { HpcEndpointSettings } from "@gps/transport";
+import type { ComputeJob, RecordStore } from "@gps/record";
+import { createInMemoryRecordStore } from "@gps/record";
+import { jobPaths } from "@gps/hpc";
 import {
   buildSbatchScript,
   HpcError,
@@ -35,11 +35,11 @@ test("parseSubmitBody validates the shape", () => {
 
 test("the sbatch header is prepended with defaults applied, caller last", () => {
   const input = parseSubmitBody({ name: "run", script: "#!/bin/bash\necho hi\n" });
-  const paths = jobPaths("~/science-studio/p1", "cjob-x");
+  const paths = jobPaths("~/gps/p1", "cjob-x");
   const script = buildSbatchScript(input, ENDPOINT, { partition: "a800" }, paths, "cjob-x");
   const header = script.split("\n").slice(0, 6).join("\n");
   assert.match(header, /#SBATCH --job-name=cjob-x/);
-  assert.match(header, /#SBATCH --output=~\/science-studio\/p1\/\.ss-jobs\/cjob-x\/stdout/);
+  assert.match(header, /#SBATCH --output=~\/gps\/p1\/\.gps-jobs\/cjob-x\/stdout/);
   assert.match(header, /#SBATCH --partition=a800/); // binding default wins over endpoint
   assert.match(header, /#SBATCH --time=2:00:00/); // endpoint default when none
   assert.match(script, /\n\n#!\/bin\/bash/);
@@ -68,13 +68,13 @@ test("a slurm submit uploads the script then sbatch-parses it — one row", asyn
   assert.equal(job.state, "pending");
   assert.equal(job.kind, "slurm");
   assert.match(job.script ?? "", /^#SBATCH --job-name=cjob-/);
-  assert.match(job.remoteDir ?? "", /\.ss-jobs\/cjob-/);
+  assert.match(job.remoteDir ?? "", /\.gps-jobs\/cjob-/);
   assert.equal((await store.listComputeJobs("p1")).length, 1);
   assert.equal(ssh.calls.length, 3);
-  assert.match(ssh.calls[0]?.command ?? "", /^mkdir -p "\$HOME"\/'science-studio\/p1\/\.ss-jobs\/cjob-/);
-  assert.match(ssh.calls[1]?.command ?? "", /^cat > "\$HOME"\/'science-studio\/p1\/\.ss-jobs\/cjob-[^']+\/script\.sh'$/);
+  assert.match(ssh.calls[0]?.command ?? "", /^mkdir -p "\$HOME"\/'gps\/p1\/\.gps-jobs\/cjob-/);
+  assert.match(ssh.calls[1]?.command ?? "", /^cat > "\$HOME"\/'gps\/p1\/\.gps-jobs\/cjob-[^']+\/script\.sh'$/);
   assert.match(ssh.calls[1]?.stdin ?? "", /#SBATCH/);
-  assert.match(ssh.calls[2]?.command ?? "", /^sbatch --parsable "\$HOME"\/'science-studio\/p1\/\.ss-jobs\/cjob-[^']+\/script\.sh'$/);
+  assert.match(ssh.calls[2]?.command ?? "", /^sbatch --parsable "\$HOME"\/'gps\/p1\/\.gps-jobs\/cjob-[^']+\/script\.sh'$/);
 });
 
 test("an ambiguous sbatch (exit 0, unparsable id) is a 502 and writes NO row", async () => {

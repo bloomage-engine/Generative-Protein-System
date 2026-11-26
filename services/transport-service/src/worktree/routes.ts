@@ -16,8 +16,8 @@
 import type { FastifyInstance } from "fastify";
 import { mkdir, rename, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { DEFAULT_WORKTREE_ID, type Id, type RecordStore } from "@science-studio/record";
-import type { EnvironmentProvider, Principal } from "@science-studio/transport";
+import { DEFAULT_WORKTREE_ID, type Id, type RecordStore } from "@gps/record";
+import type { EnvironmentProvider, Principal } from "@gps/transport";
 import type { RecordDirectory } from "../directory.js";
 import type { ProjectScopes } from "../project-scope.js";
 import {

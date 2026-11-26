@@ -1,5 +1,5 @@
 {
-  "name": "@science-studio/transport-service",
+  "name": "@gps/transport-service",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -22,20 +22,20 @@
   "dependencies": {
     "@fastify/cors": "11.3.0",
     "@modelcontextprotocol/sdk": "1.32.1",
-    "@science-studio/cron": "*",
-    "@science-studio/hpc": "*",
-    "@science-studio/transport": "*",
-    "@science-studio/transport-dsh": "*",
-    "@science-studio/transport-openclaw": "*",
-    "@science-studio/workspace": "*",
+    "@gps/cron": "*",
+    "@gps/hpc": "*",
+    "@gps/transport": "*",
+    "@gps/transport-dsh": "*",
+    "@gps/transport-openclaw": "*",
+    "@gps/workspace": "*",
     "dotenv": "^16.4.0",
     "fastify": "5.12.3",
     "molstar": "5.9.0"
   },
-  "scienceStudio": {
+  "gps": {
     "runtimeModules": [
-      "@science-studio/transport-openclaw",
-      "@science-studio/transport-dsh"
+      "@gps/transport-openclaw",
+      "@gps/transport-dsh"
     ]
   },
   "devDependencies": {

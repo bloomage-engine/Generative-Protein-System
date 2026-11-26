@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createInMemoryRecordStore } from "@science-studio/record";
-import type { RecordStoreLike } from "@science-studio/transport";
+import { createInMemoryRecordStore } from "@gps/record";
+import type { RecordStoreLike } from "@gps/transport";
 import { SubagentRegistry } from "../src/subagents.js";
 
 test("dsh registry: stable id + parent lineage + transcript capture — all via the record store", async () => {
@@ -32,7 +32,7 @@ test("dsh registry: stable id + parent lineage + transcript capture — all via 
   await reg.flush();
 
   // Panel: the id is the STABLE id (the record's key, not the wire child id),
-  // and the parent is the resolved Science Studio session key.
+  // and the parent is the resolved Generative Protein System session key.
   const panel = reg.list("sess-1");
   assert.equal(panel.length, 1);
   const stableId = panel[0]!.id;

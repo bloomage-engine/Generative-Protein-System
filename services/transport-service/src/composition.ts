@@ -3,7 +3,7 @@
  *
  * Single-user (default): a local principal resolver, a per-Project local
  * environment, no enterprise code. Hosted: the private enterprise module named by
- * `SS_ENTERPRISE_MODULE` supplies the same `Backend` shape (bearer principal,
+ * `GPS_ENTERPRISE_MODULE` supplies the same `Backend` shape (bearer principal,
  * fleet sandboxes, tenant-scoped store). Nothing downstream branches on mode.
  */
 import { readFileSync } from "node:fs";
@@ -16,8 +16,8 @@ import {
   DEFAULT_WORKTREE_ID,
   type Id,
   type RecordStore,
-} from "@science-studio/record";
-import { FsWorkspace } from "@science-studio/workspace";
+} from "@gps/record";
+import { FsWorkspace } from "@gps/workspace";
 import {
   DEFAULT_MAX_UPLOAD_BYTES,
   DEFAULT_QUOTA_BYTES,
@@ -33,7 +33,7 @@ import {
   type RuntimePlugin,
   type Workspace,
   type WorkspaceLimits,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import { DEFAULT_RECORD_DEFAULTS, type RecordDefaults } from "./directory.js";
 import { isSafeProjectId, WORKTREES_DIR, worktreeRelPath } from "./worktree/paths.js";
 import { applySettingsToEnv, loadSettings, resolveSettingsPath } from "./settings.js";
@@ -85,10 +85,10 @@ const DEFAULT_RUNTIME = "openclaw";
 
 /**
  * The runtime modules the DEFAULT single-user install loads, read from this
- * service's own `package.json` (`scienceStudio.runtimeModules`). They are
+ * service's own `package.json` (`gps.runtimeModules`). They are
  * imported DYNAMICALLY by specifier, so no core *code* names a runtime product
  * and adding one is a data change (docs/design/implementation-plan.md §5).
- * `SS_RUNTIME_MODULES` overrides the list entirely.
+ * `GPS_RUNTIME_MODULES` overrides the list entirely.
  */
 export function defaultRuntimeModules(): string[] {
   try {
@@ -96,8 +96,8 @@ export function defaultRuntimeModules(): string[] {
     // both resolve to the service root.
     const pkg = JSON.parse(
       readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
-    ) as { scienceStudio?: { runtimeModules?: unknown } };
-    const modules = pkg.scienceStudio?.runtimeModules;
+    ) as { gps?: { runtimeModules?: unknown } };
+    const modules = pkg.gps?.runtimeModules;
     if (Array.isArray(modules) && modules.every((m) => typeof m === "string" && m.length > 0)) {
       return modules as string[];
     }
@@ -112,7 +112,7 @@ export function defaultRuntimeModules(): string[] {
 export async function resolveRuntimePlugins(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<RuntimePlugin[]> {
-  const modules = (env.SS_RUNTIME_MODULES ?? defaultRuntimeModules().join(","))
+  const modules = (env.GPS_RUNTIME_MODULES ?? defaultRuntimeModules().join(","))
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
@@ -163,13 +163,13 @@ export function localWorkspace(env: NodeJS.ProcessEnv, projectId: Id, worktreeId
 
 /**
  * The record store the single-user service uses: the dependency-free JSONL store
- * at `RECORD_STORE_PATH` (default `$XDG_DATA_HOME/science-studio/record.jsonl`),
+ * at `RECORD_STORE_PATH` (default `$XDG_DATA_HOME/gps/record.jsonl`),
  * or an in-memory one when `RECORD_STORE=memory` (tests/examples).
  */
 export async function localRecordStore(env: NodeJS.ProcessEnv): Promise<RecordStore> {
   if (env.RECORD_STORE === "memory") return createInMemoryRecordStore();
   const base = env.XDG_DATA_HOME ?? join(homedir(), ".local", "share");
-  return createJsonlRecordStore(env.RECORD_STORE_PATH ?? join(base, "science-studio", "record.jsonl"));
+  return createJsonlRecordStore(env.RECORD_STORE_PATH ?? join(base, "gps", "record.jsonl"));
 }
 
 /**
@@ -201,7 +201,7 @@ export async function createBackend(
   env: NodeJS.ProcessEnv = process.env,
   plugins?: readonly RuntimePlugin[],
 ): Promise<Backend> {
-  const specifier = env.SS_ENTERPRISE_MODULE;
+  const specifier = env.GPS_ENTERPRISE_MODULE;
   if (specifier) {
     const mod = (await import(specifier)) as EnterpriseModule;
     return mod.createBackend(env);
@@ -222,7 +222,7 @@ async function localBackend(
     throw new Error(`no runtime plugin registered for "${runtime}" (available: ${known})`);
   }
 
-  const settingsPath = env.SS_SETTINGS_PATH ?? resolveSettingsPath(env);
+  const settingsPath = env.GPS_SETTINGS_PATH ?? resolveSettingsPath(env);
   const settings = await loadSettings(settingsPath);
   const runtimeEnv = applySettingsToEnv(env, settings);
   const binding = plugin.localBinding(runtimeEnv);

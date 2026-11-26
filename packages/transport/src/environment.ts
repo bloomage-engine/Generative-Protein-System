@@ -17,7 +17,7 @@
  * by the composition root). The hosted implementation (private enterprise
  * module) composes a fleet sandbox provider with a caching lifecycle.
  */
-import type { Id } from "@science-studio/record";
+import type { Id } from "@gps/record";
 import type { Principal } from "./principal.js";
 import type { RuntimeAdapter } from "./types.js";
 import type { Workspace } from "./workspace.js";

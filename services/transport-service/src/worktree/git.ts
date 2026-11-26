@@ -49,8 +49,8 @@ function gitUnavailable(result: GitResult): GitUnavailableError {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-export const GITIGNORE_ENTRIES = [".worktrees/", ".science-studio/"] as const;
-const COMMITTER = ["-c", "user.name=Science Studio", "-c", "user.email=science-studio@localhost"];
+export const GITIGNORE_ENTRIES = [".worktrees/", ".gps/"] as const;
+const COMMITTER = ["-c", "user.name=Generative Protein System", "-c", "user.email=gps@localhost"];
 
 export function createGitRunner(opts: { gitBin?: string } = {}): GitRunner {
   const gitBin = opts.gitBin ?? process.env.GIT_BINARY ?? "git";

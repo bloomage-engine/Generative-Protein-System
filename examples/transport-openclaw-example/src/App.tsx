@@ -6,7 +6,7 @@ import {
 } from "@assistant-ui/react";
 import {
   useTransport,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { MarkdownText } from "./markdown";
 import { AssistantReasoning } from "./reasoning-panel";
 import { Composer } from "./composer";
@@ -58,7 +58,7 @@ export default memo(function App() {
         <h1>transport-openclaw · assistant-ui</h1>
         <p>
           A live conversation with the OpenClaw gateway, driven by{" "}
-          <code>@science-studio/transport-openclaw</code> behind the shared
+          <code>@gps/transport-openclaw</code> behind the shared
           transport-service and rendered by assistant-ui.
         </p>
       </header>

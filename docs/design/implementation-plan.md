@@ -17,8 +17,8 @@ enterprise module present.
 The design placed seam interfaces across three packages, which would make
 `transport` reference `Workspace` from `workspace` while `workspace` references
 `transport` — a cycle. Fix: **seam *interfaces* live in a seam package — the
-runtime seams in `@science-studio/transport`, the record seams in
-`@science-studio/record` — and implementations live in their own packages**
+runtime seams in `@gps/transport`, the record seams in
+`@gps/record` — and implementations live in their own packages**
 (docs/adr/0006, 0007).
 
 | Package | Holds | Depends on |
@@ -45,7 +45,7 @@ A local install with no login:
 - records (`Project`/`Session`/`Run`) in a file-backed store by default;
   `Study`/`Task`/`Artifact`/`Evidence`/`Conclusion` deferred;
 - **zero enterprise code loaded**, and the test suite is green with
-  `SS_ENTERPRISE_MODULE` unset.
+  `GPS_ENTERPRISE_MODULE` unset.
 
 ## 3. Reserved extension points
 
@@ -89,7 +89,7 @@ preamble, and runtimes plug in through factories. Wire contract unchanged.
    no-op `approve()` is gone (capabilities say `approvals: false`).
 5. ✅ `transport-service`: Fastify (`createServer`) with a `preHandler` principal
    hook and CORS; `composition.ts` (`createBackend()` = local default,
-   `SS_ENTERPRISE_MODULE` dynamic import, `resolveRuntimePlugins`). Routes hijack
+   `GPS_ENTERPRISE_MODULE` dynamic import, `resolveRuntimePlugins`). Routes hijack
    the Node response for SSE/NDJSON. `createTransportService()` keeps a
    `{ adapters }` compat path for the examples/tests.
 6. ✅ `packages/contract-tests`: the shared seam conformance suites
@@ -101,7 +101,7 @@ preamble, and runtimes plug in through factories. Wire contract unchanged.
    see the `npm run build` type gate over `tsconfig.tests.json`.)
 
 **Done when:** `npm run build` passes; `npm run test` is green with
-`SS_ENTERPRISE_MODULE` unset; the service starts without waiting on the runtime
+`GPS_ENTERPRISE_MODULE` unset; the service starts without waiting on the runtime
 (verified: ~100 ms with an unreachable gateway) and `/api/transport` still
 streams frames terminating with `data: [DONE]`.
 
@@ -218,7 +218,7 @@ env-constant identity.
     only serve the default Project — provisioning is per Project.)*
 19. ✅ Service composition + directory. `composition.ts`: `PROJECT_ROOT` /
     `PROJECT_AGENT_ROOT`; `RECORD_STORE_PATH` (default
-    `$XDG_DATA_HOME/science-studio/record.jsonl`) / `RECORD_STORE=memory`;
+    `$XDG_DATA_HOME/gps/record.jsonl`) / `RECORD_STORE=memory`;
     `AGENT_ID` replaces `PROJECT_ID`/`STUDY_ID`/`AGENT_BLUEPRINT_ID`; auto-ensure
     the `project-default` project; on startup, a read-only scan of `PROJECT_ROOT`
     that warns about unregistered directories (record is truth — never
@@ -275,28 +275,28 @@ restart; no `Study`/`Task`/`Artifact` symbol remains in the tree.
 
 ### Phase 3 — enterprise module (private repo, later)
 
-24. `@acme/ss-enterprise`: `BearerPrincipalResolver` + `PrincipalDirectory`,
+24. `@acme/gps-enterprise`: `BearerPrincipalResolver` + `PrincipalDirectory`,
     `SecretStore`, `FleetSandboxProvider` + `SandboxRegistry`,
     `SchemaRecordStore`, `QuotaPolicy`, enterprise Fastify plugin; wired via
-    `SS_ENTERPRISE_MODULE`.
+    `GPS_ENTERPRISE_MODULE`.
 25. Control schema + migration runner; two-tier quotas.
 26. Origin-locked CORS; login gate + quota meters in the web UI slot.
 
 ## 5. Guardrails (CI)
 
 1. No OSS package depends on any enterprise artifact or names
-   `SS_ENTERPRISE_MODULE` outside `composition.ts`.
+   `GPS_ENTERPRISE_MODULE` outside `composition.ts`.
 2. No OSS core package statically imports a runtime package; runtimes are
    registered from configuration, and the DEFAULT module list is data (the
-   service's `package.json` `scienceStudio.runtimeModules`), not code.
+   service's `package.json` `gps.runtimeModules`), not code.
 3. Adding a runtime package touches no core *code* (enforced by a dependency
    check).
 4. `./seams` exposes the contract and nothing else: the shared kit and the
    single-user defaults are absent from it (pinned by
    `packages/transport/test/seams.test.ts`).
-5. The suite is green with `SS_ENTERPRISE_MODULE` unset.
+5. The suite is green with `GPS_ENTERPRISE_MODULE` unset.
 6. The private repo runs the OSS `contract-tests` suites
-   (`@science-studio/contract-tests`) — implemented, and already adopted by the
+   (`@gps/contract-tests`) — implemented, and already adopted by the
    two OSS runtime packages.
 
 ## 6. Sequencing notes and risks

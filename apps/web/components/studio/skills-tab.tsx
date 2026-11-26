@@ -12,7 +12,7 @@ import {
   type SkillInfo,
   type SkillInstallInput,
   type SkillsView,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 
 /**
  * The Skills tab (docs/adr/0020): a read-only inventory of the GLOBAL skills the

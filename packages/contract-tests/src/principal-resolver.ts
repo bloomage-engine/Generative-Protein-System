@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { PrincipalResolver, RequestContext } from "@science-studio/transport/seams";
+import type { PrincipalResolver, RequestContext } from "@gps/transport/seams";
 
 export interface PrincipalResolverCase {
   /** A request the resolver MUST authenticate. */

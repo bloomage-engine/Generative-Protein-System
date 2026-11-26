@@ -9,8 +9,8 @@ import {
   LocalPrincipalResolver,
   type RuntimeAdapter,
   type Workspace,
-} from "@science-studio/transport";
-import { FsWorkspace } from "@science-studio/workspace";
+} from "@gps/transport";
+import { FsWorkspace } from "@gps/workspace";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 
@@ -58,7 +58,7 @@ async function withServer<T>(workspace: Workspace, fn: (base: string) => Promise
 }
 
 async function makeFixture(): Promise<{ root: string; dispose: () => Promise<void> }> {
-  const root = await mkdtemp(join(tmpdir(), "ss-active-structure-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-active-structure-"));
   await writeFile(join(root, "water.pdb"), WATER_PDB);
   return { root, dispose: () => rm(root, { recursive: true, force: true }) };
 }

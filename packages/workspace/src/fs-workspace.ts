@@ -22,7 +22,7 @@ import type {
   FileStat,
   Workspace,
   WriteOptions,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import { mimeFor } from "./mime.js";
 import {
   FileTooLargeError,

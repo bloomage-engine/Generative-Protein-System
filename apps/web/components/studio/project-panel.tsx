@@ -37,7 +37,7 @@ import {
   type Project,
   type Session,
   type Worktree,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

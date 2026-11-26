@@ -38,7 +38,7 @@ test("startHost wires the web server to the api port and closes both", async () 
   assert.match(seenApiBaseUrl, /^http:\/\/127\.0\.0\.1:\d+$/);
   assert.equal(host.webPort, 45678);
   assert.ok(host.apiPort > 0);
-  assert.equal(env.SCIENCE_STUDIO_SERVICE_URL, `http://127.0.0.1:${host.apiPort}`);
+  assert.equal(env.GPS_SERVICE_URL, `http://127.0.0.1:${host.apiPort}`);
   await host.close();
   assert.equal(apiClosed, true);
   assert.equal(webClosed, true);

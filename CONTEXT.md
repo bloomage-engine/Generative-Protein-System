@@ -1,4 +1,4 @@
-# Science Studio
+# Generative Protein System
 
 A research-agent platform for natural-science (life-science) R&D. It combines an
 agent execution engine with a traceable research-record layer: agents act, and every
@@ -6,13 +6,13 @@ action lands as a reproducible, attributable scientific record.
 
 ## Language
 
-**Science Studio**:
+**Generative Protein System**:
 The product. A platform where researchers and managers run and observe agent-driven
 R&D work, with full traceability.
 _Avoid_: Scientist Studio, Lab Studio, Bio Studio
 
 **Desktop App**:
-The self-contained single-user form of Science Studio: it runs on the Researcher's
+The self-contained single-user form of Generative Protein System: it runs on the Researcher's
 own machine, with the agent runtime and the research record local to it. The same
 product also runs as a hosted server for many users; "Desktop App" names the local
 delivery form, not a different product.
@@ -43,8 +43,8 @@ concepts the adapter maps to and from the record layer.
 dsh's own unit of conversation: an append-only log of typed session events,
 persisted under the dsh home and reusable by id within a running harness
 process (the pinned SDK cannot resume an id a previous process persisted — a
-restart starts a fresh harness session; see docs/adr/0004). Distinct from Science Studio's
-**Session** (a Study-scoped conversation) — one Science Studio Session maps to
+restart starts a fresh harness session; see docs/adr/0004). Distinct from Generative Protein System's
+**Session** (a Study-scoped conversation) — one Generative Protein System Session maps to
 one Harness Session per harness-child generation. _Avoid_: Session (unqualified, collides with the product
 term), Thread, Log
 
@@ -376,10 +376,10 @@ _Avoid_: Recording at the depth of Project, Session, or Artifact as the atomic u
   hypothesis generation). Wet-lab and instrument integration is deferred. Managerial
   governance is a thin cross-cutting layer.
 - **Interaction**: conversation-first. Every Researcher turn is captured as a Run and
-  persisted by a Science Studio-owned record layer, rolled up at the Project level.
+  persisted by a Generative Protein System-owned record layer, rolled up at the Project level.
   Artifact capture and conclusion synthesis are deferred until their real producers
   exist. Workflow (DAG) orchestration is a later overlay.
-- **Runtime**: the agent runtime is swappable. Science Studio owns the research record;
+- **Runtime**: the agent runtime is swappable. Generative Protein System owns the research record;
   runtimes are adapters behind a single transport seam.
 
 ## HPC Compute
@@ -388,7 +388,7 @@ Vocabulary for running Compute Jobs on external HPC systems over SSH
 (docs/adr/0024). The connection is a deployment fact; its use is Project state.
 
 **HPC Endpoint**:
-A remote compute system Science Studio is configured to submit Compute Jobs to —
+A remote compute system Generative Protein System is configured to submit Compute Jobs to —
 a Slurm cluster or a plain Linux machine. Its definition lives in deployment
 settings; a Project binds to one to use it.
 _Avoid_: Cluster, Server, Remote, Queue
@@ -424,6 +424,6 @@ _Avoid_: Sync, Mirror, Upload (as the domain term)
 **Compute Job State**:
 Where a Compute Job stands in its lifecycle: `submitted` → `pending` → `running`
 are non-terminal; `completed` / `failed` / `cancelled` are terminal; `unknown`
-means Science Studio could not confirm the remote truth and keeps the last known
+means Generative Protein System could not confirm the remote truth and keeps the last known
 state. The remote scheduler remains the authority; our state is a reconciliation.
 _Avoid_: Status (the record's own term), Queue position

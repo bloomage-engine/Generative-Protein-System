@@ -14,8 +14,8 @@ import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { shq } from "@science-studio/hpc";
-import type { HpcEndpointSettings } from "@science-studio/transport";
+import { shq } from "@gps/hpc";
+import type { HpcEndpointSettings } from "@gps/transport";
 
 export interface SshResult {
   /** Process exit code; -1 when the deadline killed the client. */
@@ -146,15 +146,15 @@ export interface SshRunnerOptions {
 }
 
 export async function createSshRunner(opts: SshRunnerOptions = {}): Promise<SshRunner> {
-  const sshBin = opts.sshBin ?? process.env.SS_SSH_BIN ?? "ssh";
-  const scpBin = opts.scpBin ?? process.env.SS_SCP_BIN ?? "scp";
-  const base = opts.controlDir ?? join(tmpdir(), "science-studio", "hpc");
+  const sshBin = opts.sshBin ?? process.env.GPS_SSH_BIN ?? "ssh";
+  const scpBin = opts.scpBin ?? process.env.GPS_SCP_BIN ?? "scp";
+  const base = opts.controlDir ?? join(tmpdir(), "gps", "hpc");
   // One master dir per service process (unique temp dir under `base`), created
   // lazily; a per-endpoint socket name keeps masters from sharing. `sun_path`
   // stays far below its bound: `mkdtemp(cm-XXXXXX)/<endpointId>.sock`.
   let dirPromise: Promise<string> | null = null;
   const socket = async (endpoint: HpcEndpointSettings): Promise<string> => {
-    // mkdtemp only creates the LAST component — the `science-studio/hpc` base
+    // mkdtemp only creates the LAST component — the `gps/hpc` base
     // must exist, or the first SSH call throws ENOENT (and a route 500s).
     dirPromise ??= mkdir(base, { recursive: true }).then(() => mkdtemp(join(base, "cm-")));
     const dir = await dirPromise;

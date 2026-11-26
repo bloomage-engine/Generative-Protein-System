@@ -2,7 +2,7 @@ import {
   testAdapterLifecycle,
   testResolveSessionKey,
   testRuntimeFactory,
-} from "@science-studio/contract-tests";
+} from "@gps/contract-tests";
 import { OpenClawRuntimeAdapter, createOpenClawRuntimeFactory, openClawBinding } from "../src/index.js";
 import { openClawLifecycleCase } from "./lifecycle-case.js";
 

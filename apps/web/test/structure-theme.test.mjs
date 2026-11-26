@@ -13,7 +13,7 @@
  * light background is not white. A canvas that keeps Mol*'s own color fails the
  * very first one.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`. Needs a Chromium
+ * Prereq: `npm run build -w @gps/transport-client`. Needs a Chromium
  * with WebGL; SKIPPED when either is missing.
  */
 import { test } from "node:test";

@@ -9,14 +9,14 @@ import {
   executeMolqlTool,
   fetchInteractions,
   fetchMeasurements,
-} from "@science-studio/molql-shared";
+} from "@gps/molql-shared";
 
 /**
  * The `molql` tool for OpenClaw gateways.
  *
  * The model translates a request into a Mol* `mol-script` selection; this tool
  * returns it as structured JSON. The gateway persists the result as the tool
- * call's output, which reaches the Science Studio web viewer and is applied
+ * call's output, which reaches the Generative Protein System web viewer and is applied
  * there (semantic validation lives in the browser, where the structure is).
  *
  * The full syntax manual ships under `skill/`; the tool description carries the
@@ -27,7 +27,7 @@ export default defineToolPlugin({
   id: "molql-tool",
   name: "MolQL",
   description:
-    "Science Studio structure tools: translate a query into a Mol* mol-script selection for the viewer to apply, compute the non-covalent interactions of a selection, and measure distances/angles/dihedrals/orientation/plane for a set of selections.",
+    "Generative Protein System structure tools: translate a query into a Mol* mol-script selection for the viewer to apply, compute the non-covalent interactions of a selection, and measure distances/angles/dihedrals/orientation/plane for a set of selections.",
 
   tools: (tool) => [
     tool({

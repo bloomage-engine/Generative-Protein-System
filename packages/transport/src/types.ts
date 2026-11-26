@@ -1,11 +1,11 @@
-import type { Id, Run, RunStatus, PersistedTranscript, Subagent } from "@science-studio/record";
+import type { Id, Run, RunStatus, PersistedTranscript, Subagent } from "@gps/record";
 import type { RuntimeBinding } from "./runtime.js";
 import type { SkillInfo, SkillInstallInput } from "./skills.js";
 import type { Workspace } from "./workspace.js";
 
 /**
  * The normalized session state that a runtime adapter owns and that the
- * transport-service streams to the frontend. This is Science Studio's owned
+ * transport-service streams to the frontend. This is Generative Protein System's owned
  * state — NOT a runtime transcript — so the frontend converter stays
  * runtime-agnostic (see docs/adr/0002).
  */
@@ -174,7 +174,7 @@ export interface CommandDescriptor {
 export interface SubagentRun {
   /** Runtime-assigned child identity (dsh: the child session id). */
   id: string;
-  /** The Science Studio Session this run was delegated from. */
+  /** The Generative Protein System Session this run was delegated from. */
   parentId: Id;
   /** Best-effort display label (dsh: the child's descriptor label). */
   label?: string;
@@ -198,7 +198,7 @@ export interface SubagentRun {
 export interface SubagentTranscript {
   /** The child session id — the same identity as `SubagentRun.id`. */
   id: Id;
-  /** The Science Studio Session this run was delegated from. */
+  /** The Generative Protein System Session this run was delegated from. */
   parentId: Id;
   /** The child's descriptor label, when one exists. */
   label?: string;

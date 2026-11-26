@@ -7,18 +7,18 @@
  * against `realpath`.
  *
  * The error classes themselves are part of the seam's interface contract and
- * live in `@science-studio/transport`; they are re-exported here so consumers of
+ * live in `@gps/transport`; they are re-exported here so consumers of
  * this package keep a single import path.
  */
 import { posix } from "node:path";
-import { WorkspaceEscapeError, WorkspacePathError } from "@science-studio/transport";
+import { WorkspaceEscapeError, WorkspacePathError } from "@gps/transport";
 
 export {
   FileTooLargeError,
   WorkspaceEscapeError,
   WorkspaceNotFoundError,
   WorkspacePathError,
-} from "@science-studio/transport";
+} from "@gps/transport";
 
 /**
  * Normalize a workspace-relative POSIX path, or throw.

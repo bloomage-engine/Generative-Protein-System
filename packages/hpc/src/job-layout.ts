@@ -19,13 +19,13 @@ export function isValidComputeJobId(id: string): boolean {
 
 /** The convention when a Binding names no `workDir`. */
 export function defaultWorkDir(projectId: string): string {
-  return `~/science-studio/${projectId}`;
+  return `~/gps/${projectId}`;
 }
 
 /** The per-job dir: pid/rc/log files for a `linux` job, `-o/-e` home for slurm. */
 export function jobDir(workDir: string, jobId: string): string {
   const base = workDir.endsWith("/") ? workDir.slice(0, -1) : workDir;
-  return `${base}/.ss-jobs/${jobId}`;
+  return `${base}/.gps-jobs/${jobId}`;
 }
 
 export interface JobPaths {

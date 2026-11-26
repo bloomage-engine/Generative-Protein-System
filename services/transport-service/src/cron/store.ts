@@ -9,8 +9,8 @@ import {
   taskIdFromPath,
   type CronLogEntry,
   type CronTask,
-} from "@science-studio/cron";
-import { WorkspaceNotFoundError, type Workspace } from "@science-studio/transport";
+} from "@gps/cron";
+import { WorkspaceNotFoundError, type Workspace } from "@gps/transport";
 
 export interface CronTaskSummary extends CronTask {
   path: string;

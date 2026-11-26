@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createInMemoryRecordStore } from "@science-studio/record";
-import { LocalEnvironmentProvider, NullWorkspace, type RuntimeAdapter } from "@science-studio/transport";
+import { createInMemoryRecordStore } from "@gps/record";
+import { LocalEnvironmentProvider, NullWorkspace, type RuntimeAdapter } from "@gps/transport";
 import { createRecordDirectory } from "../src/directory.js";
 import { createProjectScopes } from "../src/project-scope.js";
 

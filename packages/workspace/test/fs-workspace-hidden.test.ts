@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { FsWorkspace } from "../src/index.js";
 
 test("hiddenEntries are omitted from listings at any depth", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ss-hidden-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-hidden-"));
   try {
     await mkdir(join(root, ".worktrees", "exp-a"), { recursive: true });
     await mkdir(join(root, "data", ".git"), { recursive: true });

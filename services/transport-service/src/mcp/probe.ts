@@ -8,7 +8,7 @@ import type { Stream } from "node:stream";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { McpServerSettings } from "@science-studio/transport";
+import type { McpServerSettings } from "@gps/transport";
 
 const CONNECT_TIMEOUT_MS = 10_000;
 const MAX_TOOLS = 200;
@@ -113,7 +113,7 @@ export const probeMcpServer: McpProber["probe"] = async (
 
   try {
     client = new Client(
-      { name: "science-studio", version: "0.1.0" },
+      { name: "gps", version: "0.1.0" },
       { capabilities: {} },
     );
 

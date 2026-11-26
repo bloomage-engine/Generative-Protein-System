@@ -5,7 +5,7 @@
  * the LAST known state then stays displayed with the reason (the poller owns
  * that decision; this function never throws).
  */
-import type { ComputeJobState } from "@science-studio/record";
+import type { ComputeJobState } from "@gps/record";
 
 /** squeue `%T` codes (the live set: pending through completing). */
 const SQUEUE_STATES: Record<string, ComputeJobState> = {

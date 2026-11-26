@@ -34,9 +34,9 @@ dependencies.
 - The type gate is `npm run build` (which runs `typecheck:tests` last).
   `npm run typecheck` is broken in transport-service (TS6310); do NOT cite it.
 - The root test gate is `npm run test` (runs each package's `node --test` suite).
-- Web e2e: `npm run test:e2e -w @science-studio/web` (or
+- Web e2e: `npm run test:e2e -w @gps/web` (or
   `node --test apps/web/test/<file>.test.mjs`); needs Chromium (auto-detected,
-  self-skips without one). Prereq: `npm run build -w @science-studio/transport-client`.
+  self-skips without one). Prereq: `npm run build -w @gps/transport-client`.
 - `tsconfig` base: `noUncheckedIndexedAccess` ON (every index returns
   `T | undefined`); test env `lib: ES2022`, `types: ["node"]` (NO DOM lib — in
   `.ts` TEST files avoid `RequestInfo` and use `Parameters<typeof fetch>[0]`).
@@ -138,7 +138,7 @@ export type {
 
 - [ ] **Step 3: Update the service `settings.ts` — four functions.**
 
-Import the new types from `@science-studio/transport` (add to the existing
+Import the new types from `@gps/transport` (add to the existing
 `{ ModelSettings, RuntimeSettings, ... }` import block).
 
 Update `emptySettings()`:
@@ -264,7 +264,7 @@ test("parseSettingsPatch validates subagents.visibleWindowHours", () => {
 
 - [ ] **Step 5: Run the service settings test to verify it passes.**
 
-Run: `npm test -w @science-studio/transport-service -- settings`
+Run: `npm test -w @gps/transport-service -- settings`
 Expected: all cases (existing + new) PASS.
 
 - [ ] **Step 6: Run the root build gate (type-checks the shared + service change).**
@@ -303,7 +303,7 @@ EOF
 - Test: `packages/transport-client/test/settings.test.ts`
 
 **Interfaces:**
-- Consumes: `RuntimeSettingsView` from `@science-studio/transport` (Task 1).
+- Consumes: `RuntimeSettingsView` from `@gps/transport` (Task 1).
 - Produces:
   - `subagentWindowFromView(view: { subagents?: SubagentSettings }): number` —
     the effective hours (default 24 on absence / non-number / out of range).
@@ -332,13 +332,13 @@ test("subagentWindowFromView applies the default and bounds", () => {
 
 - [ ] **Step 2: Run the test to verify it fails.**
 
-Run: `npm test -w @science-studio/transport-client -- settings`
+Run: `npm test -w @gps/transport-client -- settings`
 Expected: FAIL — `subagentWindowFromView` is not exported.
 
 - [ ] **Step 3: Implement the helper + hook in `packages/transport-client/src/settings.ts`.**
 
 Add to the top of the file (the file already starts with `"use client";` and imports
-a couple of settings types from `@science-studio/transport`). Add the `SubagentSettings`
+a couple of settings types from `@gps/transport`). Add the `SubagentSettings`
 type to that import, and add the React hook imports:
 
 ```typescript
@@ -398,7 +398,7 @@ export function useSubagentsWindow(options: UseSubagentsWindowOptions = {}): {
 
 - [ ] **Step 4: Run the test to verify it passes.**
 
-Run: `npm test -w @science-studio/transport-client -- settings`
+Run: `npm test -w @gps/transport-client -- settings`
 Expected: PASS.
 
 - [ ] **Step 5: Re-export from `packages/transport-client/src/index.ts`.**
@@ -423,7 +423,7 @@ existing `DEFAULT_SETTINGS_API`, `SettingsRequestError`, `fetchSettings`,
 
 - [ ] **Step 6: Run the client tests + build.**
 
-Run: `npm test -w @science-studio/transport-client && npm run build`
+Run: `npm test -w @gps/transport-client && npm run build`
 Expected: PASS.
 
 - [ ] **Step 7: Commit.**
@@ -454,7 +454,7 @@ EOF
 - Test: `apps/web/test/subagents-window.test.mjs`
 
 **Interfaces:**
-- Consumes: `SubagentRun` from `@science-studio/transport`.
+- Consumes: `SubagentRun` from `@gps/transport`.
 - Produces:
   - `DEFAULT_SUBAGENT_WINDOW_HOURS = 24`
   - `isRecent(run: SubagentRun, windowMs: number, now: number): boolean`
@@ -546,7 +546,7 @@ Expected: FAIL — `subagents-window.ts` is missing.
 - [ ] **Step 3: Create the pure helper — `apps/web/components/studio/subagents-window.ts`.**
 
 ```typescript
-import type { SubagentRun } from "@science-studio/transport";
+import type { SubagentRun } from "@gps/transport";
 
 /** The default recent-window when settings don't specify one. */
 export const DEFAULT_SUBAGENT_WINDOW_HOURS = 24;
@@ -607,14 +607,14 @@ EOF
 
 **Interfaces:**
 - Consumes: `isRecent`, `windowMsFromHours` from `./subagents-window`;
-  `useSubagentsWindow` from `@science-studio/transport-client`.
+  `useSubagentsWindow` from `@gps/transport-client`.
 - Produces: the panel's `visible` list is now `subagents.filter(isRecent(run, windowMs, now))`
   when the History toggle is OFF, unchanged (all) when ON.
 
 - [ ] **Step 1: Wire the window into the panel (`subagents-view.tsx`).**
 
 Read the top of the file first: it imports `useSubagents` from
-`@science-studio/transport-client` (no `api` arg — the default `/api/transport`),
+`@gps/transport-client` (no `api` arg — the default `/api/transport`),
 computes `const enabled = open && projectId !== null && activeSessionId !== null;`,
 then `const { subagents } = useSubagents({ projectId, threadId: activeSessionId,
 enabled });` and
@@ -623,7 +623,7 @@ Make three small changes:
 
 1. Imports — extend the client import and add the local predicate import:
 ```typescript
-import { useSubagents, useSubagentsWindow } from "@science-studio/transport-client";
+import { useSubagents, useSubagentsWindow } from "@gps/transport-client";
 import { isRecent, windowMsFromHours } from "./subagents-window";
 ```
 
@@ -825,7 +825,7 @@ imported there — it is used by the existing `subagents-panel.test.mjs`.)
 
 - [ ] **Step 4: Run the e2e (needs Chromium).**
 
-Ensure `npm run build -w @science-studio/transport-client` is up to date, then:
+Ensure `npm run build -w @gps/transport-client` is up to date, then:
 Run: `node --test apps/web/test/subagents-window-e2e.test.mjs`
 Expected: PASS (or SKIP when no Chromium is found; CI has one).
 
@@ -842,7 +842,7 @@ e.g. `new Date(Date.now() - 3 * 864e5).toISOString()`), preserving its pre-windo
 
 - [ ] **Step 6: Run the web e2e suite.**
 
-Run: `npm run test:e2e -w @science-studio/web`
+Run: `npm run test:e2e -w @gps/web`
 Expected: PASS (or the known pre-existing failures in unrelated files). No new
 failures.
 
@@ -882,7 +882,7 @@ EOF
 - Consumes: no new deps. The plugin reads only its own `name`, `inject`, and
   the host's `systemPrompt` / `effect` surface.
 - Produces:
-  - `subagent-plugin.ts` exports: `name = "science-studio-subagent-reporting"`,
+  - `subagent-plugin.ts` exports: `name = "gps-subagent-reporting"`,
     `inject = ["systemPrompt"]`, `apply(ctx)` (the host API is
     `{ systemPrompt?: { section(s: {name,order,text}): () => void },
        effect?: (register: () => (() => void), name: string): void }`).
@@ -934,7 +934,7 @@ test("the plugin declares a section-only inject scope", () => {
 
 - [ ] **Step 2: Run the test to verify it fails.**
 
-Run: `npm test -w @science-studio/transport-dsh -- subagent-plugin`
+Run: `npm test -w @gps/transport-dsh -- subagent-plugin`
 Expected: FAIL — `../src/subagent-plugin.js` is missing.
 
 - [ ] **Step 3: Create the plugin — `packages/transport-dsh/src/subagent-plugin.ts`.**
@@ -956,7 +956,7 @@ Expected: FAIL — `../src/subagent-plugin.js` is missing.
  * `@deepseek-ai/*`, never writes to stdout, and fails soft.
  */
 
-export const name = "science-studio-subagent-reporting";
+export const name = "gps-subagent-reporting";
 export const inject: readonly string[] = ["systemPrompt"];
 
 interface PromptSection {
@@ -972,7 +972,7 @@ interface SubagentHost {
 
 const SECTION: PromptSection = {
   name,
-  order: 455, // alongside the science-studio sections (450 project, 460 cron); distinct + non-colliding
+  order: 455, // alongside the gps sections (450 project, 460 cron); distinct + non-colliding
   text: [
     "When you delegate work to a subagent (the `subagent` or `subagent_fork` tool), its result comes back to you — either as a tool result (a foreground call) or as a later settlement notice (a background call).",
     "After each delegated subagent completes and its result arrives, read it and summarize the key finding and conclusion in plain language, and report that to the user.",
@@ -1004,7 +1004,7 @@ export function apply(ctx: SubagentHost): void {
 
 - [ ] **Step 4: Run the test to verify it passes.**
 
-Run: `npm test -w @science-studio/transport-dsh -- subagent-plugin`
+Run: `npm test -w @gps/transport-dsh -- subagent-plugin`
 Expected: PASS.
 
 - [ ] **Step 5: Add `writeSubagentPatch` to `packages/transport-dsh/src/bridge.ts`.**
@@ -1026,7 +1026,7 @@ export async function writeSubagentPatch(opts: { dir: string; pluginPath: string
   const file = join(dir, `subagent-reporting-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
   const document = [
     "- insert:",
-    "    - id: science-studio-subagent-reporting",
+    "    - id: gps-subagent-reporting",
     `      name: ${JSON.stringify(pathToFileURL(pluginPath).href)}`,
     "      config: {}",
     "",
@@ -1100,7 +1100,7 @@ constructed and closed.)
 
 - [ ] **Step 8: Run the dsh test suite.**
 
-Run: `npm test -w @science-studio/transport-dsh`
+Run: `npm test -w @gps/transport-dsh`
 Expected: all dsh tests PASS (the new plugin test + the new adapter case, and the
 existing suite).
 
@@ -1184,7 +1184,7 @@ only `stopReason` is merged from the registry — see Step 4.)
 
 - [ ] **Step 2: Run the test to verify it fails.**
 
-Run: `npm test -w @science-studio/transport-dsh -- adapter`
+Run: `npm test -w @gps/transport-dsh -- adapter`
 Expected: the new assertion fails (`stopReason` is `undefined` on the read).
 
 - [ ] **Step 3: Add the field to the shared type (`packages/transport/src/types.ts`).**
@@ -1235,7 +1235,7 @@ async subagentTranscript(sessionKey: string, childId: string): Promise<SubagentT
 
 - [ ] **Step 5: Run the test to verify it passes.**
 
-Run: `npm test -w @science-studio/transport-dsh -- adapter`
+Run: `npm test -w @gps/transport-dsh -- adapter`
 Expected: PASS (including the new assertion).
 
 - [ ] **Step 6: Run the root build gate (the shared type change affects the service, client, and web readers).**
@@ -1452,13 +1452,13 @@ Expected: PASS (or SKIP without Chromium).
 
 - [ ] **Step 5: Run the full web e2e suite.**
 
-Run: `npm run test:e2e -w @science-studio/web`
+Run: `npm run test:e2e -w @gps/web`
 Expected: PASS (no new failures; the existing `subagents-panel.test.mjs` and
 `right-panel-sections.test.mjs` still hold).
 
 - [ ] **Step 6: Run the web build gate.**
 
-Run: `npm run build -w @science-studio/web`
+Run: `npm run build -w @gps/web`
 Expected: PASS.
 
 - [ ] **Step 7: Commit.**
@@ -1593,7 +1593,7 @@ EOF
 
 - [ ] `npm run build` — the type gate
 - [ ] `npm run test` — all package suites PASS
-- [ ] `npm run test:e2e -w @science-studio/web -- subagents-panel subagents-window subagents-drill-in` — the feature e2e PASS
+- [ ] `npm run test:e2e -w @gps/web -- subagents-panel subagents-window subagents-drill-in` — the feature e2e PASS
 - [ ] The spec's "Out of scope" holds: no record change, no openclaw surface, no
   `Run` projection, no server-side enforcement.
 - [ ] All 8 commits present in the branch history.

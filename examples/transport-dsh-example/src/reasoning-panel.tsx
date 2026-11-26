@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { useMessageReasoningTrace, type ReasoningStep } from "@science-studio/transport-client";
+import { useMessageReasoningTrace, type ReasoningStep } from "@gps/transport-client";
 
 /**
  * Static-variant reasoning element (assistant-ui "Reasoning" → step-panel

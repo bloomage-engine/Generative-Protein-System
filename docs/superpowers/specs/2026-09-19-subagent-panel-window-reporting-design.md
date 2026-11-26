@@ -42,7 +42,7 @@
    `1 <= n <= 720` (a number) on save, and `null` is a clear to the unset
    default — `""` and any out-of-range / non-integer value are a 400.
 - **Client.** A `useSubagentsWindow(api?)` hook next to the existing settings
-  helpers in `@science-studio/transport-client` — fetches `/api/settings` once,
+  helpers in `@gps/transport-client` — fetches `/api/settings` once,
   memoized per `api`, and returns the hours number (default 24, degrading to 24
   on failure or absence).
 - **Panel.** A small PURE, testable helper module
@@ -62,7 +62,7 @@
   `project-plugin.ts` / `cron-plugin.ts`: `name`, `inject = ["systemPrompt"]`,
   `apply(ctx) { ctx.systemPrompt?.section(...) }`, wrapped in
   `ctx.effect(...)` for teardown) that registers ONE host-scope
-  `systemPrompt.section` — name `science-studio-subagent-reporting`, order distinct
+  `systemPrompt.section` — name `gps-subagent-reporting`, order distinct
   from the sibling sections (e.g. 455, chosen not to collide) — with text to the
   effect of: *"After a delegated subagent (`subagent` / `subagent_fork`)
   completes and its result arrives (a tool-result, or a settlement notice),

@@ -1,5 +1,5 @@
-import type { Message } from "@science-studio/transport";
-import { sameConversation } from "@science-studio/transport";
+import type { Message } from "@gps/transport";
+import { sameConversation } from "@gps/transport";
 import { parseParts } from "./mapping.js";
 import { attachHistoryToolResult, TOOL_RESULT_ROLES } from "./tool-result.js";
 
@@ -9,7 +9,7 @@ import { attachHistoryToolResult, TOOL_RESULT_ROLES } from "./tool-result.js";
  * `SessionTranscript.syncFromHistory`. Kept dependency-free of the transcript
  * so the subtle keep/rebuild/reset guards are directly unit-testable without
  * a live transcript lifecycle (docs/adr/0002: the gateway owns the
- * conversation, but Science Studio owns this record).
+ * conversation, but Generative Protein System owns this record).
  */
 
 /**

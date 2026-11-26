@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { partToContent, pendingUserMessages } from "../src/converter.js";
 import type { AssistantTransportCommand } from "@assistant-ui/react";
-import type { Message, MessagePart } from "@science-studio/transport";
+import type { Message, MessagePart } from "@gps/transport";
 
 test("text part maps to a text content part", () => {
   const part: MessagePart = { type: "text", text: "hello" };

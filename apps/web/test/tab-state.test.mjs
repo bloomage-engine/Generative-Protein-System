@@ -8,7 +8,7 @@
  * scrolls one file, switches to a second, and asserts the first is still mounted,
  * hidden, and at its old scroll offset.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`.
+ * Prereq: `npm run build -w @gps/transport-client`.
  * Needs a Chromium; SKIPPED when none is found.
  *
  * The third test pins the scope half of the same contract: an open tab belongs

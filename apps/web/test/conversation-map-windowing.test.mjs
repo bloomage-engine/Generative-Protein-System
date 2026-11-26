@@ -9,7 +9,7 @@
  * This loads a thread longer than the window and asserts the rail lists exactly
  * the visible turns and none of the hidden ones.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`. Needs a Chromium
+ * Prereq: `npm run build -w @gps/transport-client`. Needs a Chromium
  * (SKIPs without one).
  */
 import { test } from "node:test";

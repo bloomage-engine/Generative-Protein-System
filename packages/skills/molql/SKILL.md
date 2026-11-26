@@ -7,7 +7,7 @@ description: This skill should be used when users need to translate natural lang
 
 ## Purpose
 
-This skill translates natural language molecular structure queries into valid MolQL (Mol-Script) expressions. It enables users to describe what they want to select, visualize or measure in natural language, and applies the resulting selection to the molecular structure viewer that is open in the Science Studio web app.
+This skill translates natural language molecular structure queries into valid MolQL (Mol-Script) expressions. It enables users to describe what they want to select, visualize or measure in natural language, and applies the resulting selection to the molecular structure viewer that is open in the Generative Protein System web app.
 
 The selection is delivered by calling the `molql` **tool** — never by printing the expression in a code block. The tool forwards the expression to the viewer, which compiles it with Mol* and highlights/focuses the matching atoms. Measurements are delivered by the separate `measurements` tool (see "Measuring" below).
 

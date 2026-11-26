@@ -16,7 +16,7 @@ import type {
   RecordStoreLike,
   RuntimeBinding,
   RuntimeFactory,
-} from "@science-studio/transport/seams";
+} from "@gps/transport/seams";
 
 const noopRecordStore: RecordStoreLike = {
   addRun: async () => {},

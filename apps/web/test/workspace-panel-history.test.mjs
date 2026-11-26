@@ -20,7 +20,7 @@
  * The workspace-surface mock lives entirely in the browser (Playwright route
  * interception), so the transport-service and a runtime adapter are NOT needed.
  *
- * Prereq: `npm run build -w @science-studio/transport-client` (the web app
+ * Prereq: `npm run build -w @gps/transport-client` (the web app
  * imports the client package from its dist build).
  *
  * Needs a Chromium. Resolution order: $PLAYWRIGHT_CHROMIUM_EXECUTABLE, a

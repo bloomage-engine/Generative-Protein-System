@@ -1,5 +1,5 @@
 {
-  "name": "@science-studio/transport-dsh",
+  "name": "@gps/transport-dsh",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -21,14 +21,14 @@
     "@deepseek-ai/dsh-sdk-client": "0.1.5-alpha.1",
     "@deepseek-ai/dsh-sdk-protocol": "0.1.5-alpha.1",
     "@deepseek-ai/dsh-session": "0.1.5-alpha.1",
-    "@science-studio/cron": "*",
-    "@science-studio/hpc": "*",
-    "@science-studio/record": "*",
-    "@science-studio/transport": "*",
+    "@gps/cron": "*",
+    "@gps/hpc": "*",
+    "@gps/record": "*",
+    "@gps/transport": "*",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
-    "@science-studio/contract-tests": "*",
+    "@gps/contract-tests": "*",
     "@types/node": "^20.0.0",
     "tsx": "^4.19.0"
   }

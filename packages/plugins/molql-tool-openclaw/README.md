@@ -1,4 +1,4 @@
-# @science-studio/molql-tool-openclaw
+# @gps/molql-tool-openclaw
 
 An OpenClaw gateway plugin that registers three tools: **`molql`**
 (select/highlight atoms in the open structure), **`computeInteraction`**
@@ -18,12 +18,12 @@ returns it as structured JSON:
 }
 ```
 
-The gateway persists the tool result, which reaches the Science Studio web app;
-it parses the JSON (via `@science-studio/molstar-viewer`) and highlights/focuses
+The gateway persists the tool result, which reaches the Generative Protein System web app;
+it parses the JSON (via `@gps/molstar-viewer`) and highlights/focuses
 the atoms in the open structure. The tool never touches a structure — semantic
 validation happens in the browser.
 
-`computeInteraction` fetches the Science Studio service's
+`computeInteraction` fetches the Generative Protein System service's
 `/api/workspace/interactions` route (the service owns workspace file access and
 runs Mol* headlessly) from the `@<project>/<path>/<molql>` mention, and returns a
 Markdown interaction table.

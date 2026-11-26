@@ -14,7 +14,7 @@
  * `@deepseek-ai/*`, never writes to stdout, and fails soft.
  */
 
-export const name = "science-studio-subagent-reporting";
+export const name = "gps-subagent-reporting";
 export const inject: readonly string[] = ["systemPrompt"];
 
 interface PromptSection {
@@ -30,7 +30,7 @@ interface SubagentHost {
 
 const SECTION: PromptSection = {
   name,
-  order: 455, // alongside the science-studio sections (450 project, 460 cron); distinct + non-colliding
+  order: 455, // alongside the gps sections (450 project, 460 cron); distinct + non-colliding
   text: [
     "When you delegate work to a subagent (the `subagent` or `subagent_fork` tool), its result comes back to you — either as a tool result (a foreground call) or as a later settlement notice (a background call).",
     "After each delegated subagent completes and its result arrives, read it and summarize the key finding and conclusion in plain language, and report that to the user.",

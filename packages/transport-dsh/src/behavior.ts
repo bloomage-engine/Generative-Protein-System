@@ -31,7 +31,7 @@ import {
   type SessionState,
   type WatchSnapshot,
   type Workspace,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { DshTurnClient } from "./client.js";
 import {
   DSH_COMMANDS,
@@ -74,7 +74,7 @@ export interface DshBehaviorDeps {
   client: DshTurnClient;
   /** The record store — the durable home of the session transcript (docs/adr/0019). */
   recordStore: RecordStoreLike | null;
-  /** Science Studio session key → the harness id this child actually created. */
+  /** Generative Protein System session key → the harness id this child actually created. */
   harnessSessions: Map<string, string>;
   /** Harness profile the child was launched with (reported by `/status`). */
   profile: string;
@@ -120,7 +120,7 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
    */
   const generation = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   /**
-   * Harness sessions this child has minted per Science Studio session. The
+   * Harness sessions this child has minted per Generative Protein System session. The
    * ordinal (not the session key) is what keeps a LATER mint out of the ids the
    * durable home already holds: `/new` drops the current conversation, and the
    * id it then asks for must be one this child has never created — re-asking
@@ -128,7 +128,7 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
    */
   const minted = new Map<string, number>();
 
-  /** The next harness session id for one Science Studio session. */
+  /** The next harness session id for one Generative Protein System session. */
   function nextHarnessSessionId(sessionKey: string): string {
     const ordinal = (minted.get(sessionKey) ?? 0) + 1;
     minted.set(sessionKey, ordinal);
@@ -136,7 +136,7 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
   }
 
   /**
-   * The COLD command prompt in flight, per Science Studio session: the line the
+   * The COLD command prompt in flight, per Generative Protein System session: the line the
    * harness is being asked to run as this session's first prompt, the reply owed
    * if its registry resolves nothing, and what the turn reported. It is what
    * tells the folded `command/done` apart from the one a WARM command produces
@@ -168,12 +168,12 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
    */
   const turnUsages = new Map<string, TurnUsageState>();
 
-  /** The Run currently driving each Science Studio session (for live frames). */
+  /** The Run currently driving each Generative Protein System session (for live frames). */
   const activeRuns = new Map<string, RunControl<SessionEvent>>();
   /**
    * Live assistant rows under construction, keyed by the GENERATION-scoped
    * `${harnessSessionId}:${turn}:${step}`. Scoping by the harness id — not the
-   * stable Science Studio session key — is what keeps a reset/restart (which
+   * stable Generative Protein System session key — is what keeps a reset/restart (which
    * restarts at turn 1 step 1 on the SAME session key WITHOUT clearing the
    * transcript) from colliding with the previous conversation's rows.
    */
@@ -211,7 +211,7 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
     return typeof turn === "number" && typeof step === "number" ? `${harnessSessionId}:${turn}:${step}` : null;
   }
 
-  /** The Science Studio session key a harness session id belongs to. */
+  /** The Generative Protein System session key a harness session id belongs to. */
   function sessionKeyForHarness(harnessId: string): string | undefined {
     for (const [key, id] of harnessSessions) if (id === harnessId) return key;
     return undefined;

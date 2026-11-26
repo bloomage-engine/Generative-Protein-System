@@ -6,8 +6,8 @@ test("dshLocalBinding maps the service-owned endpoint/apiKey env names", () => {
   const binding = dshLocalBinding({
     DSH_PROVIDER: "ollama-local",
     DSH_MODEL: "qwen3.8:latest",
-    SS_MODEL_ENDPOINT: "http://10.0.0.1:11434/v1",
-    SS_MODEL_API_KEY: "secret",
+    GPS_MODEL_ENDPOINT: "http://10.0.0.1:11434/v1",
+    GPS_MODEL_API_KEY: "secret",
   });
   const parsed = parseDshBinding(binding);
   assert.equal(parsed.provider, "ollama-local");
@@ -37,7 +37,7 @@ other:
 `;
 
 test("applyRouteSettings updates baseURL and preserves the rest", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-route-settings-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-route-settings-"));
   try {
     const file = join(dir, "settings.yaml");
     await writeFile(file, ROUTE_FIXTURE);
@@ -61,7 +61,7 @@ test("applyRouteSettings updates baseURL and preserves the rest", async () => {
 });
 
 test("applyRouteSettings creates a route when the file is absent", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-route-settings-new-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-route-settings-new-"));
   try {
     const result = await applyRouteSettings({
       home: dir,
@@ -86,7 +86,7 @@ test("applyRouteSettings is a no-op without an endpoint or key", async () => {
 });
 
 test("applyRouteSettings reuses an existing, differently-named apiKeyEnv", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-route-settings-reuse-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-route-settings-reuse-"));
   try {
     const file = join(dir, "settings.yaml");
     await writeFile(
@@ -109,7 +109,7 @@ test("applyRouteSettings reuses an existing, differently-named apiKeyEnv", async
 });
 
 test("an endpoint-only apply never adds an apiKeyEnv", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-route-settings-endpoint-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-route-settings-endpoint-"));
   try {
     const file = join(dir, "settings.yaml");
     await writeFile(
@@ -137,7 +137,7 @@ test("an endpoint-only apply never adds an apiKeyEnv", async () => {
 });
 
 test("an unchanged endpoint with no key writes nothing and returns null", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-route-settings-noop-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-route-settings-noop-"));
   try {
     const file = join(dir, "settings.yaml");
     const fixture = `llm-pi-ai:\n  providers:\n    ollama-local:\n      baseURL: http://same:11434/v1\n`;

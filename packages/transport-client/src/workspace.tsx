@@ -10,7 +10,7 @@
  * mounts.
  *
  * The API base is separate from the transport base: the workspace routes are a
- * different surface (`@science-studio/transport-service`'s `/api/workspace/*`),
+ * different surface (`@gps/transport-service`'s `/api/workspace/*`),
  * even though the same service serves both.
  */
 import {
@@ -24,7 +24,7 @@ import {
   type FC,
   type PropsWithChildren,
 } from "react";
-import type { DirListing, Entry, FileStat } from "@science-studio/transport";
+import type { DirListing, Entry, FileStat } from "@gps/transport";
 import type { FileRef } from "./file-reference.js";
 import { scopedUrl, type ClientScope } from "./scope.js";
 

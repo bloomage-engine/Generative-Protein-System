@@ -13,7 +13,7 @@
  * `RuntimeAdapter`; this is shared implementation). React-free, and ignorant of
  * every runtime's event vocabulary, of assistant-ui, and of `process.env`.
  */
-import type { Id, Run } from "@science-studio/record";
+import type { Id, Run } from "@gps/record";
 import type {
   AttachmentRef,
   Message,
@@ -278,7 +278,7 @@ export class SessionRuntime<E> {
   private readonly now: () => string;
   private readonly onError: (error: unknown) => void;
 
-  /** The canonical transcript (Science Studio's owned session state). */
+  /** The canonical transcript (Generative Protein System's owned session state). */
   state: SessionState = { sessionId: "", projectId: "", agentId: "", status: "idle", messages: [] };
   /** The transcript primitives — the SAME ones `createApplyContext` hands a test. */
   private readonly ops = createTranscriptOps(this.state);

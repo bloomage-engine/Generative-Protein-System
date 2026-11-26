@@ -1,5 +1,5 @@
 {
-  "name": "@science-studio/transport",
+  "name": "@gps/transport",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -21,7 +21,7 @@
     "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
-    "@science-studio/record": "*"
+    "@gps/record": "*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -10,8 +10,8 @@ import {
   NullWorkspace,
   type RuntimeAdapter,
   type Workspace,
-} from "@science-studio/transport";
-import { FsWorkspace } from "@science-studio/workspace";
+} from "@gps/transport";
+import { FsWorkspace } from "@gps/workspace";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 
@@ -49,7 +49,7 @@ async function withServer<T>(workspace: Workspace, fn: (base: string) => Promise
 }
 
 async function makeFixture(): Promise<{ root: string; dispose: () => Promise<void> }> {
-  const root = await mkdtemp(join(tmpdir(), "ss-ws-routes-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-ws-routes-"));
   await mkdir(join(root, "analysis"));
   await writeFile(join(root, "analysis", "notes.md"), "# notes\n");
   await writeFile(join(root, "big.bin"), "x".repeat(64));
@@ -109,7 +109,7 @@ test("GET /api/workspace/file streams inline content with its mime type", async 
 });
 
 test("GET /api/workspace/file streams a non-ASCII filename without erroring", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ss-ws-routes-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-ws-routes-"));
   await mkdir(join(root, "reports"));
   const zh = "软骨素生物合成进展.md";
   await writeFile(join(root, "reports", zh), "# progress\n");
@@ -185,7 +185,7 @@ const WATER_PDB = [
 ].join("\n");
 
 test("POST /api/workspace/measurements computes a distance, 400 on a bad request", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ss-ws-measure-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-ws-measure-"));
   await writeFile(join(root, "water.pdb"), WATER_PDB);
   try {
     await withServer(wsFor(root), async (base) => {

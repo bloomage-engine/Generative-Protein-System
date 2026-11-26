@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Message, MessagePart } from "@science-studio/transport";
+import type { Message, MessagePart } from "@gps/transport";
 import {
   attachHistoryToolResult,
   formatResultText,

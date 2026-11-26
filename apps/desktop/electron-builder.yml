@@ -1,6 +1,6 @@
-appId: ss.hx-engine.com
-productName: Science Studio
-executableName: science-studio
+appId: gps.hx-engine.com
+productName: Generative Protein System
+executableName: gps
 npmRebuild: false
 directories:
   output: release
@@ -33,12 +33,12 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: science-studio_${version}_${arch}.${ext}
+  artifactName: gps_${version}_${arch}.${ext}
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
 deb:
-  packageName: science-studio
+  packageName: gps
   maintainer: zhonghua-wang <zhonghua.wang@outlook.com>
-  artifactName: science-studio_${version}_${arch}.${ext}
+  artifactName: gps_${version}_${arch}.${ext}

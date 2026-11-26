@@ -11,10 +11,10 @@ import {
   executeMolqlTool,
   fetchInteractions,
   fetchMeasurements,
-} from "@science-studio/molql-shared";
+} from "@gps/molql-shared";
 
 export const SKILL_DESCRIPTION =
-  "Translate natural-language molecular structure queries into MolQL (Mol* mol-script) selections for the Science Studio structure viewer.";
+  "Translate natural-language molecular structure queries into MolQL (Mol* mol-script) selections for the Generative Protein System structure viewer.";
 
 const SKILL_NAME = "molql";
 

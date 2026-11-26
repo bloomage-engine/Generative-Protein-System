@@ -1,7 +1,7 @@
 # transport-dsh · assistant-ui example
 
 A minimal, runnable example showing a **DeepSeek Harness** runtime — driven by
-**`@science-studio/transport-dsh`** — rendered in **assistant-ui**. It is the
+**`@gps/transport-dsh`** — rendered in **assistant-ui**. It is the
 shortest end-to-end path through the platform's three layers, with no protocol
 code of its own:
 
@@ -31,7 +31,7 @@ code of its own:
   wire contract (reconcile-first history snapshots, client-safe op types,
   `[DONE]` termination, the standing watch endpoint).
 - **Client** — [`src/`](./src/) is a Vite + React app on assistant-ui core
-  primitives (no Tailwind/shadcn). It consumes `@science-studio/transport-client`
+  primitives (no Tailwind/shadcn). It consumes `@gps/transport-client`
   (the `useTransport` hook: transport runtime, message converter, and the mount
   probe that loads the session's history on first paint) plus the standing
   `useTransportWatch` consumer. There is no runtime slash-command menu here:
@@ -77,7 +77,7 @@ code of its own:
   sdk profile mounts (session log, web search). It is unrelated to which model
   answers the session.
 - `npm install` at the repo root, then `npm run build` (the example imports
-  `@science-studio/transport-dsh` and `@science-studio/transport-service`
+  `@gps/transport-dsh` and `@gps/transport-service`
   from their dist builds).
 
 ## Model route
@@ -126,7 +126,7 @@ overrides:
 
 ```bash
 export DSH_HOME=~/.dsh           # durable dsh session log root (default ~/.dsh)
-export DSH_TRANSCRIPT_DIR=…      # Science Studio transcript mirror
+export DSH_TRANSCRIPT_DIR=…      # Generative Protein System transcript mirror
 export DSH_PROVIDER=deepseek-official DSH_MODEL=deepseek-v4-flash
 npm run dev
 ```
@@ -162,7 +162,7 @@ Against a live dsh runtime (reachable model route + key), verify in the browser:
 
 ```bash
 # from the repo root (after npm run build)
-npm run test -w @science-studio/transport-dsh-example
+npm run test -w @gps/transport-dsh-example
 ```
 
 Two cases, all over real HTTP + SSE on an ephemeral port, against a scripted

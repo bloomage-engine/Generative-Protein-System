@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { McpServerSettings } from "@science-studio/transport";
+import type { McpServerSettings } from "@gps/transport";
 import {
   normalizeServer,
   parseMcpSettings,

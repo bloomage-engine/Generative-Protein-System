@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { StateDelta } from "@science-studio/transport";
+import type { StateDelta } from "@gps/transport";
 import { LiveAssistantMessage } from "../src/assistant-stream.js";
 
 function collect(): { emit: (delta: StateDelta) => void; deltas: StateDelta[] } {

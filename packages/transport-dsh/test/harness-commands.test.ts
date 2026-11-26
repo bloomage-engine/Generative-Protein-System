@@ -168,7 +168,7 @@ test("a cold session's harness command rides the prompt that creates its agent",
     assert.deepEqual(client.prompts, ["/compact"], "the line IS the session's first prompt");
     assert.ok(
       client.sessionIds[0]!.startsWith("sess-1-"),
-      "and it lands on a harness session minted for THIS Science Studio session",
+      "and it lands on a harness session minted for THIS Generative Protein System session",
     );
     assert.deepEqual(bridge.calls, [], "with no agent yet there is nothing to aim the bridge at");
     assert.deepEqual(replies(deltas), ["Condensed 12 items"], "the harness's own command/done is the reply");

@@ -5,8 +5,8 @@ import type {
   MessagePart,
   SessionState,
   StateDelta,
-} from "@science-studio/transport";
-import { foldState, sameMessages } from "@science-studio/transport";
+} from "@gps/transport";
+import { foldState, sameMessages } from "@gps/transport";
 
 /** Serialize a single state op into the assistant-transport SSE frame. */
 export function encodeOp(op: WireOp): string {
@@ -67,7 +67,7 @@ function messagesToMap(messages: Message[]): Record<string, Message> {
  * The assistant-ui accumulator on the client rejects every op type except
  * `set` and `append-text`, so purely incremental deltas must be materialized
  * into client-safe ops here. The delta semantics themselves live in ONE module
- * — `foldState` in @science-studio/transport — shared with the adapters' own
+ * — `foldState` in @gps/transport — shared with the adapters' own
  * canonical transcript folds. This builder keeps a `FoldState` mirror (seeded
  * from the state the client claimed) and formats each fold's `DeltaEffect`s
  * into ops, so the mirror is a mechanical projection of the delta stream.

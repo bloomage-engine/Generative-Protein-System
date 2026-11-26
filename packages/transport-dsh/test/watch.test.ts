@@ -4,8 +4,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
-import type { SessionState, StateDelta, WatchSnapshot } from "@science-studio/transport";
-import { sessionState } from "@science-studio/contract-tests";
+import type { SessionState, StateDelta, WatchSnapshot } from "@gps/transport";
+import { sessionState } from "@gps/contract-tests";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
 import { FakeRecordStore } from "./command-case.js";
 

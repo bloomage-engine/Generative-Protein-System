@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchProjectsOverview, fetchProjectSessions, fetchSettings, fetchWorktrees } from "@science-studio/transport-client";
+import { fetchProjectsOverview, fetchProjectSessions, fetchSettings, fetchWorktrees } from "@gps/transport-client";
 import { readScopeMemory, resolveProject, resolveSession, resolveWorktree } from "@/lib/scope-memory";
 import { SETTINGS_API } from "./settings-dialog";
 import { StudioHost } from "./host";

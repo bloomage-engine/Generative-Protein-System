@@ -42,14 +42,14 @@ test("scp carries the SAME option set (a cold master must not go interactive)", 
 });
 
 test("remotePath expands the leading tilde to $HOME and quotes the rest", () => {
-  assert.equal(remotePath("~/science-studio/p1"), `"$HOME"/'science-studio/p1'`);
+  assert.equal(remotePath("~/gps/p1"), `"$HOME"/'gps/p1'`);
   assert.equal(remotePath("~"), '"$HOME"');
   assert.equal(remotePath("/scratch/a"), "'/scratch/a'");
   assert.equal(remotePath("~/it's/fun"), `"$HOME"/'it'\\''s/fun'`);
 });
 
 test("the real spawner works against a not-yet-existing controlDir (the 500 regression)", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ss-hpc-runner-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-hpc-runner-"));
   try {
     const shim = join(root, "ssh-shim.sh");
     await writeFile(shim, "#!/bin/sh\necho \"$@\"\n");
@@ -57,7 +57,7 @@ test("the real spawner works against a not-yet-existing controlDir (the 500 regr
     const ssh = await createSshRunner({
       sshBin: shim,
       scpBin: shim,
-      controlDir: join(root, "science-studio", "hpc"), // deliberately absent
+      controlDir: join(root, "gps", "hpc"), // deliberately absent
     });
     const res = await ssh.run(ENDPOINT, "uname -srm");
     assert.equal(res.code, 0);
@@ -65,7 +65,7 @@ test("the real spawner works against a not-yet-existing controlDir (the 500 regr
     assert.match(res.stdout, /alice@hpc\.example/);
     assert.match(res.stdout, /uname -srm/);
     // The base dir now exists and holds the per-process master dir.
-    assert.match(res.stdout, new RegExp(`ControlPath=${join(root, "science-studio", "hpc")}`));
+    assert.match(res.stdout, new RegExp(`ControlPath=${join(root, "gps", "hpc")}`));
     const copy = await ssh.copyTo(ENDPOINT, shim, "~/w/x.txt");
     assert.equal(copy.code, 0);
     assert.match(copy.stdout, /BatchMode=yes/); // scp carries the same -o set

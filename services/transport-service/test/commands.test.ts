@@ -8,7 +8,7 @@ import {
   type RuntimeAdapter,
   type SessionState,
   type TransportCommand,
-} from "@science-studio/transport";
+} from "@gps/transport";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 

@@ -14,8 +14,8 @@ import {
   uploadWorkspaceFile,
   workspaceFileUrl,
   type ClientScope,
-} from "@science-studio/transport-client";
-import { isCronLogPath } from "@science-studio/cron";
+} from "@gps/transport-client";
+import { isCronLogPath } from "@gps/cron";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isHpcJobTab, isSubagentTab, isTextEditable, kindFor, languageFor, subagentTabChildId } from "./file-utils";

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { HpcEndpointSettings, RuntimeSettingsView } from "@science-studio/transport";
+import type { HpcEndpointSettings, RuntimeSettingsView } from "@gps/transport";
 import { loadSettings, mergeSettings, parseSettingsPatch, viewOf } from "../src/settings.js";
 import { emptySettings } from "../src/settings.js";
 
@@ -42,7 +42,7 @@ test("null clears every endpoint; absent keeps the list", () => {
 });
 
 test("a hand-edited settings file with a bad endpoint loses the list, not the file", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-hpc-settings-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-hpc-settings-"));
   try {
     const path = join(dir, "settings.json");
     await writeFile(

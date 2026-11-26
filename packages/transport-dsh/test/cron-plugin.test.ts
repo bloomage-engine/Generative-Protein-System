@@ -11,7 +11,7 @@ import {
   type CronPromptSection,
   type CronToolDefinition,
 } from "../src/cron-plugin.js";
-import { parseTaskDoc, serializeTaskDoc } from "@science-studio/cron";
+import { parseTaskDoc, serializeTaskDoc } from "@gps/cron";
 
 const META = { id: "drought-screen", name: "抗旱基因筛选", createdAt: "2026-09-01T00:00:00.000Z" };
 
@@ -51,7 +51,7 @@ test("a project config registers the four tools, /cron and the prompt", async ()
       "schedule_set_enabled",
     ]);
     assert.deepEqual(host.commands().map((c) => c.name), ["cron"]);
-    assert.deepEqual(host.sections().map((s) => s.name), ["science-studio-cron"]);
+    assert.deepEqual(host.sections().map((s) => s.name), ["gps-cron"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -68,7 +68,7 @@ test("schedule_create writes a parseable task file; list and delete see it", asy
       {},
     );
     assert.match(String(created), /daily-digest/);
-    const path = join(root, ".science-studio", "cron", "daily-digest.md");
+    const path = join(root, ".gps", "cron", "daily-digest.md");
     assert.ok(existsSync(path));
     const parsed = parseTaskDoc("daily-digest", readFileSync(path, "utf8"));
     assert.ok("task" in parsed);
@@ -92,7 +92,7 @@ test("schedule_create rejects an invalid schedule", async () => {
       {},
     );
     assert.match(String(outcome), /schedule/i);
-    assert.equal(existsSync(join(root, ".science-studio")), false);
+    assert.equal(existsSync(join(root, ".gps")), false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

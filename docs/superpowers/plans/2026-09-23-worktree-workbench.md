@@ -6,7 +6,7 @@
 
 **Architecture:** The scope store gains `activeWorktreeId`; `setScope` moves store, memory and URL together. The `StudioPage` boot resolves the worktree against the Project's worktree list (claim → remembered → `main`). The active worktree's workspace is what the file tree and previews read; `SessionView` re-keys on `(projectId, worktreeId, sessionId)`.
 
-**Tech Stack:** Next.js App Router, zustand, React, Tailwind/shadcn, assistant-ui client (`@science-studio/transport-client`), `node:test` for pure modules and the browser e2e suite.
+**Tech Stack:** Next.js App Router, zustand, React, Tailwind/shadcn, assistant-ui client (`@gps/transport-client`), `node:test` for pure modules and the browser e2e suite.
 
 **Spec:** `docs/superpowers/specs/2026-09-23-dsh-worktree-plugin-design.md`
 
@@ -20,7 +20,7 @@
 - **Open tabs stay mounted;** a worktree switch clears them (same as a Project switch).
 - **`main` is protected in the UI:** no rename/archive/delete affordance on its row.
 - **All requests relay same-origin through the app's `/api` proxies.**
-- **Final gate:** `npm run test:e2e -w @science-studio/web` and `npm run build` green.
+- **Final gate:** `npm run test:e2e -w @gps/web` and `npm run build` green.
 
 ## Review Focus
 
@@ -121,7 +121,7 @@ Create `packages/transport-client/src/worktrees.ts` mirroring `projects.ts`'s `r
 
 - [ ] **Step 4: Run the test and the package build**
 
-Run: `npx tsx --test packages/transport-client/test/worktrees.test.ts && npm run build -w @science-studio/transport-client`
+Run: `npx tsx --test packages/transport-client/test/worktrees.test.ts && npm run build -w @gps/transport-client`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -181,7 +181,7 @@ In `apps/web/lib/scope-memory.ts`:
 - Add `worktreeId` to `Scope`.
 - Add `worktrees: Record<string, string>` to `ScopeMemory` (PER PROJECT, like `sessions` — a global `lastWorktreeId` would let a Project switch adopt another Project's same-named checkout); update `parseScopeMemory` (default `{}`), `rememberScope` (set `worktrees[projectId]` when the scope names a worktree), `pruneScopeMemory` (drop entries whose Project is gone).
 - Key `sessions` by `${projectId}\u0000${worktreeId}`; update `writeSession`/`resolveSession` to take the worktreeId and key accordingly.
-- Define `export const DEFAULT_WORKTREE_ID = "main";` LOCALLY in scope-memory.ts. This module must stay React-free and artifact-independent: keep the `@science-studio/transport-client` import TYPE-ONLY (it erases under Node type stripping), and do NOT value-import the client package — its runtime entry pulls React/assistant-ui. A local constant (with the comment that the value mirrors the record/client constant) keeps `node --test apps/web/test/scope-memory.test.mjs` runnable without a built `dist`.
+- Define `export const DEFAULT_WORKTREE_ID = "main";` LOCALLY in scope-memory.ts. This module must stay React-free and artifact-independent: keep the `@gps/transport-client` import TYPE-ONLY (it erases under Node type stripping), and do NOT value-import the client package — its runtime entry pulls React/assistant-ui. A local constant (with the comment that the value mirrors the record/client constant) keeps `node --test apps/web/test/scope-memory.test.mjs` runnable without a built `dist`.
 - Add `resolveWorktree`:
 
 ```ts
@@ -276,7 +276,7 @@ In `packages/transport-client/src/workspace.tsx`:
 
 - [ ] **Step 4: Run the test and build**
 
-Run: `npx tsx --test packages/transport-client/test/workspace-worktree.test.ts && npm run build -w @science-studio/transport-client`
+Run: `npx tsx --test packages/transport-client/test/workspace-worktree.test.ts && npm run build -w @gps/transport-client`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -348,7 +348,7 @@ git commit -m "feat(client): transport scope carries the worktree"
 
 In `apps/web/store/studio-store.ts`:
 - Add `worktrees: Worktree[] | null` (null = not loaded) and `activeWorktreeId: string | null` (initial null).
-- Import `Worktree` from `@science-studio/transport-client`.
+- Import `Worktree` from `@gps/transport-client`.
 - Add `setWorktrees`, `upsertWorktree`, `removeWorktree`.
 - Change `setScope` to destructure `{ projectId, worktreeId, sessionId }` and treat a worktree change like a project change: when `state.activeWorktreeId !== worktreeId`, clear `tabs`/`activeTabPath`; when the project changes, also reset `worktrees` to `null` and `sessions` as today.
 - `removeWorktree(id)`: drop it from `worktrees`; if it was active, the CALLER re-resolves scope (the store never invents a session), matching `removeProject`'s contract.
@@ -514,7 +514,7 @@ Switch worktrees (not only Projects) repeatedly and assert a same-origin request
 
 - [ ] **Step 4: Run the e2e suite**
 
-Run: `npm run build -w @science-studio/transport-client && npm run test:e2e -w @science-studio/web`
+Run: `npm run build -w @gps/transport-client && npm run test:e2e -w @gps/web`
 Expected: PASS (Chromium auto-detected; the suite skips browser tests without one — ensure one is present).
 
 - [ ] **Step 5: Commit**

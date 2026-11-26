@@ -10,10 +10,10 @@
 
 ## Global Constraints
 
-- **Dependency direction**: `packages/record` must stay a LEAF (no imports of `packages/transport` or `@science-studio/transport/*`). `packages/transport` → `packages/record` is legal (already in use for `Run`/`Id`). `packages/transport-dsh` → `packages/transport` is legal (already in use).
+- **Dependency direction**: `packages/record` must stay a LEAF (no imports of `packages/transport` or `@gps/transport/*`). `packages/transport` → `packages/record` is legal (already in use for `Run`/`Id`). `packages/transport-dsh` → `packages/transport` is legal (already in use).
 - **Opaque transcript shape**: the record package stores the transcript's `messages` as `unknown` (JSON-safe) — it does NOT import the runtime's `Message[]` type (cycle prevention). The runtime adapter (transport-dsh) casts to `Message[]` at read time (safe: it wrote the blob).
 - **Stable subagent id**: the dsh adapter mints one (`"subagent-" + randomUUID()`) at subagent-start; the record owns storage (doesn't mint).
-- **No new env vars**: `DSH_TRANSCRIPT_DIR` and its default (`/tmp/science-studio/transcripts`) retire. The record store's JSONL path (`RECORD_STORE_PATH`) is the sole config point.
+- **No new env vars**: `DSH_TRANSCRIPT_DIR` and its default (`/tmp/gps/transcripts`) retire. The record store's JSONL path (`RECORD_STORE_PATH`) is the sole config point.
 - **Scope bar (v1, from docs/adr/0019)**: restart-survival of SETTLED sessions + subagents. NOT mid-turn crash-resume, NOT append-only event log, NOT single-writer/flush.
 - **Test suite**: every task ends with a green `npm test` for the affected workspace(s) + a commit.
 - **Doc language**: all in-repo docs (ADRs, design, plans, CONTEXT.md) are written in **English**.
@@ -58,7 +58,7 @@
 
 **Interfaces:**
 - Consumes: the existing `Id` type (record).
-- Produces: `PersistedTranscript`, `Subagent` (exported from `@science-studio/record`), the 5 `RecordStore` methods (below).
+- Produces: `PersistedTranscript`, `Subagent` (exported from `@gps/record`), the 5 `RecordStore` methods (below).
 
 - [ ] **Step 1: Write the failing test (`packages/record/test/memory-transcript-subagent.test.ts`)** — the in-memory impl must round-trip both objects.
 
@@ -352,8 +352,8 @@ git commit -m "record: durable transcript + subagent (JSONL impl, sibling dirs)"
 ```ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createInMemoryRecordStore } from "@science-studio/record";
-import { createJsonlRecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore } from "@gps/record";
+import { createJsonlRecordStore } from "@gps/record";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -380,7 +380,7 @@ Expected: `Cannot find module .../transcript-subagent.js`
 
 ```ts
 import assert from "node:assert/strict";
-import type { RecordStore } from "@science-studio/record";
+import type { RecordStore } from "@gps/record";
 
 export async function testTranscriptAndSubagent(store: RecordStore): Promise<void> {
   // Transcript: round-trip + stability + isolation by key
@@ -444,15 +444,15 @@ git commit -m "contract-tests: transcript + subagent conformance suite"
 - Test: `packages/transport/test/record-store-like-shape.test.ts` (**create**)
 
 **Interfaces:**
-- Consumes: `PersistedTranscript`, `Subagent`, `Id` (all from `@science-studio/record`).
+- Consumes: `PersistedTranscript`, `Subagent`, `Id` (all from `@gps/record`).
 - Produces: the 5 new `RecordStoreLike` methods (reusing the record's types) — the dsh adapter + service consume them.
 
 - [ ] **Step 1: Write the failing test (`packages/transport/test/record-store-like-shape.test.ts`)** — an empty `RecordStoreLike` that satisfies the NEW interface must type-check.
 
 ```ts
 import { test } from "node:test";
-import type { RecordStoreLike, Id } from "@science-studio/transport";
-import type { PersistedTranscript, Subagent } from "@science-studio/record";
+import type { RecordStoreLike, Id } from "@gps/transport";
+import type { PersistedTranscript, Subagent } from "@gps/record";
 
 test("empty RecordStoreLike type-checks against the new contract", async () => {
   const impl: RecordStoreLike = {
@@ -489,10 +489,10 @@ export interface RecordStoreLike {
   listSubagents(parentSessionId: Id): Promise<Subagent[]>;
 }
 ```
-And import the record types (line-top, near the existing `import { ... Run ... } from "@science-studio/record"`):
+And import the record types (line-top, near the existing `import { ... Run ... } from "@gps/record"`):
 
 ```ts
-import type { Id, Run, PersistedTranscript, Subagent } from "@science-studio/record";
+import type { Id, Run, PersistedTranscript, Subagent } from "@gps/record";
 ```
 (adjust the existing `import type { Id, Run, ... }` — it currently pulls `Id`/`Run`/`RunStatus`; add `PersistedTranscript` and `Subagent`).
 
@@ -549,9 +549,9 @@ git commit -m "transport: extend RecordStoreLike with transcript + subagent (5 m
 ```ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createInMemoryRecordStore } from "@science-studio/record";
+import { createInMemoryRecordStore } from "@gps/record";
 import { SubagentRegistry } from "../dist/subagents.js";
-import type { RecordStoreLike } from "@science-studio/transport";
+import type { RecordStoreLike } from "@gps/transport";
 
 test("dsh registry: stable id + parent lineage + transcript capture — all via the record store", async () => {
   const record = createInMemoryRecordStore() as unknown as RecordStoreLike & { addRun(run: any): Promise<void> };
@@ -589,7 +589,7 @@ Expected: several errors (registry constructor signature + new methods)
 
 Key structural changes (keep everything existing around `SubagentRegistry` — the `settleStatus`, `isLedgerEntry` checks, `restoreAll`, `resolveKey`, `persist` — but re-shape the storage calls):
 
-- Replace the `SubagentLedgerStore` import (line 3, `"./subagents.js"` self-reference for the `SubagentLedgerEntry` + `SubagentLedgerStore` types) with a `RecordStoreLike` import (from `@science-studio/transport`) + the two record types (`Subagent`, `PersistedTranscript`).
+- Replace the `SubagentLedgerStore` import (line 3, `"./subagents.js"` self-reference for the `SubagentLedgerEntry` + `SubagentLedgerStore` types) with a `RecordStoreLike` import (from `@gps/transport`) + the two record types (`Subagent`, `PersistedTranscript`).
 - In `SubagentRegistry`:
   - Add a `private stable = new Map<string, string>()` (harness child id → stable subagent id).
   - Add a `private stableFor = new Map<string, string>()` (stable → harness child id; for `list`'s resolution and `noteTranscript`'s target).
@@ -726,8 +726,8 @@ And the top-of-file imports (replace `SubagentLedgerStore` + `SubagentLedgerEntr
 
 ```ts
 import { randomUUID } from "node:crypto";
-import type { Subagent, PersistedTranscript } from "@science-studio/record";
-import type { RecordStoreLike, SubagentRun } from "@science-studio/transport";
+import type { Subagent, PersistedTranscript } from "@gps/record";
+import type { RecordStoreLike, SubagentRun } from "@gps/transport";
 ```
 
 - [ ] **Step 4: Run the test to verify PASS**
@@ -758,8 +758,8 @@ git commit -m "transport-dsh: subagent registry → record store (stable id, par
 
 ```ts
 import { test } from "node:test";
-import { createInMemoryRecordStore } from "@science-studio/record";
-import type { RecordStoreLike } from "@science-studio/transport";
+import { createInMemoryRecordStore } from "@gps/record";
+import type { RecordStoreLike } from "@gps/transport";
 
 test("behavior.prepare loads the transcript from the record; beforePersist saves to it", async () => {
   // This is the direct regression for the 炭素素 bug: after a "restart,"
@@ -799,7 +799,7 @@ Expected: `Property 'recordStore' does not exist on type 'DshBehaviorDeps'`
 At the top:
 ```ts
 // import type { TranscriptMirror } from "./mirror.js";   // removed — now:
-import type { RecordStoreLike } from "@science-studio/transport";
+import type { RecordStoreLike } from "@gps/transport";
 ```
 
 In `DshBehaviorDeps` (line 65):
@@ -886,7 +886,7 @@ import { join } from "node:path";
 test("adapter: a settled turn's transcript lands in the record store (not a mirror file)", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-rt-"));
   // 1. Construct an in-memory record store (the service would use JSONL here).
-  const { createInMemoryRecordStore } = await import("@science-studio/record");
+  const { createInMemoryRecordStore } = await import("@gps/record");
   const record = createInMemoryRecordStore();
   // 2. Construct the dsh adapter, passing the record store through `opts.recordStore`.
   //    (The existing adapter test helpers in packages/transport-dsh/test do this;
@@ -952,7 +952,7 @@ Lines 360-371 (the `createDshBehavior` call — swap `mirror: this.mirror` → `
 
 - [ ] **Step 4: Run the existing dsh adapter tests (expect: they all PASS — the mirror they exercise has moved to the record store)**
 
-Run: `npm test -w @science-studio/transport-dsh`
+Run: `npm test -w @gps/transport-dsh`
 Expected: all existing dsh adapter tests still pass (they drive through `opts.recordStore`), PLUS the new integration test from Step 1 passes.
 
 - [ ] **Step 5: Commit**
@@ -997,7 +997,7 @@ Edit `packages/transport-dsh/src/index.ts` — remove the `TranscriptMirror` re-
 
 - [ ] **Step 3: Run the full dsh test suite (expect: PASS)**
 
-Run: `npm test -w @science-studio/transport-dsh`
+Run: `npm test -w @gps/transport-dsh`
 Expected: PASS (the behavior tests now reference the record store; the mirror tests should have been deleted or adapted in Task 6-7).
 
 - [ ] **Step 4: Run the full root build (expected: type-check passes — no dangling imports)**
@@ -1059,7 +1059,7 @@ git commit -m "transport-dsh: restart regression test (the 炭素素 case)"
 ## Task 10 — migration script + docs cross-reference (optional, single-user)
 
 **Files:**
-- Create: `scripts/migrate-mirror-to-record.ts` — a one-time migration that copies existing `DSH_TRANSCRIPT_DIR`/`/tmp/science-studio/transcripts/*.json` into the record's `transcripts/` dir, reconstructing from the record's `Run` rows where no mirror file exists.
+- Create: `scripts/migrate-mirror-to-record.ts` — a one-time migration that copies existing `DSH_TRANSCRIPT_DIR`/`/tmp/gps/transcripts/*.json` into the record's `transcripts/` dir, reconstructing from the record's `Run` rows where no mirror file exists.
 - Modify: `docs/adr/0016-subagent-activity-is-an-optional-adapter-surface.md` (addendum already added — this task just re-checks cross-references).
 
 **Interfaces:**
@@ -1072,8 +1072,8 @@ git commit -m "transport-dsh: restart regression test (the 炭素素 case)"
 # One-time, for single-user installs upgrading from the mirror era:
 #   node scripts/migrate-mirror-to-record.ts [--mirror-dir <dir>] [--record-path <path>]
 # Defaults:
-#   --mirror-dir  $(DSH_TRANSCRIPT_DIR || /tmp/science-studio/transcripts)
-#   --record-path $(RECORD_STORE_PATH || ~/.local/share/science-studio/record.jsonl)
+#   --mirror-dir  $(DSH_TRANSCRIPT_DIR || /tmp/gps/transcripts)
+#   --record-path $(RECORD_STORE_PATH || ~/.local/share/gps/record.jsonl)
 # Copy each <sessionId>.json from mirror-dir into dirname(record-path)/transcripts/,
 # but only if that file is ABSENT (don't clobber a new record).
 # For sessions whose mirror file is also missing, reconstruct from the record's Runs
@@ -1100,4 +1100,4 @@ git commit -m "scripts: one-time mirror→record migration"
 
 - **Spec coverage**: every requirement in `docs/design/session-subagent-persistence.md` maps to a task: types + API (T1-2), conformance (T3), seam extension (T4), dsh behavior swap (T6), dsh adapter wiring (T7), subagent identity (T5), mirror/ledger deletion (T8), the direct regression (T9), migration (T10).
 - **Placeholder scan**: no "TBD", no "implement later." Every code block is real. The Task 5 + 7 test skeletons are annotated with a reference to the existing scripted harness — the engineer follows the existing suite to drive the harness.
-- **Type consistency**: the two record types (`PersistedTranscript`, `Subagent`) + the 5 method names are used verbatim across Tasks 1, 2, 3, 4, 5, 6, 7. The dsh adapter's `recordStore` field (line 137, already present), the behavior's `recordStore` dep, and the registry's `store` parameter all reference the SAME `RecordStoreLike` from `@science-studio/transport`.
+- **Type consistency**: the two record types (`PersistedTranscript`, `Subagent`) + the 5 method names are used verbatim across Tasks 1, 2, 3, 4, 5, 6, 7. The dsh adapter's `recordStore` field (line 137, already present), the behavior's `recordStore` dep, and the registry's `store` parameter all reference the SAME `RecordStoreLike` from `@gps/transport`.

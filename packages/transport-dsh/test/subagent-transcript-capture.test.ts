@@ -5,10 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
 import type { HarnessNotification } from "@deepseek-ai/dsh-sdk-client";
-import type { SessionState, StateDelta } from "@science-studio/transport";
-import { sessionState } from "@science-studio/contract-tests";
-import type { RecordStoreLike } from "@science-studio/transport";
-import { createInMemoryRecordStore } from "@science-studio/record";
+import type { SessionState, StateDelta } from "@gps/transport";
+import { sessionState } from "@gps/contract-tests";
+import type { RecordStoreLike } from "@gps/transport";
+import { createInMemoryRecordStore } from "@gps/record";
 import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
 import { projectKey } from "../src/child-transcript.js";
 

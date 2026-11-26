@@ -12,7 +12,7 @@
  * acknowledges), so the only way the text can appear is the optimistic path.
  * If the converter regresses to ignoring `pendingCommands`, this goes red.
  *
- * Prereq: `npm run build -w @science-studio/transport-client` (the web app
+ * Prereq: `npm run build -w @gps/transport-client` (the web app
  * imports the client package from its dist build).
  *
  * Needs a Chromium. Resolution order: $PLAYWRIGHT_CHROMIUM_EXECUTABLE, a

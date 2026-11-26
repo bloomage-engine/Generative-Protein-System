@@ -1,4 +1,4 @@
-# Science Studio — System Architecture
+# Generative Protein System — System Architecture
 
 A research-agent platform for computational life-science R&D. Researchers and
 managers run and observe agent-driven work with full traceability: every agent
@@ -10,13 +10,13 @@ This document captures the agreed framework. The domain vocabulary lives in
 ## 1. Positioning
 
 - **Integrated platform (C)**: agent execution + a research-record layer. The
-  management layer is thin; the agent layer is thick. Science Studio's
+  management layer is thin; the agent layer is thick. Generative Protein System's
   differentiator is *experiments reproducible, conclusions auditable*.
 - **Domain (X)**: computational / in-silico work first — analysis, modeling,
   literature, hypothesis generation. Wet-lab / instrument integration is
   deferred. Managerial governance is a thin cross-cutting layer.
 - **Interaction**: conversation-first. Every Researcher turn is captured as a
-  `Run` and persisted by a Science Studio-owned record layer.
+  `Run` and persisted by a Generative Protein System-owned record layer.
 - **Units**: `Run` (one Agent execution in a Session) is the atomic traceable unit.
   A `Project` owns its Sessions and shares what they produce, so a Project's record
   of results is the Runs of all of them (`docs/adr/0006`, `0007`).
@@ -31,7 +31,7 @@ packages** (no cycles); **a runtime's launch surface belongs to its own package*
 vocabulary is `Project → Session → Run`** (`docs/adr/0007`).
 
 ```
-science-studio/
+gps/
 ├── apps/
 │   └── web/                            Next.js 15 frontend (assistant-ui Thread + Files panel, :3000)
 │       ├── app/page.tsx                Session (runtime owner) + WorkspaceShell (UI state)
@@ -100,7 +100,7 @@ pinned by `packages/transport/test/seams.test.ts`.
 ```
 
 The frontend only ever speaks assistant-ui's assistant-transport protocol; the
-converter maps Science Studio's normalized state to assistant-ui messages. The
+converter maps Generative Protein System's normalized state to assistant-ui messages. The
 UI is never rewritten when the runtime swaps.
 
 All three streaming hops above are relayed by `apps/web/lib/stream-proxy.ts`,
@@ -172,9 +172,9 @@ surface (`packages/transport/src/runtime.ts`):
 
 The **composition root** (`services/transport-service/src/composition.ts`) loads
 runtime modules DYNAMICALLY by specifier, so the service statically imports NO
-runtime package. The default module list is DATA — `scienceStudio.runtimeModules`
-in the service's own `package.json` — and `SS_RUNTIME_MODULES` overrides it
-entirely. `SS_ENTERPRISE_MODULE` swaps in the private multi-user backend; unset
+runtime package. The default module list is DATA — `gps.runtimeModules`
+in the service's own `package.json` — and `GPS_RUNTIME_MODULES` overrides it
+entirely. `GPS_ENTERPRISE_MODULE` swaps in the private multi-user backend; unset
 means the complete single-user product.
 
 ### Shared adapter kit
@@ -216,7 +216,7 @@ thread so an older in-flight snapshot never clobbers a newer watch push.
 
 ### The client boundary
 
-`@science-studio/transport-client` owns the assistant-ui boundary as ONE session
+`@gps/transport-client` owns the assistant-ui boundary as ONE session
 module: `useTransport` (probe + watch + guarded import), the command catalog, the
 workspace hooks, and the slash-menu / reasoning-trace helpers. The web app and
 both examples use it; each app owns only its Thread UI/skin.
@@ -291,7 +291,7 @@ treat command rows exactly like any other rows.
 
 ## 5. Record layer
 
-Science Studio owns the research record; it is the source of truth, not any
+Generative Protein System owns the research record; it is the source of truth, not any
 runtime (`docs/adr/0002`). The v1 record layer is **`Project → Session → Run`**
 (`docs/adr/0007`):
 
@@ -309,12 +309,12 @@ runtime (`docs/adr/0002`). The v1 record layer is **`Project → Session → Run
 agreed but **deferred** — no entity, no API, no rendering — until their real
 producer or reader is designed (CONTEXT.md, "Deferred vocabulary").
 
-`RecordStore` (`@science-studio/record`) is the record-layer seam: the interface
+`RecordStore` (`@gps/record`) is the record-layer seam: the interface
 an out-of-tree implementer (the private enterprise module) supplies, alongside a
 dependency-free JSONL store the single-user service uses by default
 (`RECORD_STORE_PATH`; `RECORD_STORE=memory` opts out).
 
-**The streamed transport state is Science Studio's own normalized Session state**
+**The streamed transport state is Generative Protein System's own normalized Session state**
 (`SessionState`: `sessionId`/`projectId`/`agentId`), not a runtime transcript. The
 frontend `converter` reads that normalized state; runtime adapters translate
 runtime events (e.g. openclaw chat/agent frames) into updates to it. This keeps

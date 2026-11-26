@@ -10,9 +10,9 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { McpServerSettings } from "@science-studio/transport";
+import type { McpServerSettings } from "@gps/transport";
 
-export const MCP_CONFIG_ENV = "SS_MCP_SECRET_CONFIG";
+export const MCP_CONFIG_ENV = "GPS_MCP_SECRET_CONFIG";
 
 /** The subset of `@deepseek-ai/dsh-mcp-client`'s config this deployment emits. */
 export interface DshMcpConfig {
@@ -66,7 +66,7 @@ export async function writeMcpPatch(opts: {
   const lines = ["- insert:"];
   for (let index = 0; index < configs.length; index += 1) {
     const expression = `JSON.parse(process.env.${MCP_CONFIG_ENV})[${index}]`;
-    lines.push(`    - id: science-studio-mcp-${index}`);
+    lines.push(`    - id: gps-mcp-${index}`);
     lines.push('      name: "@deepseek-ai/dsh-mcp-client"');
     lines.push(`      config: !!js ${JSON.stringify(expression)}`);
   }

@@ -10,8 +10,8 @@ import {
   NullWorkspace,
   type RuntimeAdapter,
   type Workspace,
-} from "@science-studio/transport";
-import { FsWorkspace } from "@science-studio/workspace";
+} from "@gps/transport";
+import { FsWorkspace } from "@gps/workspace";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 
@@ -59,7 +59,7 @@ function del(base: string, path: string): Promise<Response> {
 
 /** A root with `analysis/notes.md` and `data.csv`. */
 async function makeFixture(): Promise<{ root: string; dispose: () => Promise<void> }> {
-  const root = await mkdtemp(join(tmpdir(), "ss-delete-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-delete-"));
   await mkdir(join(root, "analysis"));
   await writeFile(join(root, "analysis", "notes.md"), "# notes\n");
   await writeFile(join(root, "data.csv"), "a,b\n");

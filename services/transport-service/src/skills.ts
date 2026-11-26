@@ -13,7 +13,7 @@ import {
   WorkspaceUnavailableError,
   type SkillInstallInput,
   type SkillInvocationPolicy,
-} from "@science-studio/transport";
+} from "@gps/transport";
 
 /** Validate a skill-install body, returning the typed input or an error string. */
 export function parseSkillInstall(body: unknown): { input: SkillInstallInput } | { error: string } {

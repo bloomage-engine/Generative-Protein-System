@@ -20,7 +20,7 @@ import {
 const git = createGitRunner();
 
 async function tmp(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "ss-git-"));
+  return mkdtemp(join(tmpdir(), "gps-git-"));
 }
 
 test("ensureRepo initializes main, gitignores and commits, idempotently", async () => {
@@ -32,7 +32,7 @@ test("ensureRepo initializes main, gitignores and commits, idempotently", async 
     assert.equal(await currentBranch(git, dir), "main");
     const ignore = await readFile(join(dir, ".gitignore"), "utf8");
     assert.match(ignore, /\.worktrees\//);
-    assert.match(ignore, /\.science-studio\//);
+    assert.match(ignore, /\.gps\//);
     assert.equal(await ensureRepo(git, dir), false); // already a repo
   } finally {
     await rm(dir, { recursive: true, force: true });

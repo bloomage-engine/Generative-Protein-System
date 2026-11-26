@@ -14,7 +14,7 @@
  * inert without Project config.
  */
 
-export const name = "science-studio-worktree";
+export const name = "gps-worktree";
 export const inject = ["commands", "tools", "systemPrompt"];
 
 /** Same env + default as the other child plugins: the service the child talks to. */
@@ -121,7 +121,7 @@ async function callService(
     }
     return { ok: true, data };
   } catch (err) {
-    return { ok: false, error: `无法连接 Science Studio 服务（${err instanceof Error ? err.message : String(err)}）` };
+    return { ok: false, error: `无法连接 Generative Protein System 服务（${err instanceof Error ? err.message : String(err)}）` };
   }
 }
 
@@ -147,7 +147,7 @@ function isValidWorktreeId(id: string): boolean {
 export function apply(ctx: WorktreeHost, config: WorktreePluginConfig | undefined): void {
   const projectId = config?.project?.id;
   if (!projectId) return;
-  const service = (config?.service ?? process.env.SCIENCE_STUDIO_SERVICE_URL ?? DEFAULT_SERVICE).replace(/\/+$/, "");
+  const service = (config?.service ?? process.env.GPS_SERVICE_URL ?? DEFAULT_SERVICE).replace(/\/+$/, "");
   const current = config?.worktree;
   const currentId = current?.id;
 
@@ -167,7 +167,7 @@ export function apply(ctx: WorktreeHost, config: WorktreePluginConfig | undefine
   const createTool: WorktreeToolDefinition = {
     name: "worktree_create",
     description:
-      "为本项目创建一个新的 worktree（同一 git 仓库的独立 checkout，位于 .worktrees/ 下，拥有自己的一组会话）。创建后你自己的「工作目录不会改变」——新的 worktree 要由研究者在 Science Studio 界面上打开才能在其中工作。",
+      "为本项目创建一个新的 worktree（同一 git 仓库的独立 checkout，位于 .worktrees/ 下，拥有自己的一组会话）。创建后你自己的「工作目录不会改变」——新的 worktree 要由研究者在 Generative Protein System 界面上打开才能在其中工作。",
     parameters: {
       type: "object",
       properties: {
@@ -227,15 +227,15 @@ export function apply(ctx: WorktreeHost, config: WorktreePluginConfig | undefine
     ? [
         `你当前在 worktree「${current.name}」（分支 ${current.branch}），根路径 ${current.root}。`,
         "同一项目的其他 worktree 是同一 git 仓库的独立 checkout，位于 .worktrees/ 下，各自拥有一组会话。",
-        "你可以用 worktree_list / worktree_create / worktree_remove 查看与增删 worktree，但无法切换自己的工作目录——要换到别的 worktree，请在 Science Studio 界面上打开那个 worktree。",
+        "你可以用 worktree_list / worktree_create / worktree_remove 查看与增删 worktree，但无法切换自己的工作目录——要换到别的 worktree，请在 Generative Protein System 界面上打开那个 worktree。",
       ]
     : [
         "本项目用 git worktree 管理多个独立 checkout：主 worktree 为 main，其余位于 .worktrees/ 下，各自拥有一组会话。",
-        "你可以用 worktree_list / worktree_create / worktree_remove 查看与增删 worktree，但无法切换自己的工作目录——要换到别的 worktree，请在 Science Studio 界面上打开那个 worktree。",
+        "你可以用 worktree_list / worktree_create / worktree_remove 查看与增删 worktree，但无法切换自己的工作目录——要换到别的 worktree，请在 Generative Protein System 界面上打开那个 worktree。",
       ];
 
   const prompt: WorktreePromptSection = {
-    name: "science-studio-worktree",
+    name: "gps-worktree",
     order: 470,
     text: promptLines.join("\n"),
   };
@@ -284,7 +284,7 @@ export function apply(ctx: WorktreeHost, config: WorktreePluginConfig | undefine
   };
 
   try {
-    if (ctx.effect) ctx.effect(register, "science-studio-worktree");
+    if (ctx.effect) ctx.effect(register, "gps-worktree");
     else register();
   } catch (err) {
     warn("worktree plugin disabled", err);

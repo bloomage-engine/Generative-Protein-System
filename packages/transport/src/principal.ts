@@ -8,7 +8,7 @@
  *
  * Interface in the seam package; implementations may live out of tree.
  */
-import type { Id } from "@science-studio/record";
+import type { Id } from "@gps/record";
 
 export type Role = "researcher" | "manager";
 

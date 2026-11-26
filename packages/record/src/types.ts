@@ -107,7 +107,7 @@ export interface PersistedTranscript {
 /**
  * Where a Compute Job stands in its lifecycle (docs/adr/0024):
  * `submitted`/`pending`/`running` are non-terminal, `completed`/`failed`/
- * `cancelled` are terminal, `unknown` means Science Studio could not confirm
+ * `cancelled` are terminal, `unknown` means Generative Protein System could not confirm
  * the remote truth and keeps the last known state. The remote scheduler stays
  * the authority; this row is a reconciliation.
  */

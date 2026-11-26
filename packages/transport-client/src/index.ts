@@ -125,7 +125,7 @@ export type {
   RuntimeSettings,
   RuntimeSettingsView,
   RuntimeSettingsPatch,
-} from "@science-studio/transport";
+} from "@gps/transport";
 export {
   DEFAULT_MCP_API,
   McpRequestError,
@@ -156,7 +156,7 @@ export type {
   SkillInstallInput,
   SkillInvocationPolicy,
   SkillScope,
-} from "@science-studio/transport";
+} from "@gps/transport";
 export {
   DEFAULT_TRANSPORT_API,
   fetchSubagents,
@@ -212,6 +212,6 @@ export {
   type HpcProbeResult,
   type UseHpcJobsOptions,
 } from "./hpc.js";
-export type { ComputeJob, ComputeJobState } from "@science-studio/record";
+export type { ComputeJob, ComputeJobState } from "@gps/record";
 export { isOpenComputeJobState } from "./hpc.js";
-export type { HpcEndpointSettings, HpcSettings, HpcSettingsPatch } from "@science-studio/transport";
+export type { HpcEndpointSettings, HpcSettings, HpcSettingsPatch } from "@gps/transport";

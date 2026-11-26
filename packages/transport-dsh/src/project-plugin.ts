@@ -24,7 +24,7 @@ import {
 } from "./project-scaffold.js";
 
 /** The module namespace metadata the cordis loader reads (see bridge-plugin.ts). */
-export const name = "science-studio-project";
+export const name = "gps-project";
 /** Only load once the harness exposes the services this plugin registers into. */
 export const inject = ["commands", "tools", "systemPrompt"];
 
@@ -194,7 +194,7 @@ export function apply(ctx: ProjectHost, config: ProjectPluginConfig | undefined)
     },
   };
 
-  const prompt: ProjectPromptSection = { name: "science-studio-project", order: 450, text: SYSTEM_PROMPT };
+  const prompt: ProjectPromptSection = { name: "gps-project", order: 450, text: SYSTEM_PROMPT };
 
   const register = (): (() => void) => {
     const disposers: (() => void)[] = [];
@@ -222,7 +222,7 @@ export function apply(ctx: ProjectHost, config: ProjectPluginConfig | undefined)
   };
 
   try {
-    if (ctx.effect) ctx.effect(register, "science-studio-project");
+    if (ctx.effect) ctx.effect(register, "gps-project");
     else register();
   } catch (err) {
     warn("project plugin disabled", err);

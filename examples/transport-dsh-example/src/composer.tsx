@@ -1,7 +1,7 @@
 import {
   ComposerPrimitive,
 } from "@assistant-ui/react";
-import { useRuntimeSlashMenu } from "@science-studio/transport-client";
+import { useRuntimeSlashMenu } from "@gps/transport-client";
 
 /**
  * Composer with runtime slash commands (docs/adr/0003).

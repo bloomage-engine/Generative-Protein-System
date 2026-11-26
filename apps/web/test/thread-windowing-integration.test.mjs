@@ -7,7 +7,7 @@
  *   - Session switch resets visibleMessageCount to default
  *   - Load-more + session switch interaction
  *
- * Prereq: `npm run build -w @science-studio/transport-client`. Needs a Chromium
+ * Prereq: `npm run build -w @gps/transport-client`. Needs a Chromium
  * (SKIPs without one).
  */
 import { test } from "node:test";

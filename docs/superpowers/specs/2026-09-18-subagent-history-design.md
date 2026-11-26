@@ -25,11 +25,11 @@
 The adapter already owns one piece of its own durability (the `TranscriptMirror`
 under the transcript dir); the subagent ledger gets the same treatment:
 
-- **Owner**: `@science-studio/transport-dsh`. The record
+- **Owner**: `@gps/transport-dsh`. The record
   (`Project`/`Session`/`Run`) stays authoritative and untouched — a subagent
   run is adapter-owned activity, per ADR 0002's record/runtime split.
 - **Location**: `<transcript dir>/subagents/<percent-encoded session key>.json`,
-  one file per Science Studio Session (the dir is shared by all of a
+  one file per Generative Protein System Session (the dir is shared by all of a
   deployment's per-Project adapters, so the file is keyed by the record-owned
   session key — the same rule as the transcript mirror's one-file-per-session).
 - **Lifecycle**: the registry stamps each entry with its resolved
@@ -109,7 +109,7 @@ No new wire field: this is a presentation rule in the panel.
 - **Web**: one new proxy hop under the same one-policy relay as its siblings
   (`apps/web/app/api/transport/subagents/[childId]/transcript/route.ts`); a
   `fetchSubagentTranscript` / `useSubagentTranscript` hook in
-  `@science-studio/transport-client`; and the workbench tab system gains ONE
+  `@gps/transport-client`; and the workbench tab system gains ONE
   synthetic tab kind, `subagent:<childId>` (the same pattern the cron-task
   renderer already rides): `SubagentsView` rows `onDoubleClick` call a new
   `openSubagent(childId, name)` store action, the tab strip renders it with

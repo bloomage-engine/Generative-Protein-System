@@ -6,12 +6,12 @@ import { type FC } from "react";
 import {
   MarkdownText as BaseMarkdownText,
   type MarkdownComponents,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 
 /**
  * Markdown renderer for assistant text parts — a plain-CSS skin over the
  * shared mechanism (`BaseMarkdownText` from
- * `@science-studio/transport-client`, built on
+ * `@gps/transport-client`, built on
  * `@assistant-ui/react-markdown`'s `MarkdownTextPrimitive`): GitHub-flavored
  * markdown, shallow-stable component maps, and the streaming caret
  * (`styles/dot.css`) on the trailing content while the part is `running`.

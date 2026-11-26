@@ -35,7 +35,7 @@ Scope bar (locked):
 
 `Run` is **unchanged** (stays the rollup). `Transcript` and `Subagent` are the
 new durable source of truth. `SessionState`/`Message` are the runtime's
-vocabulary (`@science-studio/transport/seams`); the record stores them as an
+vocabulary (`@gps/transport/seams`); the record stores them as an
 **opaque JSON payload** it does not interpret (see §3).
 
 ```ts
@@ -49,7 +49,7 @@ interface PersistedTranscript {
 // a durable, stably-identified subagent: a lineage-bearing session
 interface Subagent {
   id: Id;                               // stable, adapter-minted ("subagent-<uuid>")
-  parentSessionId: Id;                  // the parent Science Studio Session (stable record Session id)
+  parentSessionId: Id;                  // the parent Generative Protein System Session (stable record Session id)
   origin: "subagent";
   label?: string;
   provider?: string;
@@ -91,8 +91,8 @@ listSubagents(parentSessionId: Id): Promise<Subagent[]>;
 Physical layout — a sibling of `record.jsonl`, derived from it, **no new env var**:
 
 ```
-$RECORD_STORE_PATH   (default ~/.local/share/science-studio/record.jsonl)
-dirname → ~/.local/share/science-studio/
+$RECORD_STORE_PATH   (default ~/.local/share/gps/record.jsonl)
+dirname → ~/.local/share/gps/
   record.jsonl                    # thin rollup (Project/Session/Run) — unchanged
   transcripts/<sessionId>.json    # PersistedTranscript — atomic rename, one file per session
   subagents/<stableId>.json       # Subagent (row + self-contained transcript) — one file each

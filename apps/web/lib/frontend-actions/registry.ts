@@ -9,7 +9,7 @@
  * handler that performs the UI change, and `FrontendBridge` dispatches each
  * completed tool call exactly once.
  *
- * Kept app-local (not in `@science-studio/transport-client`): the handlers are
+ * Kept app-local (not in `@gps/transport-client`): the handlers are
  * bound to this app's viewer, and the concept is young — promote the generic
  * dispatch part only if the examples need it too.
  */

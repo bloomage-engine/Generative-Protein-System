@@ -21,14 +21,14 @@ import type {
   SubagentSettingsPatch,
   ThreadSettings,
   ThreadSettingsPatch,
-} from "@science-studio/transport";
-import { isSafeRemotePath, isValidEndpointId } from "@science-studio/hpc";
+} from "@gps/transport";
+import { isSafeRemotePath, isValidEndpointId } from "@gps/hpc";
 import { parseMcpSettings } from "./mcp/codec.js";
 
 export function resolveSettingsPath(env: NodeJS.ProcessEnv = process.env): string {
-  if (env.SS_SETTINGS_PATH) return env.SS_SETTINGS_PATH;
+  if (env.GPS_SETTINGS_PATH) return env.GPS_SETTINGS_PATH;
   const base = env.XDG_DATA_HOME ?? join(homedir(), ".local", "share");
-  return join(base, "science-studio", "settings.json");
+  return join(base, "gps", "settings.json");
 }
 
 export function emptySettings(): RuntimeSettings {
@@ -252,15 +252,15 @@ export function applySettingsToEnv(
   const { provider, model, endpoint, apiKey } = settings.model;
   if (provider) next.DSH_PROVIDER = provider;
   if (model) next.DSH_MODEL = model;
-  if (endpoint) next.SS_MODEL_ENDPOINT = endpoint;
-  if (apiKey) next.SS_MODEL_API_KEY = apiKey;
+  if (endpoint) next.GPS_MODEL_ENDPOINT = endpoint;
+  if (apiKey) next.GPS_MODEL_API_KEY = apiKey;
   // The full enabled catalog rides the dsh binding; the dsh adapter filters it
   // to the active Project and passes only that slice to its child. The name
   // contains SECRET so the harness's subprocess scrub keeps it out of ordinary
   // tool envs (docs/adr/0026).
   const enabled = (settings.mcp?.servers ?? []).filter((server) => server.enabled);
-  if (enabled.length > 0) next.SS_MCP_SECRET_CONFIG = JSON.stringify(enabled);
-  else delete next.SS_MCP_SECRET_CONFIG;
+  if (enabled.length > 0) next.GPS_MCP_SECRET_CONFIG = JSON.stringify(enabled);
+  else delete next.GPS_MCP_SECRET_CONFIG;
   return next;
 }
 

@@ -3,7 +3,7 @@
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { isCronTaskPath } from "@science-studio/transport-client";
+import { isCronTaskPath } from "@gps/transport-client";
 import { cronIcon, fileIcon, hpcJobIcon, subagentIcon } from "./file-icons";
 import { isHpcJobTab, isSubagentTab, kindFor } from "./file-utils";
 import { useStudioStore } from "@/store/studio-store";

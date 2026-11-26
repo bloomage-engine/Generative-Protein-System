@@ -4,13 +4,13 @@ import type { AddressInfo } from "node:net";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createInMemoryRecordStore, type ComputeJob } from "@science-studio/record";
+import { createInMemoryRecordStore, type ComputeJob } from "@gps/record";
 import {
   LocalEnvironmentProvider,
   LocalPrincipalResolver,
   type RuntimeAdapter,
-} from "@science-studio/transport";
-import { FsWorkspace } from "@science-studio/workspace";
+} from "@gps/transport";
+import { FsWorkspace } from "@gps/workspace";
 import type { Backend } from "../src/composition.js";
 import { createTransportService } from "../src/index.js";
 import type { SshRunner } from "../src/hpc/ssh.js";
@@ -24,8 +24,8 @@ async function withHpc<T>(
   ssh: SshRunner,
   fn: (base: string) => Promise<T>,
 ): Promise<T> {
-  const root = await mkdtemp(join(tmpdir(), "ss-hpc-routes-"));
-  const settingsDir = await mkdtemp(join(tmpdir(), "ss-hpc-cfg-"));
+  const root = await mkdtemp(join(tmpdir(), "gps-hpc-routes-"));
+  const settingsDir = await mkdtemp(join(tmpdir(), "gps-hpc-cfg-"));
   const settingsPath = join(settingsDir, "settings.json");
   await writeFile(
     settingsPath,
@@ -180,7 +180,7 @@ test("logs tails the stored log home over ssh", async () => {
     assert.equal(res.status, 200);
     assert.equal(((await res.json()) as { text: string }).text, "hello from the cluster\n");
     const cmd = ssh.calls.find((c) => c.command.startsWith("tail -c "))?.command ?? "";
-    assert.match(cmd, /^tail -c 65536 "\$HOME"\/'w\/\.ss-jobs\/cjob-[^/]+\/stdout'$/);
+    assert.match(cmd, /^tail -c 65536 "\$HOME"\/'w\/\.gps-jobs\/cjob-[^/]+\/stdout'$/);
   });
 });
 

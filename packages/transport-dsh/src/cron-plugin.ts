@@ -20,9 +20,9 @@ import {
   serializeTaskDoc,
   taskIdFromPath,
   type CronTask,
-} from "@science-studio/cron";
+} from "@gps/cron";
 
-export const name = "science-studio-cron";
+export const name = "gps-cron";
 export const inject = ["commands", "tools", "systemPrompt"];
 
 export interface CronPluginConfig {
@@ -262,7 +262,7 @@ export function apply(ctx: CronHost, config: CronPluginConfig | undefined): void
   };
 
   const prompt: CronPromptSection = {
-    name: "science-studio-cron",
+    name: "gps-cron",
     order: 460,
     text: [
       "本项目支持定时任务：到点后由服务向目标会话发送一条 prompt 并执行一次，结果记录在会话中，同时写入任务日志文件。",
@@ -300,7 +300,7 @@ export function apply(ctx: CronHost, config: CronPluginConfig | undefined): void
   };
 
   try {
-    if (ctx.effect) ctx.effect(register, "science-studio-cron");
+    if (ctx.effect) ctx.effect(register, "gps-cron");
     else register();
   } catch (err) {
     warn("cron plugin disabled", err);

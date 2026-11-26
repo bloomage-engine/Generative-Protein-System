@@ -7,7 +7,7 @@ import {
   type Unstable_SlashCommand,
 } from "@assistant-ui/react";
 import { useMemo } from "react";
-import type { CommandDescriptor } from "@science-studio/transport";
+import type { CommandDescriptor } from "@gps/transport";
 import { useRuntimeCommands } from "./catalog.js";
 
 /**

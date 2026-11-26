@@ -32,7 +32,7 @@ export { DEFAULT_WORKTREE_ID, MAIN_BRANCH, sessionWorktreeId } from "./worktree.
  * The authoritative storage boundary for the v1 research record
  * (`Project → Session → Run`, docs/adr/0007).
  *
- * Science Studio owns the record; runtimes are adapters behind a transport seam
+ * Generative Protein System owns the record; runtimes are adapters behind a transport seam
  * and never own it (see docs/adr/0002). This is the RECORD seam: an out-of-tree
  * implementer (the private enterprise module) supplies its own implementation.
  *
@@ -76,7 +76,7 @@ export interface RecordStore {
 
   /**
    * Record a conversation. A Session's id IS its canonical runtime session key,
-   * so a runtime session and a Science Studio Session are 1:1.
+   * so a runtime session and a Generative Protein System Session are 1:1.
    */
   addSession(session: Session): Promise<Session>;
   getSession(id: Id): Promise<Session | null>;

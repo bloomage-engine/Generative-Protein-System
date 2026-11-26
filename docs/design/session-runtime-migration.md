@@ -128,8 +128,8 @@ npm test                 # all workspaces' suites
 ```
 
 Plus, while working inside a slice, the focused suite:
-`npm test -w @science-studio/transport` / `-w @science-studio/transport-openclaw`
-/ `-w @science-studio/transport-dsh` / `-w @science-studio/contract-tests`.
+`npm test -w @gps/transport` / `-w @gps/transport-openclaw`
+/ `-w @gps/transport-dsh` / `-w @gps/contract-tests`.
 
 `npm run typecheck` is a known-broken gate (pre-existing TS6310 in
 `transport-service`); use `npm run build`.

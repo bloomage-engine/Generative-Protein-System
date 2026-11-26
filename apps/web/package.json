@@ -1,5 +1,5 @@
 {
-  "name": "@science-studio/web",
+  "name": "@gps/web",
   "version": "0.0.0",
   "private": true,
   "scripts": {
@@ -17,10 +17,10 @@
     "@embedpdf/react-pdf-viewer": "2.14.2",
     "@headless-tree/core": "1.7.0",
     "@headless-tree/react": "1.7.0",
-    "@science-studio/molstar-viewer": "*",
-    "@science-studio/msa-viewer": "*",
-    "@science-studio/transport": "*",
-    "@science-studio/transport-client": "*",
+    "@gps/molstar-viewer": "*",
+    "@gps/msa-viewer": "*",
+    "@gps/transport": "*",
+    "@gps/transport-client": "*",
     "@tailwindcss/postcss": "4.3.3",
     "@tailwindcss/typography": "0.5.20",
     "assistant-stream": "^0.3.41",

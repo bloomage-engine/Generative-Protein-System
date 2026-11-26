@@ -2,7 +2,7 @@
  * Thread message windowing: only the last N messages render by default,
  * and a "Load more" button appears when messages are hidden.
  *
- * Prereq: `npm run build -w @science-studio/transport-client`. Needs a Chromium
+ * Prereq: `npm run build -w @gps/transport-client`. Needs a Chromium
  * (SKIPs without one).
  */
 import { test } from "node:test";

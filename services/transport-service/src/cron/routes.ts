@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { isValidSchedule, isValidTaskId, type CronTask } from "@science-studio/cron";
+import { isValidSchedule, isValidTaskId, type CronTask } from "@gps/cron";
 import type { ProjectScopes } from "../project-scope.js";
 import type { CronScheduler } from "./scheduler.js";
 import type { CronStore } from "./store.js";

@@ -13,11 +13,11 @@
  * uploaded wrapper whose whole job is to redirect the two streams apart and
  * write the exit marker the poller reconciles from — a job that finished
  * invisibly would otherwise sit at `unknown` forever. Interpolated scalars all
- * pass the safe grammar (see `@science-studio/hpc` `isSafeRemotePath`), so no
+ * pass the safe grammar (see `@gps/hpc` `isSafeRemotePath`), so no
  * user text is ever re-parsed by a remote shell.
  */
-import type { ComputeJob, ComputeJobResources, RecordStore } from "@science-studio/record";
-import type { HpcEndpointSettings } from "@science-studio/transport";
+import type { ComputeJob, ComputeJobResources, RecordStore } from "@gps/record";
+import type { HpcEndpointSettings } from "@gps/transport";
 import {
   defaultWorkDir,
   isSafeRemotePath,
@@ -25,7 +25,7 @@ import {
   parseRemotePid,
   parseSlurmJobId,
   type JobPaths,
-} from "@science-studio/hpc";
+} from "@gps/hpc";
 import { remotePath, type SshRunner } from "./ssh.js";
 
 export class HpcError extends Error {

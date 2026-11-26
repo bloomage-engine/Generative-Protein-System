@@ -24,7 +24,7 @@ The dsh runtime already emits the signal: the pinned SDK protocol carries
 log carries a `subagent/descriptor` event. Today every one of those is
 **discarded** at the adapter boundary — `packages/transport-dsh/src/client.ts`
 forwards only root `session.event` notifications (`client.ts:91-96`), so no
-subagent signal reaches Science Studio at all. This design captures that signal
+subagent signal reaches Generative Protein System at all. This design captures that signal
 and renders it.
 
 ## Scope
@@ -85,7 +85,7 @@ Out of scope (unchanged):
 export interface SubagentRun {
   /** Runtime-assigned child identity (dsh: the child session id). */
   id: string;
-  /** The Science Studio Session this run was delegated from. */
+  /** The Generative Protein System Session this run was delegated from. */
   parentId: string;
   /** Best-effort display label (dsh: the child's descriptor label). */
   label?: string;
@@ -101,7 +101,7 @@ export interface SubagentRun {
 }
 ```
 
-`RunStatus` is imported from `@science-studio/record` (already the source of
+`RunStatus` is imported from `@gps/record` (already the source of
 `Run` in this file), so the panel's badges share the Run vocabulary.
 
 `RuntimeAdapter` gains:
@@ -136,7 +136,7 @@ A small class that folds notifications into a `Map<childSessionId, Entry>`:
   reverse-map that root through the adapter's `harnessSessions` map to a Science
   Studio session key, and return the entries for `sessionKey`, newest
   `startedAt` first, mapped to `SubagentRun`. `SubagentRun.parentId` is that
-  root's Science Studio session key (the Session the delegation belongs to);
+  root's Generative Protein System session key (the Session the delegation belongs to);
   `SubagentRun.id` is the child harness id.
 - No destructive prune: `list(sessionKey)` non-destructively SKIPS an entry
   whose root does not currently map (a `/new` remint, or a parent harness id
@@ -303,4 +303,4 @@ web proxy → `useSubagents` (poll) → `SubagentsView`. The transcript path
   reason this design does not reuse `SessionRuntime.subscribe`.
 - **Root lineage mapping.** A root harness id not in `harnessSessions` (a
   harness session created outside this adapter) cannot be attributed to a
-  Science Studio Session and is skipped rather than mis-bucketed.
+  Generative Protein System Session and is skipped rather than mis-bucketed.

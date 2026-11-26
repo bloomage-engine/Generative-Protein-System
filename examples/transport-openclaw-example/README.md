@@ -1,7 +1,7 @@
 # transport-openclaw · assistant-ui example
 
 A minimal, runnable example showing the OpenClaw gateway's conversation —
-driven by **`@science-studio/transport-openclaw`** — rendered in
+driven by **`@gps/transport-openclaw`** — rendered in
 **assistant-ui**. It is the shortest end-to-end path through the platform's
 three layers, with no protocol code of its own:
 
@@ -30,7 +30,7 @@ three layers, with no protocol code of its own:
   wire contract (reconcile-first history snapshots, client-safe op types,
   `[DONE]` termination, the standing watch endpoint).
 - **Client** — [`src/`](./src/) is a Vite + React app on assistant-ui core
-  primitives (no Tailwind/shadcn). It consumes `@science-studio/transport-client`
+  primitives (no Tailwind/shadcn). It consumes `@gps/transport-client`
   (the `useTransport` hook: transport runtime, message converter, and the mount
   probe that loads the session's history on first paint; plus the standing
   `useTransportWatch` consumer, which adopts canonical-snapshot pushes — remote
@@ -58,7 +58,7 @@ three layers, with no protocol code of its own:
   `OPENCLAW_GATEWAY_TOKEN`); the LLM provider behind the session (e.g. ollama)
   must be reachable, or runs will stall at `starting_model`.
 - `npm install` at the repo root, then `npm run build` (the example imports
-  `@science-studio/transport-openclaw` and `@science-studio/transport-service`
+  `@gps/transport-openclaw` and `@gps/transport-service`
   from their dist builds).
 
 ## Run
@@ -107,7 +107,7 @@ Against a live gateway, verify in the browser:
 
 ```bash
 # from the repo root (after npm run build)
-npm run test -w @science-studio/transport-openclaw-example
+npm run test -w @gps/transport-openclaw-example
 ```
 
 Three cases, all over real HTTP + SSE on an ephemeral port:

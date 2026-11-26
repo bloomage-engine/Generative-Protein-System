@@ -1,7 +1,7 @@
 import type { EventFrame } from "@openclaw/gateway-client/browser";
-import type { RecordStoreLike, StateDelta } from "@science-studio/transport/seams";
-import type { Run } from "@science-studio/record";
-import { sessionState, type AdapterLifecycleCase } from "@science-studio/contract-tests";
+import type { RecordStoreLike, StateDelta } from "@gps/transport/seams";
+import type { Run } from "@gps/record";
+import { sessionState, type AdapterLifecycleCase } from "@gps/contract-tests";
 import type { BackendGateway } from "../src/connection.js";
 import { OpenClawRuntimeAdapter } from "../src/index.js";
 

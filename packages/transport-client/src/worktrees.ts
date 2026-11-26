@@ -9,13 +9,13 @@
  * lives in the record layer and never in the UI. Plain fetch helpers — no React
  * — so a route page can use them and they stay unit-testable.
  */
-import type { Worktree as RecordWorktree } from "@science-studio/record";
+import type { Worktree as RecordWorktree } from "@gps/record";
 import { RecordRequestError } from "./projects.js";
 import { scopedUrl } from "./scope.js";
 
 /**
  * The reserved id of a Project's `main` worktree (the Project root). Declared
- * HERE rather than value-imported from `@science-studio/record`: that package's
+ * HERE rather than value-imported from `@gps/record`: that package's
  * runtime entry pulls the JSONL store's `node:fs`/`node:path`, which cannot
  * enter a browser bundle (the whole web app 500s on the `node:` scheme). This
  * mirrors the local-constant precedent in `apps/web/lib/scope-memory.ts`; the

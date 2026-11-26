@@ -9,7 +9,7 @@ const defaults = {
   DSH_PROVIDER: "ollama-local",
   DSH_MODEL: "qwen3.8:latest",
   DSH_WORKSPACE: join(homedir(), "workspace", "dsh-workspace"),
-  DSH_DEFAULT_SESSION: "science-studio",
+  DSH_DEFAULT_SESSION: "gps",
 };
 for (const [key, value] of Object.entries(defaults)) {
   if (!env[key]) env[key] = value;

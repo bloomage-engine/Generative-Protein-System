@@ -6,7 +6,7 @@ import type {
   McpProbeResult,
   McpServerDraft,
   McpServerView,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import {
   DEFAULT_MCP_API,
   createMcpServer,
@@ -14,7 +14,7 @@ import {
   fetchMcpServers,
   probeMcpServer,
   updateMcpServer,
-} from "@science-studio/transport-client";
+} from "@gps/transport-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";

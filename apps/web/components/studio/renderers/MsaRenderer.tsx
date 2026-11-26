@@ -10,8 +10,8 @@ import {
   msaMentionKey,
   parseAlignment,
   type MsaTarget,
-} from "@science-studio/msa-viewer";
-import { useWorkspaceApi, workspaceFileUrl, type ClientScope } from "@science-studio/transport-client";
+} from "@gps/msa-viewer";
+import { useWorkspaceApi, workspaceFileUrl, type ClientScope } from "@gps/transport-client";
 import { useComposerInsert } from "@/components/assistant-ui/composer-insert";
 import { useStudioStore } from "@/store/studio-store";
 import { PlainTextRenderer } from "./PlainTextRenderer";
@@ -20,7 +20,7 @@ import { PlainTextRenderer } from "./PlainTextRenderer";
  * The MSA preview: fetches the file's own bytes (like the other specialist viewers —
  * the text hook would double-download, and the server may serve these as
  * `application/octet-stream`, which `useWorkspaceFile` classifies as binary),
- * parses them with `@science-studio/msa-viewer`, and routes:
+ * parses them with `@gps/msa-viewer`, and routes:
  *   aligned  → MsaGrid · unaligned → UnalignedList · mmseqs → MsaResultTable
  * Parse failure and an oversized file fall back to plain text — never a blank pane.
  *

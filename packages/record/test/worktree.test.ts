@@ -53,7 +53,7 @@ const run = (over: Partial<Run> = {}): Run => ({
 
 async function bothStores(runFn: (make: () => Promise<RecordStore>) => Promise<void>): Promise<void> {
   await runFn(async () => createInMemoryRecordStore());
-  const dir = await mkdtemp(join(tmpdir(), "ss-record-worktree-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-record-worktree-"));
   try {
     await runFn(async () => createJsonlRecordStore(join(dir, "record.jsonl")));
   } finally {
@@ -142,7 +142,7 @@ test("sessionWorktreeId defaults a legacy session to main", () => {
 });
 
 test("JSONL worktree rows and legacy sessions survive a reopen", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-record-worktree-reopen-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-record-worktree-reopen-"));
   try {
     const path = join(dir, "record.jsonl");
     const first = await createJsonlRecordStore(path);

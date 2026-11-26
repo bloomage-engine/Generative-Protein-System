@@ -27,7 +27,7 @@ function job(over: Partial<ComputeJob> = {}): ComputeJob {
 
 async function bothStores(run: (make: () => Promise<RecordStore>) => Promise<void>): Promise<void> {
   await run(async () => createInMemoryRecordStore());
-  const dir = await mkdtemp(join(tmpdir(), "ss-record-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-record-"));
   try {
     await run(async () => createJsonlRecordStore(join(dir, "record.jsonl")));
   } finally {
@@ -77,7 +77,7 @@ test("deleting a Project cascades its Compute Job rows; a Session delete does no
 });
 
 test("a persisted Compute Job row survives a reopen (JSONL durability)", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ss-record-"));
+  const dir = await mkdtemp(join(tmpdir(), "gps-record-"));
   try {
     const path = join(dir, "record.jsonl");
     const store = await createJsonlRecordStore(path);

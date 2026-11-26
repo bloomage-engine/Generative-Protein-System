@@ -18,7 +18,7 @@
  *
  * Expected without a prompt: the socket answers, `commands` is `[]` and
  * `/compact` is `{"status":"no-agent"}` — no agent exists until a session
- * prompts. With SS_SMOKE_TURN=1 it also sends one tiny prompt (needs a
+ * prompts. With GPS_SMOKE_TURN=1 it also sends one tiny prompt (needs a
  * reachable model route) and re-lists, expecting the harness's own registry:
  * `compact`, `feedback`, `goal`, `plan` — and then drives the COLD command path
  * end to end: `/plan` as a session's FIRST prompt must be run by the registry
@@ -123,7 +123,7 @@ try {
     workspace,
   );
 
-  if (process.env.SS_SMOKE_TURN === "1") {
+  if (process.env.GPS_SMOKE_TURN === "1") {
     const sessionId = `smoke-${Date.now().toString(36)}`;
     console.log(`sending one prompt on "${sessionId}" (needs a reachable model route)...`);
     await harness.session(sessionId).run("Reply with the single word: ok", { onNotification: () => {} });
@@ -170,7 +170,7 @@ try {
       planModes,
     );
   } else {
-    console.log("SS_SMOKE_TURN is unset: skipping the prompt (no model route needed)");
+    console.log("GPS_SMOKE_TURN is unset: skipping the prompt (no model route needed)");
   }
 } catch (err) {
   // A failed child carries its own stderr tail in the error message.

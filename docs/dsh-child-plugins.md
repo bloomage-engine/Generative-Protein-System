@@ -3,7 +3,7 @@
 The dsh adapter drives a THIRD-PARTY harness: `@deepseek-ai/dsh-sdk-client`
 spawns `dsh --profile sdk` as a child process speaking stdio JSON-RPC, pinned
 exactly (docs/adr/0004). That wire has no command plane, no cancel and no
-token-level stream, and the binary cannot be modified. Everything Science Studio
+token-level stream, and the binary cannot be modified. Everything Generative Protein System
 needs to add to the agent — project scaffold, scheduling, HPC, worktrees, the
 command bridge — therefore rides this document's mechanism: **at adapter init,
 write one small YAML patch per plugin, hand each to the child as `--patch`, and
@@ -15,7 +15,7 @@ process.**
 A cordis plugin is a plain JS module exporting a fixed shape:
 
 ```ts
-export const name = "science-studio-cron";                  // plugin id
+export const name = "gps-cron";                  // plugin id
 export const inject = ["commands", "tools", "systemPrompt"]; // host services to receive
 export function apply(ctx: CronHost, config) { ... }         // called on child boot
 ```
@@ -28,7 +28,7 @@ generates those patches; `packages/transport-dsh/src/bridge.ts` is the factory
 
 ```yaml
 - insert:
-    - id: science-studio-cron
+    - id: gps-cron
       name: "file:///abs/path/to/dist/cron-plugin.js"
       config: {"project": {"id": …}, "root": "/abs/project/root"}
 ```
@@ -41,7 +41,7 @@ Deliberate details:
 - **No path resolution against the profile.** The plugin `name` is a `file:`
   URL — a form `dsh-app-boot` documents as supported — pointing at a sibling of
   the adapter's own `dist/` (`new URL("./cron-plugin.js", import.meta.url)`).
-  The plugin ships INSIDE `@science-studio/transport-dsh`; the user installs
+  The plugin ships INSIDE `@gps/transport-dsh`; the user installs
   nothing.
 - **Unique file names** (`cron-<8hex>.cordis.patch.yml`) so two adapters / two
   Projects sharing `bridgeDir` never overwrite each other.
@@ -76,10 +76,10 @@ Each rule below corresponds to a real failure mode:
 | Rule | Why |
 | --- | --- |
 | Import NOTHING from `@deepseek-ai/*` or cordis | The child owns its own pinned copies; importing them drags in a second copy or crashes on a harness bump. Host services are declared as LOCAL STRUCTURAL views (`CronHost`, `BridgeHost`, …); interface drift surfaces as a failed registration ("unavailable"), not a dead child. |
-| Never write to stdout | The child's stdout IS the newline-delimited JSON-RPC wire. All diagnostics go to `process.stderr.write("[ss-…] …")`. |
+| Never write to stdout | The child's stdout IS the newline-delimited JSON-RPC wire. All diagnostics go to `process.stderr.write("[gps-…] …")`. |
 | `apply` never throws (fail SOFT) | A throwing cordis plugin fails the ENTIRE child boot — the adapter would lose its whole runtime. Missing config → disabled; each registration wrapped in its own try. |
 | Dispose through `ctx.effect(disposer, label)` | Lets cordis own lifecycle ordering (socket close, listener removal). |
-| May import own-workspace packages (e.g. `@science-studio/cron`) | Resolved from the plugin file's physical location (the adapter's dist), so these never touch the harness's copies. |
+| May import own-workspace packages (e.g. `@gps/cron`) | Resolved from the plugin file's physical location (the adapter's dist), so these never touch the harness's copies. |
 
 What a plugin may register on the host: `ctx.tools.register(...)` (model-visible
 tools with JSON-Schema parameters), `ctx.commands.register(...)` (harness slash
@@ -132,7 +132,7 @@ Within the same patch mechanism the plugins take different power postures:
 `packages/plugins/molql-tool-dsh` is also a dsh plugin, but an
 **agent-side deployable**: built separately, installed into the harness's own
 plugin/skill channels, not injected through a per-launch patch. The six
-plugins in this document ship inside `@science-studio/transport-dsh` and need
+plugins in this document ship inside `@gps/transport-dsh` and need
 no user installation.
 
 ## Verification

@@ -28,7 +28,7 @@ visible/editable where the rest of the work lives.
 
 In scope:
 
-- A new pure package `@science-studio/cron` (task-document codec, cron matcher,
+- A new pure package `@gps/cron` (task-document codec, cron matcher,
   presets, log entry helpers) shared by the service and the dsh child plugin.
 - A service-owned scheduler that scans each Project's task files, matches the
   wall clock, and drives `adapter.run()` for due tasks.
@@ -52,7 +52,7 @@ Out of scope (unchanged):
 ## Decisions
 
 - **The task file is the authority.** A task is a workspace file
-  `.science-studio/cron/<id>.md` with YAML-ish frontmatter and a prompt body. The
+  `.gps/cron/<id>.md` with YAML-ish frontmatter and a prompt body. The
   agent tool, the UI form and the scheduler all read/write the same file, so an
   external edit is picked up on the next scan. No record row.
 - **The scheduler lives in the service, not the child.** The service is always
@@ -63,7 +63,7 @@ Out of scope (unchanged):
   and a prompt section; it does not schedule and does not execute. It writes the
   task file directly (its cwd IS the Project workspace, exactly like
   `project-plugin.ts`), using the shared codec.
-- **One shared codec.** `@science-studio/cron` is pure (zero dependencies,
+- **One shared codec.** `@gps/cron` is pure (zero dependencies,
   browser-safe) and is a declared dependency of `transport-service`,
   `transport-dsh` (the child plugin imports it as an ESM runtime dependency,
   resolved from the monorepo's `node_modules`) and `transport-client` (types +
@@ -98,7 +98,7 @@ Out of scope (unchanged):
 Under each Project's workspace root (`<PROJECT_ROOT>/<projectId>/`):
 
 ```
-.science-studio/cron/
+.gps/cron/
   <id>.md          # task definition
   <id>.log.md      # append-only run log (sibling)
 ```
@@ -121,7 +121,7 @@ updatedAt: 2026-09-18T01:00:00.000Z
   name, unique-suffixed). It never changes after creation.
 - `schedule` is the canonical 5-field expression.
 - `sessionId` is optional on disk; the UI requires it. The agent tool accepts it
-  as well, but the child cannot know the Science Studio session key, so when it
+  as well, but the child cannot know the Generative Protein System session key, so when it
   is absent the scheduler targets the Project's most recently updated non-archived
   Session and records the resolved id in the log. A named Session that is
   missing, archived, or belongs to another Project is a per-fire error.
@@ -139,10 +139,10 @@ updatedAt: 2026-09-18T01:00:00.000Z
 <assistant text, or the error/skip message>
 ```
 
-`@science-studio/cron` exports:
+`@gps/cron` exports:
 
 ```ts
-export const CRON_DIR: string; // ".science-studio/cron"
+export const CRON_DIR: string; // ".gps/cron"
 export interface CronTask {
   id: string; name: string; schedule: string; enabled: boolean;
   sessionId?: string; prompt: string; createdAt?: string; updatedAt?: string;
@@ -178,13 +178,13 @@ export function latestLogEntry(existing: string): CronLogEntry | null;
 ## Architecture
 
 ```
-agent ──(schedule_create)──► writes .science-studio/cron/<id>.md        (child proc)
+agent ──(schedule_create)──► writes .gps/cron/<id>.md        (child proc)
 web UI ──(form)──► POST/PUT /api/cron/task ──► service writes the file   (service)
                         │
 service CronScheduler (tick, default 30s)
    for each non-archived Project:
      acquire Environment (adapter + workspace)
-     list .science-studio/cron/*.md, parse
+     list .gps/cron/*.md, parse
      if enabled && matchesSchedule(now):
         resolve target Session (record)
         if activeRuns has the session → append skipped-busy log
@@ -192,7 +192,7 @@ service CronScheduler (tick, default 30s)
              append success/error log (+ final assistant text)
 ```
 
-### `@science-studio/cron` (new package)
+### `@gps/cron` (new package)
 
 Pure, dependency-free, browser-safe. No `node:*` imports (path helpers are
 string operations), so the web client may import it. Files:
@@ -206,7 +206,7 @@ Built with `tsc -b`; suite `node --import tsx --test test/*.test.ts`.
   `write(workspace, task)`, `remove(workspace, id)`, `appendLog(workspace, id,
   entry)`, `listLog` (for the UI's recent history). Uses `Workspace.list/open/
   write/delete`; reads are byte-capped; writes go through `Workspace.write`
-  (atomic temp+rename by the implementation). Path building is `@science-studio/cron`.
+  (atomic temp+rename by the implementation). Path building is `@gps/cron`.
 - `scheduler.ts`: `createCronScheduler(deps)` with
   `deps = { records, environments, directory, principal, activeRuns, now?, tickMs? }`.
   Public: `tick(): Promise<void>`, `start(): void`, `stop(): void`. `start()`
@@ -228,7 +228,7 @@ Follows `project-plugin.ts` verbatim in shape: local structural host interface,
 `export const name`, `export const inject = ["tools", "commands", "systemPrompt"]`,
 `apply(ctx, config)`, dependency-free from `@deepseek-ai/*`, never writes stdout,
 all registration guarded. Config: `{ project, root }` (root = the child cwd =
-Project workspace). It imports `@science-studio/cron` for the codec and
+Project workspace). It imports `@gps/cron` for the codec and
 `node:fs` for IO.
 
 - Tools: `schedule_create({ name, schedule, prompt, sessionId?, enabled? })`,
@@ -250,7 +250,7 @@ Project workspace). It imports `@science-studio/cron` for the codec and
 ### Client — `packages/transport-client/src/cron.ts`
 
 Re-exports the `CronTask`/`CronLogEntry`/preset types from
-`@science-studio/cron` and adds:
+`@gps/cron` and adds:
 
 ```ts
 export interface CronTaskSummary extends CronTask { lastRun?: CronLogEntry; path: string }
@@ -289,7 +289,7 @@ good list on failure, abort on scope change.
   list parsed from the log. Loads via `fetchCronTask(projectId, idFromPath)`;
   Save via `saveCronTask`; Delete confirms then closes the tab.
 - Routing: `file-utils.ts` gains `isCronTaskPath` re-export/uses
-  `@science-studio/cron`'s predicate; `Preview` (`file-preview-pane.tsx`) checks
+  `@gps/cron`'s predicate; `Preview` (`file-preview-pane.tsx`) checks
   `isCronTaskPath(path)` FIRST and renders `CronTaskRenderer`; otherwise the
   existing kind dispatch is unchanged. `file-icons.tsx` gains a cron icon and
   `tab-strip.tsx` uses it for cron paths.
@@ -334,7 +334,7 @@ at the next scan.
 - **No workspace (`NullWorkspace`):** list/CRUD answer 503 through
   `withWorkspace`; `CronView` shows the unavailable copy and disables New.
 - **Path safety:** ids are validated; every path is built inside
-  `.science-studio/cron/`; the Workspace seam enforces containment.
+  `.gps/cron/`; the Workspace seam enforces containment.
 - **Overlapping ticks:** a `ticking` guard skips a tick that starts before the
   previous finishes.
 
@@ -370,7 +370,7 @@ at the next scan.
 - **Child/service concurrent writes.** Both write via the same codec; the
   Workspace's temp+rename keeps readers from seeing partial files.
 - **Workspace tree reacting to a dot-dir `activeTabPath`.** Opening a cron tab
-  sets `activeTabPath` to a path under `.science-studio/`; verify
+  sets `activeTabPath` to a path under `.gps/`; verify
   `workspace-tree.tsx`'s reveal logic no-ops harmlessly for a path outside the
   visible tree.
 - **openclaw Projects.** The scheduler and UI work for any runtime, but agent

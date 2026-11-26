@@ -1,6 +1,6 @@
 import { test } from "node:test";
-import type { RecordStoreLike } from "@science-studio/transport";
-import type { Id, PersistedTranscript, Subagent } from "@science-studio/record";
+import type { RecordStoreLike } from "@gps/transport";
+import type { Id, PersistedTranscript, Subagent } from "@gps/record";
 
 test("empty RecordStoreLike type-checks against the new contract", async () => {
   const impl: RecordStoreLike = {
