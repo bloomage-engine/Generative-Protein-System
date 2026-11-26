@@ -3,11 +3,24 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "tw-shimmer";
+@import "./themes.css";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
   color-scheme: light dark;
+  /*
+   * The themeable font layer. `app/themes.css` overrides these per color theme
+   * (a theme's own families); these defaults are the app's — Geist for text,
+   * the platform stacks for mono/serif, and the display face following the text
+   * face unless a theme names one. They are separate from `--font-sans` etc. on
+   * purpose: next/font writes the real faces onto <html> through a class, and a
+   * theme block (`html[data-theme=…]`) has to be able to outrank it.
+   */
+  --font-app-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-app-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-app-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-app-display: var(--font-app-sans);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -50,8 +63,10 @@ body {
 }
 
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: var(--font-sans);
+  --font-heading: var(--font-app-display);
+  --font-sans: var(--font-app-sans);
+  --font-serif: var(--font-app-serif);
+  --font-mono: var(--font-app-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

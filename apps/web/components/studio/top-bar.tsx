@@ -4,7 +4,7 @@ import { LeftViewSwitcher } from "./left-view-switcher";
 import { TopBarSearch } from "./top-bar-search";
 import { TabStrip } from "./tab-strip";
 import { PanelToggles } from "./panel-toggles";
-import { ThemeToggle } from "./theme-toggle";
+import { ThemeMenu } from "./theme-menu";
 
 export function TopBar() {
   return (
@@ -18,7 +18,7 @@ export function TopBar() {
       <div className="mx-1 h-5 w-px bg-border" />
       <PanelToggles />
       <div className="mx-1 h-5 w-px bg-border" />
-      <ThemeToggle />
+      <ThemeMenu />
     </header>
   );
 }
