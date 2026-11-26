@@ -72,6 +72,8 @@ export interface Backend {
   projectRoot?: string;
   /** Test seam: the git runner (defaults to the real system-git spawner). */
   git?: import("./worktree/git.js").GitRunner;
+  /** Test seam: the MCP connectivity probe (defaults to the real SDK probe). */
+  mcpProbe?: import("./mcp/probe.js").McpProber;
 }
 
 /** The out-of-tree contract a private enterprise module implements. */
@@ -270,11 +272,6 @@ async function localBackend(
       // NullWorkspace deployment) is not a path, so it is omitted and the
       // adapter falls back to its own cwd.
       const projectRoot = localWorkspace(env, projectId, DEFAULT_WORKTREE_ID).toAgentPath("");
-      // The deployment's MCP servers are re-read AT THIS ACQUISITION, not
-      // boot-folded like the model route: a child launched after a settings
-      // save mounts the current list, while an already-cached child keeps its
-      // launch-time one until its environment is released (docs/adr/0026).
-      const mcpServers = (await loadSettings(settingsPath)).mcp?.servers ?? [];
       // Init runs in the BACKGROUND, exactly like the pre-seam service: a slow
       // or unreachable runtime must not delay the request that first names the
       // Project. Every adapter's own entry points WAIT for it (openclaw on its
@@ -303,7 +300,6 @@ async function localBackend(
                 },
               }),
           ...(projectRoot ? { projectRoot } : {}),
-          ...(mcpServers.length > 0 ? { mcpServers } : {}),
         })
         .catch((err) =>
           console.error(

@@ -13,6 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ColorThemeProvider, COLOR_THEME_SCRIPT } from "@/lib/color-theme";
+import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "./theme-provider";
 
 /**
@@ -78,6 +79,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ColorThemeProvider>
             <TooltipProvider>{children}</TooltipProvider>
           </ColorThemeProvider>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

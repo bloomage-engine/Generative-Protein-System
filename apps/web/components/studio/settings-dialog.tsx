@@ -33,6 +33,7 @@ export function SettingsDialog() {
   const open = useStudioStore((s) => s.settingsOpen);
   const closeSettings = useStudioStore((s) => s.closeSettings);
   const projectId = useStudioStore((s) => s.projectId);
+  const worktreeId = useStudioStore((s) => s.activeWorktreeId);
   const [view, setView] = React.useState<RuntimeSettingsView | null>(null);
   const [provider, setProvider] = React.useState("");
   const [model, setModel] = React.useState("");
@@ -350,7 +351,7 @@ export function SettingsDialog() {
             <HpcTab projectId={projectId} />
           </TabsContent>
           <TabsContent value="mcp" className="min-h-0 overflow-y-auto pr-1">
-            <McpTab />
+            <McpTab open={open} projectId={projectId} worktreeId={worktreeId} />
           </TabsContent>
         </Tabs>
       </DialogContent>

@@ -59,77 +59,71 @@ export interface HpcSettings {
   endpoints: HpcEndpointSettings[];
 }
 
-/**
- * The grammar the dsh MCP client plugin enforces for a server namespace
- * (`mcp__<serverName>__<tool>`), so the settings validator refuses a name the
- * plugin would only reject later in a child log (docs/adr/0026).
- */
-export const MCP_SERVER_NAME_GRAMMAR = /^[A-Za-z0-9_-]{1,32}$/;
+/** A deployment MCP server is global or bound to one Project. */
+export type McpScope = "global" | "project";
 
 /**
- * ONE external MCP server (docs/adr/0026), mounted into every dsh child as a
- * `@deepseek-ai/dsh-mcp-client` launch-patch row. `serverName` is the row's
- * identity (unique across the list, the plugin's namespace grammar).
- *
- * `env` (stdio) and `headers` (streamable-http) are SECRET material: they
- * persist in the settings file (0600) but are write-only over HTTP — the view
- * replaces each map with its configured key names.
+ * ONE deployment MCP server (docs/adr/0026). `env`/`headers` hold credentials
+ * and are WRITE-ONLY: the settings view never returns their values.
  */
-export interface McpStdioServerSettings {
-  serverName: string;
-  transport: "stdio";
-  /** Absent = enabled; a disabled row is stored but never mounted (docs/adr/0026). */
-  enabled?: boolean;
-  command: string;
+export interface McpServerSettings {
+  /** Stable namespace and tool prefix (`mcp__<id>__<tool>`), unique across the catalog. */
+  id: string;
+  scope: McpScope;
+  /** Required when `scope` is `"project"`. */
+  projectId?: string;
+  enabled: boolean;
+  transport: "stdio" | "streamable-http";
+  /** stdio: executable (no shell interpolation). */
+  command?: string;
+  /** stdio: arguments. */
   args?: string[];
+  /** stdio: explicit credentials/env, merged over the scrubbed ambient env. */
   env?: Record<string, string>;
+  /** stdio: working directory; absent = the agent's worktree root. */
   cwd?: string;
-}
-
-export interface McpHttpServerSettings {
-  serverName: string;
-  transport: "streamable-http";
-  enabled?: boolean;
-  url: string;
+  /** Streamable HTTP: endpoint URL. */
+  url?: string;
+  /** Streamable HTTP: request headers (credentials). */
   headers?: Record<string, string>;
+  /** Per `tools/call` timeout; default 60000 ms. */
+  toolCallTimeoutMs?: number;
 }
-
-export type McpServerSettings = McpStdioServerSettings | McpHttpServerSettings;
 
 export interface McpSettings {
   servers: McpServerSettings[];
 }
 
-/** The view of one server: secret maps replaced by their configured key names. */
-export type McpServerView =
-  | Omit<McpStdioServerSettings, "env"> & { envConfigured: string[] }
-  | Omit<McpHttpServerSettings, "headers"> & { headersConfigured: string[] };
-
-export interface McpSettingsView {
-  servers: McpServerView[];
-}
-
-/**
- * The `PUT` body's server row. Secret maps take `string | null` values:
- * a key ABSENT keeps its stored value, `null` deletes it, a string replaces it
- * (the write-only merge rule, docs/adr/0026). A changed `serverName` is a NEW
- * row — the old row's secrets do not follow it.
- */
-export interface McpServerPatch {
-  serverName: string;
+/** The `GET` projection: keys stay visible, credential values never do. */
+export interface McpServerView {
+  id: string;
+  scope: McpScope;
+  projectId?: string;
+  enabled: boolean;
   transport: "stdio" | "streamable-http";
-  enabled?: boolean;
   command?: string;
   args?: string[];
   cwd?: string;
-  env?: Record<string, string | null>;
   url?: string;
-  headers?: Record<string, string | null>;
+  toolCallTimeoutMs?: number;
+  envKeys: string[];
+  headerKeys: string[];
 }
 
-/** The `PUT` body's mcp section: `null` clears the whole list; an array replaces it. */
-export interface McpSettingsPatch {
-  servers?: McpServerPatch[] | null;
+/** A create/update body: omitted secret keys keep their stored value, `null` removes one. */
+export interface McpServerDraft {
+  id?: string;
+  scope?: McpScope;
+  projectId?: string;
+  enabled?: boolean;
+  transport?: "stdio" | "streamable-http";
+  command?: string;
+  args?: string[];
+  env?: Record<string, string | null> | null;
+  cwd?: string;
+  url?: string;
+  headers?: Record<string, string | null> | null;
+  toolCallTimeoutMs?: number;
 }
 
 export interface RuntimeSettings {
@@ -151,8 +145,6 @@ export interface RuntimeSettingsView {
   thread: ThreadSettings;
   /** Endpoints carry no secret material (a key is referenced by PATH), so the view shows them as-is. */
   hpc: HpcSettings;
-  /** MCP secret maps are write-only: the view shows key NAMES, never values. */
-  mcp: McpSettingsView;
   /** The active runtime product (`TRANSPORT_RUNTIME`). */
   runtime: string;
   /** The settings file the service read/wrote, for diagnosis. */
@@ -187,5 +179,4 @@ export interface RuntimeSettingsPatch {
   subagents?: SubagentSettingsPatch;
   thread?: ThreadSettingsPatch;
   hpc?: HpcSettingsPatch;
-  mcp?: McpSettingsPatch;
 }

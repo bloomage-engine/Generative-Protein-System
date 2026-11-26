@@ -86,8 +86,8 @@ model route the Researcher configures in an in-app Settings page.
     the root `npm run build` chain and has its own `build:desktop`/`pack`
     scripts — but its `test/*.ts` ARE type-checked, by the shared test program
     (`tsconfig.tests.json`) that the root build runs last. `electron-builder`
-    produces `.dmg` (macOS) and `.AppImage`/`.deb` (Linux) first, with Windows
-    config kept but unshipped.
+    produces `.dmg` (macOS) and `.AppImage`/`.deb` (Linux), and — extended by
+    ADR 0028 — a per-user x64 NSIS installer, built on Windows natively.
   - **Identity**: product name `Science Studio`, bundle id `ss.hx-engine.com`.
   - **Considered and rejected**: Electron Forge (viable, but more plugin wiring
     for the monorepo's `extraResources` needs) and electron-vite (a dev/build

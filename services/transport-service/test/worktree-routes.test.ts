@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInMemoryRecordStore } from "@science-studio/record";
@@ -81,7 +81,8 @@ test("listing does not create a repository", async () => {
   await app.listen({ port: 0, host: "127.0.0.1" });
   const base = `http://127.0.0.1:${(app.server.address() as { port: number }).port}`;
   try {
-    await fetch(`${base}/api/worktrees?projectId=project-default`);
+    const listed = await fetch(`${base}/api/worktrees?projectId=project-default`);
+    assert.equal(listed.status, 200);
     const { stat } = await import("node:fs/promises");
     await assert.rejects(() => stat(join(projectRoot, "project-default", ".git")));
   } finally {
@@ -201,7 +202,7 @@ test("a session is created under a claimed worktree and listed by it", async () 
   }
 });
 
-test("worktree routes answer 503 when git is unavailable", async () => {
+test("git-backed worktree writes answer 503 while the list stays usable", async () => {
   const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
   const records = await createInMemoryRecordStore();
   await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
@@ -232,7 +233,14 @@ test("worktree routes answer 503 when git is unavailable", async () => {
     assert.equal(created.status, 503);
 
     const list = await fetch(`${base}/api/worktrees?projectId=project-default`);
-    assert.equal(list.status, 503);
+    assert.equal(list.status, 200);
+    const listing = (await list.json()) as {
+      worktrees: { id: string; onDiskBranch?: string | null }[];
+      gitAvailable?: boolean;
+    };
+    assert.equal(listing.gitAvailable, false);
+    assert.deepEqual(listing.worktrees.map((w) => w.id).sort(), ["exp-a", "main"]);
+    assert.equal(listing.worktrees.find((w) => w.id === "main")?.onDiskBranch, undefined);
 
     const deleted = await fetch(`${base}/api/worktrees/exp-a/delete`, {
       method: "POST",
@@ -276,6 +284,44 @@ test("a session with worktreeId main is created on a fresh project (main auto-en
     assert.equal(created.status, 201);
     const { session } = (await created.json()) as { session: { worktreeId?: string } };
     assert.equal(session.worktreeId, "main");
+  } finally {
+    await app.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("a fresh Project workspace lists main without invoking git", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "ss-wt-"));
+  const records = await createInMemoryRecordStore();
+  await records.createProject({ id: "project-default", name: "D", createdAt: "2026-01-01T00:00:00.000Z" });
+  let calls = 0;
+  const backend: Backend = {
+    principal: new LocalPrincipalResolver(),
+    environments: new LocalEnvironmentProvider({
+      environmentFor: async () => ({ adapter: adapter(), workspace: new NullWorkspace() }),
+    }),
+    cors: { origin: true },
+    records,
+    recordDefaults: { projectId: "project-default", projectName: "D", agentId: "main" },
+    projectRoot,
+    git: {
+      run: async () => {
+        calls += 1;
+        return { code: 0, stdout: "false\n", stderr: "" };
+      },
+    },
+  };
+  const app = await createTransportService({ backend });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const base = `http://127.0.0.1:${(app.server.address() as { port: number }).port}`;
+  try {
+    const listed = await fetch(`${base}/api/worktrees?projectId=project-default`);
+    assert.equal(listed.status, 200);
+    const body = (await listed.json()) as { worktrees: { id: string; exists?: boolean }[] };
+    assert.equal(body.worktrees.find((w) => w.id === "main")?.exists, false);
+    assert.equal(calls, 0, "a missing cwd must not be mistaken for a missing git");
+    const { stat } = await import("node:fs/promises");
+    await assert.rejects(() => stat(join(projectRoot, "project-default", ".git")));
   } finally {
     await app.close();
     await rm(projectRoot, { recursive: true, force: true });

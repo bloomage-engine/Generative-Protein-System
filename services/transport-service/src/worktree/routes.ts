@@ -69,8 +69,24 @@ export function registerWorktreeRoutes(app: FastifyInstance, deps: WorktreeRoute
     // Decorate with on-disk state only when the Project actually has a
     // repository — a listing must never create one. An unsafe claimed id is
     // left undecorated rather than joined onto the root as a path segment.
+    //
+    // The directory check comes BEFORE git: a fresh Project workspace may not
+    // exist yet, and `spawn("git", { cwd: missingDir })` also reports
+    // `spawn git ENOENT` — indistinguishable from a missing git binary. A
+    // missing workspace is not a missing deployment capability.
     const dir = isSafeProjectId(claim.projectId) ? projectDir(claim.projectId) : null;
-    const branchByPath = dir && (await isRepo(git, dir)) ? await branchMap(git, dir) : null;
+    let branchByPath: Map<string, string | null> | null = null;
+    let gitAvailable = true;
+    if (dir && (await pathExists(dir))) {
+      try {
+        if (await isRepo(git, dir)) branchByPath = await branchMap(git, dir);
+      } catch (err) {
+        if (!(err instanceof GitUnavailableError)) throw err;
+        // Git is genuinely unavailable: keep the record rows usable. The
+        // git-backed writes still answer 503 (docs/adr/0025).
+        gitAvailable = false;
+      }
+    }
 
     const worktrees = await Promise.all(
       rows.map(async (worktree) => {
@@ -84,7 +100,11 @@ export function registerWorktreeRoutes(app: FastifyInstance, deps: WorktreeRoute
         };
       }),
     );
-    return { worktrees, defaultWorktreeId: DEFAULT_WORKTREE_ID };
+    return {
+      worktrees,
+      defaultWorktreeId: DEFAULT_WORKTREE_ID,
+      ...(gitAvailable ? {} : { gitAvailable: false }),
+    };
   });
 
   // -- Create a worktree (initializes the repository lazily) ----------------

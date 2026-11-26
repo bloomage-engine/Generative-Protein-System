@@ -102,6 +102,17 @@ export interface ProjectScopes {
     reply: FastifyReply,
     run: (scope: ProjectScope) => Promise<T>,
   ): Promise<T | FastifyReply>;
+  /**
+   * Like {@link withWorkspace}, but against an EXPLICIT Project instead of the
+   * request's claim — for a route that resolves its Project from elsewhere
+   * (e.g. the workspace file the user is currently viewing).
+   */
+  withWorkspaceFor<T>(
+    request: FastifyRequest,
+    projectId: Id,
+    reply: FastifyReply,
+    run: (scope: ProjectScope) => Promise<T>,
+  ): Promise<T | FastifyReply>;
 }
 
 /**
@@ -175,26 +186,41 @@ export function createProjectScopes(opts: ProjectScopeOptions): ProjectScopes {
     };
   };
 
+  const acquireProject = async (principal: Principal, projectId: Id): Promise<ProjectScope> => {
+    // A NAMED Project in the request path is client-supplied too, and the
+    // project path routes (delete) reach the workspace root through here.
+    requireSafeProjectId(projectId);
+    const worktreeId = DEFAULT_WORKTREE_ID;
+    await directory.ensureWorktree(projectId);
+    await directory.requireWorktree(projectId, worktreeId);
+    return {
+      principal,
+      projectId,
+      worktreeId,
+      threadId: null,
+      environment: await environments.acquire(principal, projectId, worktreeId),
+    };
+  };
+
+  const withWorkspace = async <T>(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    run: (scope: ProjectScope) => Promise<T>,
+  ): Promise<T | FastifyReply> => {
+    try {
+      return await run(await acquire(request));
+    } catch (err) {
+      return sendWorkspaceError(reply, err);
+    }
+  };
+
   return {
     acquire,
 
     claim: async (request) => resolveClaim(request),
 
-    async acquireProject(principal, projectId) {
-      // A NAMED Project in the request path is client-supplied too, and the
-      // project path routes (delete) reach the workspace root through here.
-      requireSafeProjectId(projectId);
-      const worktreeId = DEFAULT_WORKTREE_ID;
-      await directory.ensureWorktree(projectId);
-      await directory.requireWorktree(projectId, worktreeId);
-      return {
-        principal,
-        projectId,
-        worktreeId,
-        threadId: null,
-        environment: await environments.acquire(principal, projectId, worktreeId),
-      };
-    },
+    acquireProject,
+    withWorkspace,
 
     async sessionOf(request) {
       const scope = await acquire(request);
@@ -209,9 +235,9 @@ export function createProjectScopes(opts: ProjectScopeOptions): ProjectScopes {
       };
     },
 
-    async withWorkspace(request, reply, run) {
+    async withWorkspaceFor(request, projectId, reply, run) {
       try {
-        return await run(await acquire(request));
+        return await run(await acquireProject(request.principal!, projectId));
       } catch (err) {
         return sendWorkspaceError(reply, err);
       }

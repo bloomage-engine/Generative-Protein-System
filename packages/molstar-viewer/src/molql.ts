@@ -1,4 +1,4 @@
-import { Script } from "molstar/lib/mol-script/script";
+import { Script } from "molstar/lib/mol-script/script.js";
 import type { Structure, StructureElement } from "molstar/lib/mol-model/structure";
 import {
   MolqlError,
@@ -6,8 +6,10 @@ import {
   type MolqlDirective,
   type MolqlSelectionMode,
 } from "./directive.js";
-import { getActiveMolqlViewer } from "./registry.js";
+import { registerMissingMolstarCombinators } from "./molstar-combinators.js";
 import type { MolqlSelectionTarget } from "./target.js";
+
+registerMissingMolstarCombinators();
 
 /**
  * Compile/apply boundary for Mol*.
@@ -43,7 +45,8 @@ export function compileMolql(molql: string, structure: Structure): StructureElem
 }
 
 export interface ApplyMolqlOptions {
-  /** Defaults to the active viewer registered by `MolqlViewerPanel`. */
+  /** The viewer to apply to (the file the user is viewing). Required: the
+   *  registry is path-keyed, so the caller resolves the target explicitly. */
   target?: MolqlSelectionTarget;
   /** `"select"` (persistent, default) or `"highlight"` (transient). */
   mode?: MolqlSelectionMode;
@@ -67,7 +70,9 @@ function isInternalStructureError(err: unknown): boolean {
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => {
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => resolve());
+    const raf = (globalThis as { requestAnimationFrame?: (callback: () => void) => unknown })
+      .requestAnimationFrame;
+    if (typeof raf === "function") raf.call(globalThis, () => resolve());
     else setTimeout(resolve, 16);
   });
 }
@@ -110,7 +115,7 @@ export async function applyMolqlSelection(
   molql: string,
   options: ApplyMolqlOptions = {},
 ): Promise<StructureElement.Loci> {
-  const target = options.target ?? getActiveMolqlViewer();
+  const target = options.target;
   if (!target) throw new MolqlError("No structure viewer is open.", "NO_VIEWER");
 
   if (target.whenReady) await target.whenReady();

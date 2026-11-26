@@ -32,18 +32,21 @@ import {
   attachmentsFromMentions,
   parseWorkspaceMentions,
 } from "@science-studio/transport";
+import { localWorkspace } from "./composition.js";
 import type { Backend, CorsConfig } from "./composition.js";
 import { registerCronRoutes } from "./cron/routes.js";
 import { createCronScheduler } from "./cron/scheduler.js";
 import { createCronStore } from "./cron/store.js";
 import { createRecordDirectory, DEFAULT_RECORD_DEFAULTS, WorktreeNotFoundError } from "./directory.js";
 import { registerHpcRoutes } from "./hpc/routes.js";
+import { registerMcpRoutes } from "./mcp/routes.js";
+import { removeMcpServersForProject } from "./mcp/store.js";
 import { createHpcPoller } from "./hpc/poller.js";
 import { createSshRunner } from "./hpc/ssh.js";
 import { createGitRunner, GitUnavailableError } from "./worktree/git.js";
 import { isSafeProjectId } from "./worktree/paths.js";
 import { registerWorktreeRoutes } from "./worktree/routes.js";
-import { canonicalSessionKey, createProjectScopes } from "./project-scope.js";
+import { canonicalSessionKey, createProjectScopes, type ProjectScope } from "./project-scope.js";
 import {
   computeInteractionsForSelection,
   MolqlCompileError,
@@ -137,6 +140,17 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     defaultProjectId,
   });
   const activeRuns = new Set<string>();
+  /**
+   * The structure file the user is CURRENTLY VIEWING, reported on each
+   * `/api/transport` send as `body.view.activeStructure`. A structure tool that
+   * names no file falls back to this, so "operate on the file the user has open"
+   * works WITHOUT putting any UI state into the model prompt. Process-wide
+   * (single-user); a hosted multi-user deployment would scope it per principal.
+   */
+  let activeStructure: { projectId: string; path: string } | null = null;
+  /** 400 body when a structure route has neither an explicit nor an open file. */
+  const NO_STRUCTURE_TARGET =
+    "no structure file was specified and no structure file is currently open; ask the user which file to use";
   const cronStore = createCronStore();
   /** The bootstrap row every unscoped request falls back to (docs/adr/0014). */
   const isDefaultProject = (id: string): boolean => id === defaultProjectId;
@@ -168,6 +182,18 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     const next = mergeSettings(await loadSettings(settingsPath), parsed.patch);
     await saveSettings(settingsPath, next);
     return viewOf(next, settingsPath, process.env);
+  });
+
+  // -- Deployment MCP servers (docs/adr/0026) --------------------------------
+  // A dedicated per-row surface: the generic settings PUT replaces a whole
+  // section, which would let one Project delete another Project's MCP rows.
+  registerMcpRoutes(app, {
+    settingsPath,
+    records,
+    available: backend.capabilities?.mcp ?? false,
+    ...(backend.mcpProbe ? { probe: backend.mcpProbe } : {}),
+    workspaceRoot: (projectId, worktreeId) =>
+      localWorkspace(process.env, projectId, worktreeId).toAgentPath(""),
   });
 
   // -- Project / Session / Run record surface --------------------------------
@@ -256,6 +282,12 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       return reply.code(500).send({ error: "failed to recycle the project workspace" });
     }
     await directory.deleteProject(id);
+    try {
+      await removeMcpServersForProject(settingsPath, id);
+    } catch (err) {
+      // Best-effort: deleting the Project must not fail on its MCP config.
+      console.error(`[transport-service] removing MCP servers for project "${id}" failed`, err);
+    }
     try {
       await backend.environments.release?.(principal, id);
     } catch (err) {
@@ -349,7 +381,11 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
 
   // -- Conversation path -----------------------------------------------------
   app.post("/api/transport", async (request, reply) => {
-    const body = (request.body ?? {}) as { commands?: unknown[]; state?: unknown };
+    const body = (request.body ?? {}) as {
+      commands?: unknown[];
+      state?: unknown;
+      view?: { activeStructure?: unknown };
+    };
     const commands = normalizeCommands(body.commands ?? []);
 
     // The request's scope — Principal, Project, and the Project's own adapter +
@@ -358,6 +394,15 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     // lock, so a failure here cannot leak it.
     const { principal, environment, projectId, session: sessionRecord } =
       await scope.sessionOf(request);
+
+    // Remember which structure file the client is viewing (service-only UI
+    // context — never part of the model prompt). A later structure tool that
+    // names no file targets this.
+    const reported = body.view?.activeStructure;
+    activeStructure =
+      typeof reported === "string" && reported.length > 0
+        ? { projectId, path: reported }
+        : null;
 
     const runKey = `${principal.tenant}:${sessionRecord.id}`;
     if (activeRuns.has(runKey)) {
@@ -391,6 +436,16 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       activeRuns.delete(runKey);
     }
   });
+
+  // -- Current view context (client-reported) --------------------------------
+  // The structure file the user is CURRENTLY viewing, set by `POST
+  // /api/transport` from `body.view.activeStructure`. The agent's `molql` tool
+  // reads this so it can ask the user to open a file instead of claiming a
+  // selection it cannot apply. `path: null` = the viewed file is not a
+  // structure (or none is open).
+  app.get("/api/transport/active-structure", async () => ({
+    path: activeStructure?.path ?? null,
+  }));
 
   // -- Run control -----------------------------------------------------------
   app.post("/api/transport/abort", async (request) => {
@@ -688,22 +743,33 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       path?: string;
       molql?: string;
     };
-    if (!path) return reply.code(400).send({ error: "path is required" });
     if (!molql) return reply.code(400).send({ error: "molql is required" });
-    return scope.withWorkspace(request, reply, async ({ environment }) => {
-      const content = await environment.workspace.open(path, {
+    // An explicit path wins; otherwise the file the user is viewing. A route
+    // with neither asks the agent to ask the user, rather than guessing.
+    const explicit = typeof path === "string" && path.length > 0 ? path : null;
+    const resolved =
+      explicit !== null
+        ? { path: explicit, projectId: null as string | null }
+        : activeStructure;
+    if (!resolved?.path) return reply.code(400).send({ error: NO_STRUCTURE_TARGET });
+
+    const run = async ({ environment }: ProjectScope) => {
+      const content = await environment.workspace.open(resolved.path!, {
         maxBytes: STRUCTURE_MAX_BYTES,
       });
       const data = await readAll(content.body);
       try {
-        return await computeInteractionsForSelection({ fileName: path, data, molql });
+        return await computeInteractionsForSelection({ fileName: resolved.path!, data, molql });
       } catch (err) {
         if (err instanceof UnsupportedStructureFormatError || err instanceof MolqlCompileError) {
           return reply.code(400).send({ error: err.message });
         }
         throw err;
       }
-    });
+    };
+    return resolved.projectId
+      ? scope.withWorkspaceFor(request, resolved.projectId, reply, run)
+      : scope.withWorkspace(request, reply, run);
   });
 
   // Mol* measurements (label/distance/angle/dihedral/orientation/plane) over a
@@ -716,8 +782,6 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
       kind?: unknown;
       selections?: unknown;
     };
-    const path = typeof body.path === "string" ? body.path : "";
-    if (!path) return reply.code(400).send({ error: "path is required" });
     const kind = typeof body.kind === "string" ? body.kind : "";
     if (!kind) return reply.code(400).send({ error: "kind is required" });
     const selections = Array.isArray(body.selections)
@@ -726,11 +790,24 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
     if (selections.length === 0) {
       return reply.code(400).send({ error: "selections (string[]) is required" });
     }
-    return scope.withWorkspace(request, reply, async ({ environment }) => {
-      const content = await environment.workspace.open(path, { maxBytes: STRUCTURE_MAX_BYTES });
+    // An explicit path (the user named a file / used a mention) wins; otherwise
+    // the file the user is currently viewing. Neither → ask the user.
+    const explicit =
+      typeof body.path === "string" && body.path.length > 0 ? body.path : null;
+    const resolved =
+      explicit !== null
+        ? { path: explicit, projectId: null as string | null }
+        : activeStructure;
+    if (!resolved?.path) return reply.code(400).send({ error: NO_STRUCTURE_TARGET });
+
+    const run = async ({ environment, projectId }: ProjectScope) => {
+      const content = await environment.workspace.open(resolved.path!, { maxBytes: STRUCTURE_MAX_BYTES });
       const data = await readAll(content.body);
       try {
-        return await computeMeasurements({ fileName: path, data, kind, selections });
+        const result = await computeMeasurements({ fileName: resolved.path!, data, kind, selections });
+        // Echo the file the numbers belong to so the tool result and the viewer
+        // can target the SAME file (the agent may have omitted it).
+        return { ...result, project: projectId, path: resolved.path };
       } catch (err) {
         if (
           err instanceof UnsupportedStructureFormatError ||
@@ -741,7 +818,10 @@ export async function createServer(backend: Backend): Promise<FastifyInstance> {
         }
         throw err;
       }
-    });
+    };
+    return resolved.projectId
+      ? scope.withWorkspaceFor(request, resolved.projectId, reply, run)
+      : scope.withWorkspace(request, reply, run);
   });
 
   app.post("/api/workspace/upload", async (request, reply) => {

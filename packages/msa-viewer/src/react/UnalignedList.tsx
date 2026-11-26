@@ -42,8 +42,8 @@ export function UnalignedList({ data, className, onMention }: UnalignedListProps
             </tr>
           </thead>
           <tbody>
-            {rows.map((s, i) => (
-              <tr key={`${s.name}-${i}`}>
+            {rows.map((s) => (
+              <tr key={s.id}>
                 <td style={{ padding: "2px 8px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{s.name}</td>
                 <td style={{ padding: "2px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{s.seq.length}</td>
                 <td style={{ padding: "2px 8px", textAlign: "right" }}>

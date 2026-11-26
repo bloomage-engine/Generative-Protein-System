@@ -288,6 +288,25 @@ A/B/C/D. The service computes the value with the same molstar formulas the viewe
 draws and returns it, so one result serves both the model and the 3D view.
 _Avoid_: Measure tool, Geometry tool, Molstar measurement
 
+**MCP Server**:
+An external Model Context Protocol tool server the dsh agent can call. Its
+deployment row lives in `settings.mcp.servers`; it is either **Global** (every
+Project) or **Project-scoped** (only the Project named by `projectId`). It is
+not a Project workspace file, because its credentials are write-only deployment
+secrets.
+_Avoid_: Tool server config, Integration, Connector
+
+**MCP Tool**:
+A tool discovered from an MCP Server and registered by the dsh bridge as
+`mcp__<server id>__<tool>`. Calls and results travel as ordinary tool-call parts.
+_Avoid_: Plugin, Skill, Native tool
+
+**MCP Probe**:
+The workbench's Test connection action: a one-shot `@modelcontextprotocol/sdk`
+connection that lists a candidate server's tools and disconnects. It is not the
+agent's live MCP connection.
+_Avoid_: Health check, Ping
+
 **Selection Mention**:
 The composer text `@<project>/<workspace path>/<MolQL expression>` produced when
 the user clicks a residue, an atom or a bond/dashed interaction in the structure

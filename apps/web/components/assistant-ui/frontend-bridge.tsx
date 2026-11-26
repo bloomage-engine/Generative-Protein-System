@@ -59,11 +59,16 @@ function actionSignature(messages: readonly unknown[]): string {
         toolName?: string;
         toolCallId?: string;
         result?: unknown;
+        isError?: boolean;
       };
       if (p.type !== "tool-call" || typeof p.toolName !== "string" || !names.has(p.toolName)) {
         continue;
       }
       if (p.result === undefined || typeof p.toolCallId !== "string") continue;
+      // An ERRORED call has no result to apply — e.g. `molql` reporting that no
+      // structure file is open, which the agent already relays as a question.
+      // Dispatching it would only duplicate that question with a frontend toast.
+      if (p.isError === true) continue;
       completed.push([p.toolCallId, p.toolName, p.result]);
     }
   }

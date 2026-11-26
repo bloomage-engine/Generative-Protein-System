@@ -4,11 +4,11 @@ import {
   type MolqlMeasurementDirective,
 } from "./measurement.js";
 import { compileMolql } from "./molql.js";
-import { getActiveMolqlViewer } from "./registry.js";
 import type { MolqlSelectionTarget } from "./target.js";
 
 export interface ApplyMeasurementOptions {
-  /** Defaults to the active viewer registered by `MolqlViewerPanel`. */
+  /** The viewer to draw on (the file the numbers belong to). Required: the
+   *  registry is path-keyed, so the caller resolves the target explicitly. */
   target?: MolqlSelectionTarget;
 }
 
@@ -27,7 +27,7 @@ export async function applyMeasurementToolResult(
   const directive = parseMeasurementToolResult(input);
   if (!directive) return null;
 
-  const target = options.target ?? getActiveMolqlViewer();
+  const target = options.target;
   if (!target) throw new MolqlError("No structure viewer is open.", "NO_VIEWER");
 
   if (target.whenReady) await target.whenReady();

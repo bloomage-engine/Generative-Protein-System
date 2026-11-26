@@ -24,7 +24,6 @@ import {
   type ApplyContext,
   type ApplyResult,
   type CommandDescriptor,
-  type McpServerSettings,
   type Message,
   type RecordStoreLike,
   type RunControl,
@@ -88,11 +87,6 @@ export interface DshBehaviorDeps {
   harnessCommands: DshHarnessCommands;
   /** The merged catalog — exactly what `listCommands()` publishes, for command replies. */
   commandCatalog: () => Promise<CommandDescriptor[]>;
-  /**
-   * The MCP servers THIS child mounts (docs/adr/0026), reported by `/status`.
-   * A mount fact from the launch patch, never a connectivity probe.
-   */
-  mcpServers?: () => readonly McpServerSettings[];
   /**
    * Wait for the runtime child's readiness (a memoized start). A cold start —
    * spawning the harness plus its handshake — is a cost of the PROMPT, not of
@@ -307,7 +301,6 @@ export function createDshBehavior(deps: DshBehaviorDeps): DshBehavior {
       model,
       cwd,
       harnessSessionId: harnessSessions.get(sessionKey) ?? null,
-      mcpServers: deps.mcpServers?.() ?? [],
     };
     const parsed = parseCommandLine(line);
     const local = parsed ? DSH_COMMANDS.find((candidate) => candidate.descriptor.id === parsed.name) : undefined;

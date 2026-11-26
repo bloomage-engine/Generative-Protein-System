@@ -172,14 +172,55 @@ test("FASTA: the name is the first header token; a description is dropped; an em
   assert.equal(r.sequences[0]!.name, "Seq1");
   assert.throws(() => parseAlignment(">\nMAAVL\n"), MsaParseError);
   assert.throws(() => parseAlignment("MAAVL\n"), MsaParseError); // data before any header
-  // a repeated header is NOT block interleaving (that is a Clustal/Stockholm
-  // concept) — concatenating would silently corrupt the record
-  assert.throws(() => parseAlignment(">Seq1\nMAAVL\n>Seq1\nTTVLL\n"), MsaParseError);
+});
+
+test("FASTA: repeated record names are distinct records (real ColabFold/UniRef a3m repeats ids)", () => {
+  const r = parseAlignment(">Seq1 first\nMAAVL\n>Seq1 second\nMAAVL\n>Seq2\nMAAVL\n");
+  assert.equal(r.kind, "aligned");
+  if (r.kind !== "aligned") return;
+  assert.equal(r.sequences.length, 3);
+  assert.deepEqual(r.sequences.map((s) => s.name), ["Seq1", "Seq1", "Seq2"]);
+  assert.deepEqual(r.sequences.map((s) => s.id), [0, 1, 2]);
+  assert.deepEqual(r.sequences.map((s) => s.seq), ["MAAVL", "MAAVL", "MAAVL"]);
 });
 
 test("a3m: lowercase insertions are not part of the alignment — the grid shows the gapless match states", () => {
   // ragged raw lengths on purpose: the insertions differ per record
   const text = [">query", "MKavltTTVLL", ">hit1", "MKqTTVLL", ">hit2", "MKTTVLL"].join("\n");
+  const r = parseAlignment(text);
+  assert.equal(r.kind, "aligned");
+  if (r.kind !== "aligned") return;
+  assert.equal(r.columns, 7);
+  assert.deepEqual(r.sequences.map((s) => s.seq), ["MKTTVLL", "MKTTVLL", "MKTTVLL"]);
+  assert.equal(r.insertionsStripped, true);
+});
+
+test("a3m: duplicate record names are kept as separate rows and still reduce to the match states", () => {
+  const text = [
+    ">UniRef100_A0A371H0J5 first",
+    "MKavltTTVLL",
+    ">UniRef100_A0A371H0J5 second",
+    "MKqTTVLL",
+    ">hit2",
+    "MKTTVLL",
+  ].join("\n");
+  const r = parseAlignment(text);
+  assert.equal(r.kind, "aligned");
+  if (r.kind !== "aligned") return;
+  assert.equal(r.columns, 7);
+  assert.equal(r.sequences.length, 3);
+  assert.deepEqual(r.sequences.map((s) => s.name), [
+    "UniRef100_A0A371H0J5",
+    "UniRef100_A0A371H0J5",
+    "hit2",
+  ]);
+  assert.deepEqual(r.sequences.map((s) => s.id), [0, 1, 2]);
+  assert.deepEqual(r.sequences.map((s) => s.seq), ["MKTTVLL", "MKTTVLL", "MKTTVLL"]);
+  assert.equal(r.insertionsStripped, true);
+});
+
+test("a3m: a stray NUL (or other control byte) does not defeat the match-state check", () => {
+  const text = [">query", "MKavltTTVLL", ">hit1", "MKqTTVLL", ">hit2", "MKTTVLL\u0000"].join("\n");
   const r = parseAlignment(text);
   assert.equal(r.kind, "aligned");
   if (r.kind !== "aligned") return;

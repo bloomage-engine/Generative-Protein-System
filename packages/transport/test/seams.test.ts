@@ -4,8 +4,6 @@ import * as seams from "../src/seams.js";
 import * as root from "../src/index.js";
 import type { SubagentRun } from "../src/seams.js";
 import type {
-  McpStdioServerSettings,
-  McpSettingsPatch,
   ModelSettings,
   ModelSettingsPatch,
   RuntimeSettings,
@@ -22,7 +20,6 @@ import type {
 const CONTRACT_VALUES = [
   "DEFAULT_MAX_UPLOAD_BYTES",
   "DEFAULT_QUOTA_BYTES",
-  "MCP_SERVER_NAME_GRAMMAR",
   "WorkspaceNotFoundError",
   "WorkspacePathError",
   "WorkspaceEscapeError",
@@ -81,17 +78,8 @@ test("the package root still carries kit and defaults on top of the contract", (
 test("the settings contract types are importable and usable", () => {
   const model: ModelSettings = { provider: "ollama-local", model: "qwen3.8:latest", apiKey: "k" };
   const modelPatch: ModelSettingsPatch = { provider: "ollama-local", apiKey: null };
-  const mcpServer: McpStdioServerSettings = {
-    serverName: "github",
-    transport: "stdio",
-    enabled: true,
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-github"],
-    env: { GITHUB_TOKEN: "secret" },
-  };
-  const mcpPatch: McpSettingsPatch = { servers: [{ serverName: "web", transport: "streamable-http", url: "http://localhost:3000/mcp", headers: { Authorization: null } }] };
-  const settings: RuntimeSettings = { model, plugins: {}, agent: {}, mcp: { servers: [mcpServer] } };
-  const patch: RuntimeSettingsPatch = { model: modelPatch, plugins: { a: 1 }, mcp: mcpPatch };
+  const settings: RuntimeSettings = { model, plugins: {}, agent: {} };
+  const patch: RuntimeSettingsPatch = { model: modelPatch, plugins: { a: 1 } };
   const view: RuntimeSettingsView = {
     model: { provider: model.provider, apiKeyConfigured: true },
     plugins: {},
@@ -99,18 +87,6 @@ test("the settings contract types are importable and usable", () => {
     subagents: {},
     thread: {},
     hpc: { endpoints: [] },
-    mcp: {
-      servers: [
-        {
-          serverName: mcpServer.serverName,
-          transport: "stdio",
-          enabled: true,
-          command: mcpServer.command,
-          args: mcpServer.args,
-          envConfigured: Object.keys(mcpServer.env ?? {}),
-        },
-      ],
-    },
     runtime: "dsh",
     settingsPath: "/tmp/settings.json",
   };
@@ -118,7 +94,6 @@ test("the settings contract types are importable and usable", () => {
   assert.equal(patch.model?.apiKey ?? null, null);
   assert.equal(view.model.apiKeyConfigured, true);
   assert.equal(view.settingsPath, "/tmp/settings.json");
-  assert.deepEqual(view.mcp.servers[0]?.transport === "stdio" ? view.mcp.servers[0].envConfigured : [], ["GITHUB_TOKEN"]);
 });
 
 test("the SubagentRun view type is importable and usable", () => {

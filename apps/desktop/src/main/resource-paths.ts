@@ -9,10 +9,11 @@ export function resolveResourcePaths(input: {
   isPackaged: boolean;
   resourcesPath: string;
   appRoot: string;
+  appPath: string;
 }): DesktopResourcePaths {
   if (input.isPackaged) {
     return {
-      hostEntry: join(input.resourcesPath, "host", "host.mjs"),
+      hostEntry: join(input.appPath, "build", "host", "host.mjs"),
       nextDir: join(input.resourcesPath, "next", "apps", "web"),
     };
   }

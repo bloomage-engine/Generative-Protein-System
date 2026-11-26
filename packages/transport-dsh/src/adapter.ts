@@ -7,7 +7,6 @@ import {
   WorkspaceUnavailableError,
   isCommandText,
   type CommandDescriptor,
-  type McpServerSettings,
   type RecordStoreLike,
   type RuntimeAdapter,
   type RuntimeFactory,
@@ -39,7 +38,6 @@ import {
   writeBridgePatch,
   writeCronPatch,
   writeHpcPatch,
-  writeMcpPatch,
   writeProjectPatch,
   writeSubagentPatch,
   writeWorktreePatch,
@@ -47,6 +45,7 @@ import {
 } from "./bridge.js";
 import { createDshBehavior, type DshBehavior } from "./behavior.js";
 import { applyRouteSettings } from "./route-settings.js";
+import { MCP_CONFIG_ENV, dshMcpConfigs, writeMcpPatch } from "./mcp-patch.js";
 import { readChildTranscript } from "./child-transcript.js";
 import {
   PROJECT_SKILL_DIR,
@@ -184,12 +183,6 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
   private harnessSessions = new Map<string, string>();
   private provider = DEFAULT_PROVIDER;
   private model = DEFAULT_MODEL;
-  /**
-   * The MCP servers THIS child mounts (docs/adr/0026) — the enabled rows of
-   * `RuntimeInitOptions.mcpServers`, set during `initialize`. `/status` reports
-   * it; a patch write that failed leaves it empty.
-   */
-  private mountedMcpServers: readonly McpServerSettings[] = [];
   private readonly bridgePluginPath: string;
   private readonly projectPluginPath: string;
   private readonly cronPluginPath: string;
@@ -422,21 +415,25 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       }
     }
 
-    // The MCP client plugin rides a SIXTH launch patch (docs/adr/0026): the
-    // harness's OWN `@deepseek-ai/dsh-mcp-client`, one row per ENABLED
-    // deployment server. Unlike the Project-bound siblings this is a
-    // DEPLOYMENT capability — it mounts for every dsh child, `project-default`
-    // and linked worktrees alike — and the list arrives through
-    // `RuntimeInitOptions.mcpServers`, re-read from the settings file at THIS
-    // environment's acquisition. Best-effort like the others: an unwritable
-    // patch simply mounts nothing. The mounted subset is what `/status` reports.
-    this.mountedMcpServers = (opts.mcpServers ?? []).filter((server) => server.enabled !== false);
-    if (this.mountedMcpServers.length > 0) {
+    // Deployment MCP servers (docs/adr/0026): the binding carries the whole
+    // catalog; this child gets only the global rows plus ITS Project's rows.
+    // The plugin config is read from the child env (never from the patch file).
+    const mcpServers = (binding.mcpServers ?? []).filter(
+      (server) =>
+        server.enabled &&
+        (server.scope === "global" ||
+          (opts.project !== undefined && server.projectId === opts.project.id)),
+    );
+    let mcpEnv: NodeJS.ProcessEnv | undefined;
+    if (mcpServers.length > 0) {
       try {
-        patches.push(await writeMcpPatch({ dir: this.bridgeDir, servers: [...this.mountedMcpServers] }));
+        const configs = dshMcpConfigs(mcpServers);
+        patches.push(await writeMcpPatch({ dir: this.bridgeDir, configs }));
+        // The patch reads this exact array by index; it carries only the dsh
+        // plugin config (never the catalog's scope/projectId bookkeeping).
+        mcpEnv = { [MCP_CONFIG_ENV]: JSON.stringify(configs) };
       } catch (err) {
-        this.mountedMcpServers = [];
-        console.warn("[dsh] mcp plugin unavailable", err);
+        console.warn("[dsh] MCP plugin unavailable", err);
       }
     }
 
@@ -463,7 +460,9 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       provider,
       model,
       maxTokens,
-      ...(routeEnv === undefined ? {} : { env: { ...process.env, ...routeEnv } }),
+      ...(routeEnv === undefined && mcpEnv === undefined
+        ? {}
+        : { env: { ...process.env, ...routeEnv, ...mcpEnv } }),
       ...(patches.length > 0 ? { patches } : {}),
     });
     // The subagent ledger is DURABLE through the record (docs/adr/0019): each
@@ -485,7 +484,6 @@ export class DshRuntimeAdapter implements RuntimeAdapter {
       workspace: opts.workspace ?? null,
       harnessCommands: this.harnessCommands,
       commandCatalog: () => this.listCommands(),
-      mcpServers: () => this.mountedMcpServers,
       // The prompt's readiness gate (see `DshBehaviorDeps.ensureReady`). The
       // adapter's own `run()` kicks this off in the background BEFORE the
       // first frames stream, so a cold start delays the model — not the

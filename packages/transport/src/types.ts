@@ -1,6 +1,5 @@
 import type { Id, Run, RunStatus, PersistedTranscript, Subagent } from "@science-studio/record";
 import type { RuntimeBinding } from "./runtime.js";
-import type { McpServerSettings } from "./settings.js";
 import type { SkillInfo, SkillInstallInput } from "./skills.js";
 import type { Workspace } from "./workspace.js";
 
@@ -368,14 +367,6 @@ export interface RuntimeInitOptions {
   env?: Record<string, string | undefined>;
   /** The session's workspace, for attachment refs and file-part mapping. */
   workspace?: Workspace;
-  /**
-   * The deployment's external MCP servers (docs/adr/0026), re-read from the
-   * settings file at THIS acquisition — a runtime may mount them into the
-   * tools it exposes (dsh: one `@deepseek-ai/dsh-mcp-client` launch-patch row
-   * per enabled server). Absent/empty = no MCP surface. Runtimes without the
-   * capability ignore it.
-   */
-  mcpServers?: McpServerSettings[];
 }
 
 /** Narrow view of the record store an adapter uses to persist Runs. */

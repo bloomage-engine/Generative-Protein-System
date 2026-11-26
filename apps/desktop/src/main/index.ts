@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import { mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -10,12 +10,16 @@ import { detectDsh } from "../shared/dsh.js";
 import { runtimeStatus } from "../shared/runtime-status.js";
 import { singleFlight } from "../shared/single-flight.js";
 import { augmentPath } from "../shared/env-path.js";
+import { prependPathEntry } from "../shared/git-discovery.js";
+import { killTree } from "../shared/process-tree.js";
 import { forkHost, type HostPorts } from "./host-child.js";
+import { resolveWindowsGit } from "./win-env.js";
 import { resolveResourcePaths } from "./resource-paths.js";
 import { createWorkbenchWindow } from "./windows.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(here, "..", "..");
+if (process.platform === "win32") app.setAppUserModelId("ss.hx-engine.com");
 
 let workbench: BrowserWindow | null = null;
 let host: ChildProcess | null = null;
@@ -31,6 +35,13 @@ function pathEnv(): string {
   return augmentPath(process.env.PATH, homedir());
 }
 
+/** A packaged GUI has no console: surface boot failures instead of failing silently. */
+function reportFailure(context: string, err: unknown): void {
+  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+  process.stderr.write(`[desktop] ${context}: ${detail}\n`);
+  if (app.isReady()) dialog.showErrorBox("Science Studio failed to start", detail);
+}
+
 async function readConfig(): Promise<DesktopConfig> {
   try {
     return parseConfigEnv(await readFile(paths().configPath, "utf8"));
@@ -44,10 +55,23 @@ async function boot(): Promise<HostPorts> {
   await mkdir(p.userDataDir, { recursive: true });
   const env = buildChildEnv({ base: process.env, config: await readConfig(), paths: p });
   env.PATH = pathEnv();
+  if (process.platform === "win32") {
+    // A GUI process inherits a PATH snapshot; the registry is the source of
+    // truth for a Git added later or installed outside the standard roots.
+    const resolved = resolveWindowsGit({ basePath: env.PATH, env });
+    env.PATH = resolved.path;
+    if (!env.GIT_BINARY && resolved.git) env.GIT_BINARY = resolved.git;
+    if (env.GIT_BINARY) env.PATH = prependPathEntry(dirname(env.GIT_BINARY), env.PATH, "win32");
+  }
   if (app.isPackaged) {
     env.NODE_PATH = join(app.getAppPath(), "node_modules");
   }
-  const resources = resolveResourcePaths({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appRoot });
+  const resources = resolveResourcePaths({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appRoot,
+    appPath: app.getAppPath(),
+  });
   const { ports, child } = await forkHost({
     hostEntry: resources.hostEntry,
     nextDir: process.env.DESKTOP_NEXT_DIR ?? resources.nextDir,
@@ -81,10 +105,13 @@ async function stopHost(): Promise<void> {
       resolve();
     };
     child.once("exit", onExit);
-    killTimer = setTimeout(() => {
-      child.kill("SIGKILL");
-    }, 5_000);
-    child.kill("SIGTERM");
+    killTimer = setTimeout(() => killTree(child), 5_000);
+    try {
+      if (child.connected) child.send({ type: "shutdown" });
+      else child.kill("SIGTERM");
+    } catch {
+      killTree(child);
+    }
   });
 }
 
@@ -161,7 +188,7 @@ function restart(): Promise<HostPorts | null> {
   if (restartInFlight) return restartInFlight;
   const inFlight = doRestart()
     .catch((err) => {
-      console.error("[desktop] restart failed", err);
+      reportFailure("restart failed", err);
       return null;
     })
     .finally(() => {
@@ -252,12 +279,10 @@ void app
         showWorkbench(localUrl(hostPorts));
         return;
       }
-      void openWorkbench().catch((err) => console.error("[desktop] openWorkbench failed", err));
+      void openWorkbench().catch((err) => reportFailure("openWorkbench failed", err));
     });
   })
-  .catch((err) => {
-    process.stderr.write(`[desktop] startup failed: ${err instanceof Error ? err.stack : String(err)}\n`);
-  });
+  .catch((err) => reportFailure("startup failed", err));
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

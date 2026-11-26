@@ -1,148 +1,134 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { McpServerSettings, RecordStoreLike } from "@science-studio/transport";
-import { writeMcpPatch } from "../src/bridge.js";
-import { executeDshCommand } from "../src/commands.js";
-import { DshRuntimeAdapter, type DshTurnClient } from "../src/index.js";
+import type { McpServerSettings } from "@science-studio/transport";
+import { DshRuntimeAdapter } from "../src/adapter.js";
+import type { DshClientLaunchOptions, DshTurnClient } from "../src/client.js";
+import { MCP_CONFIG_ENV, dshMcpConfigs, writeMcpPatch } from "../src/mcp-patch.js";
 
-const GITHUB: McpServerSettings = {
-  serverName: "github",
-  transport: "stdio",
-  enabled: true,
-  command: "npx",
-  args: ["-y", "@modelcontextprotocol/server-github"],
-  env: { GITHUB_TOKEN: "literal-secret" },
-};
+const META = { id: "drought-screen", name: "Drought", createdAt: "2026-09-01T00:00:00.000Z" };
+const noRecordStore = { addRun: async () => {} };
 
-const WEB: McpServerSettings = {
-  serverName: "web",
-  transport: "streamable-http",
-  url: "http://localhost:3000/mcp",
-  headers: { Authorization: "Bearer t0ken" },
-};
+const servers: McpServerSettings[] = [
+  {
+    id: "global",
+    scope: "global",
+    enabled: true,
+    transport: "stdio",
+    command: "global-server",
+    env: { GLOBAL_TOKEN: "global-secret" },
+  },
+  {
+    id: "mine",
+    scope: "project",
+    projectId: META.id,
+    enabled: true,
+    transport: "stdio",
+    command: "mine-server",
+    env: { MINE_TOKEN: "mine-secret" },
+  },
+  {
+    id: "other",
+    scope: "project",
+    projectId: "another-project",
+    enabled: true,
+    transport: "stdio",
+    command: "other-server",
+    env: { OTHER_TOKEN: "other-secret" },
+  },
+  {
+    id: "off",
+    scope: "global",
+    enabled: false,
+    transport: "stdio",
+    command: "off-server",
+  },
+];
 
-test("writeMcpPatch inserts one @deepseek-ai/dsh-mcp-client row per server, config JSON verbatim", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "dsh-mcp-launch-"));
+test("writeMcpPatch emits one plugin insert per server and no credentials", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-mcp-patch-"));
   try {
-    const file = await writeMcpPatch({ dir, servers: [GITHUB, WEB] });
+    const file = await writeMcpPatch({ dir, configs: dshMcpConfigs(servers.slice(0, 2)) });
     const patch = await readFile(file, "utf8");
     assert.match(patch, /- insert:/);
-    // The row name is the BARE package specifier (it resolves from the dsh CLI's
-    // install closure — unlike the sibling patches' file: URLs), and the row id
-    // carries the serverName.
-    assert.match(patch, /id: science-studio-mcp-github\n\s+name: "@deepseek-ai\/dsh-mcp-client"/);
-    assert.match(patch, /id: science-studio-mcp-web\n\s+name: "@deepseek-ai\/dsh-mcp-client"/);
-    // Config keeps the plugin's own fields with their secret values (the patch
-    // file is 0600), and NEVER the storage-only `enabled` flag.
-    assert.match(
-      patch,
-      /"serverName":"github","transport":"stdio","command":"npx","args":\["-y","@modelcontextprotocol\/server-github"\],"env":\{"GITHUB_TOKEN":"literal-secret"\}/,
-    );
-    assert.match(
-      patch,
-      /"serverName":"web","transport":"streamable-http","url":"http:\/\/localhost:3000\/mcp","headers":\{"Authorization":"Bearer t0ken"\}/,
-    );
-    assert.doesNotMatch(patch, /enabled/);
-    assert.doesNotMatch(patch, /file:\/\//);
+    assert.match(patch, /id: science-studio-mcp-0/);
+    assert.match(patch, /id: science-studio-mcp-1/);
+    assert.match(patch, /name: "@deepseek-ai\/dsh-mcp-client"/);
+    assert.match(patch, /SS_MCP_SECRET_CONFIG/);
+    assert.equal(patch.includes("global-secret"), false);
+    assert.equal(patch.includes("mine-secret"), false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("launch patches land owner-only: the shared dir is 0700 and every patch file 0600", async () => {
-  const dir = join(await mkdtemp(join(tmpdir(), "dsh-mcp-modes-")), "bridge");
-  try {
-    const file = await writeMcpPatch({ dir, servers: [GITHUB] });
-    assert.equal(((await stat(dir)).mode & 0o777).toString(8), "700");
-    assert.equal(((await stat(file)).mode & 0o777).toString(8), "600");
-  } finally {
-    await rm(join(dir, ".."), { recursive: true, force: true });
-  }
-});
-
-const emptyStore: RecordStoreLike = { addRun: async () => {} };
-
-function idleClient(): DshTurnClient {
-  return {
-    async start(): Promise<void> {},
-    async close(): Promise<void> {},
-    async runTurn(): Promise<void> {},
-  };
-}
-
-/** Boot an adapter with the given MCP list and return the patch paths it assembled. */
-async function initPatches(mcpServers: McpServerSettings[] | undefined, dir: string): Promise<string[]> {
-  let patches: string[] = [];
+async function mounted(opts: {
+  project?: { id: string; name: string; createdAt: string };
+  mcpServers?: McpServerSettings[];
+}): Promise<{ patches: string[]; env: NodeJS.ProcessEnv | undefined }> {
+  const dir = await mkdtemp(join(tmpdir(), "dsh-mcp-launch-"));
+  let seen: DshClientLaunchOptions | undefined;
   const adapter = new DshRuntimeAdapter({
-    createClient: (options) => {
-      patches = options.patches ?? [];
-      return idleClient();
+    createClient: (options): DshTurnClient => {
+      seen = options;
+      return { start: async () => {}, close: async () => {}, runTurn: async () => {} };
     },
     bridgeDir: dir,
-    transcriptDir: dir,
+    bridgePluginPath: "/opt/ss/bridge-plugin.js",
+    projectPluginPath: "/opt/ss/project-plugin.js",
+    cronPluginPath: "/opt/ss/cron-plugin.js",
+    subagentPluginPath: "/opt/ss/subagent-plugin.js",
+    hpcPluginPath: "/opt/ss/hpc-plugin.js",
+    worktreePluginPath: "/opt/ss/worktree-plugin.js",
   });
-  await adapter.init({
-    binding: { runtime: "dsh", config: {} },
-    recordStore: emptyStore,
-    ...(mcpServers === undefined ? {} : { mcpServers }),
-  });
-  adapter.abort();
-  return patches;
+  try {
+    await adapter.init({
+      binding: { runtime: "dsh", config: { mcpServers: opts.mcpServers ?? servers } },
+      recordStore: noRecordStore,
+      ...(opts.project ? { project: opts.project } : {}),
+    });
+    const patches = await Promise.all(
+      (seen?.patches ?? []).map((file) => readFile(file, "utf8")),
+    );
+    return { patches, env: seen?.env };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
-test("init mounts the MCP patch for the deployment list — enabled rows only", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "dsh-mount-"));
-  try {
-    const patches = await initPatches([GITHUB, { ...WEB, enabled: false }], dir);
-    const file = patches.find((p) => p.includes("mcp-"));
-    assert.ok(file, "an MCP launch patch is mounted");
-    const patch = await readFile(file, "utf8");
-    assert.match(patch, /science-studio-mcp-github/);
-    assert.doesNotMatch(patch, /science-studio-mcp-web/, "a disabled server is not mounted");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+test("a Project child mounts only global rows plus its own", async () => {
+  const { patches, env } = await mounted({ project: META });
+  const mcp = patches.find((patch) => patch.includes("@deepseek-ai/dsh-mcp-client"));
+  assert.ok(mcp, "MCP patch was mounted");
+  assert.match(mcp, /science-studio-mcp-0/);
+  assert.match(mcp, /science-studio-mcp-1/);
+  assert.equal(mcp.includes("science-studio-mcp-2"), false);
+
+  const parsed = JSON.parse(env?.[MCP_CONFIG_ENV] ?? "[]") as {
+    serverName: string;
+    env?: Record<string, string>;
+  }[];
+  assert.deepEqual(parsed.map((server) => server.serverName), ["global", "mine"]);
+  assert.equal(parsed[0]?.env?.GLOBAL_TOKEN, "global-secret");
 });
 
-test("no MCP list (or none enabled) writes no patch at all", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "dsh-none-"));
-  try {
-    for (const servers of [undefined, [], [{ ...GITHUB, enabled: false }]]) {
-      const patches = await initPatches(servers, dir);
-      assert.ok(
-        !patches.some((p) => p.includes("mcp-")),
-        `no mcp patch for ${JSON.stringify(servers)}`,
-      );
-    }
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+test("a standalone child (no Project) mounts only global rows", async () => {
+  const { patches, env } = await mounted({});
+  const mcp = patches.find((patch) => patch.includes("@deepseek-ai/dsh-mcp-client"));
+  assert.ok(mcp);
+  assert.equal(mcp.includes("science-studio-mcp-1"), false);
+  const parsed = JSON.parse(env?.[MCP_CONFIG_ENV] ?? "[]") as { serverName: string }[];
+  assert.deepEqual(parsed.map((server) => server.serverName), ["global"]);
 });
 
-test("/status reports the MCP servers this child mounts (a patch fact, not connectivity)", () => {
-  const mounted = executeDshCommand("/status", {
-    sessionKey: "sess-1",
-    profile: "sdk",
-    provider: "ollama-local",
-    model: "qwen3.8:latest",
-    cwd: "/projects/p1",
-    harnessSessionId: null,
-    mcpServers: [GITHUB, WEB],
+test("no applicable servers mounts no MCP patch and sets no env", async () => {
+  const { patches, env } = await mounted({
+    project: { id: "new-project", name: "New", createdAt: META.createdAt },
+    mcpServers: [],
   });
-  assert.match(mounted.reply, /- mcp: `github` \(stdio\), `web` \(streamable-http\)/);
-  // The reply never carries secret VALUES — names and transport only.
-  assert.doesNotMatch(mounted.reply, /literal-secret|t0ken/);
-
-  const bare = executeDshCommand("/status", {
-    sessionKey: "sess-1",
-    profile: "sdk",
-    provider: "ollama-local",
-    model: "qwen3.8:latest",
-    cwd: "/projects/p1",
-    harnessSessionId: null,
-  });
-  assert.match(bare.reply, /- mcp: none mounted/);
+  const mcp = patches.find((patch) => patch.includes("@deepseek-ai/dsh-mcp-client"));
+  assert.equal(mcp, undefined);
+  assert.equal(env?.[MCP_CONFIG_ENV], undefined);
 });

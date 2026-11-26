@@ -13,7 +13,7 @@ import {
   type BridgePreStepDecision,
   type BridgePreStepPayload,
 } from "../src/bridge-plugin.js";
-import { createCommandBridge } from "../src/bridge.js";
+import { bridgeSocketPath, createCommandBridge } from "../src/bridge.js";
 
 /**
  * The command bridge end to end, over a REAL socket: the child-side plugin
@@ -87,12 +87,19 @@ function fakeHost(
   };
 }
 
-/** Wait for the plugin's `listen` to bind. */
-async function waitForPath(path: string, timeoutMs = 3000): Promise<void> {
+/** Wait for the plugin to answer; a win32 named pipe has no filesystem entry. */
+async function waitForBridge(endpoint: string, timeoutMs = 3000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  while (!existsSync(path)) {
-    if (Date.now() > deadline) throw new Error(`the bridge never bound ${path}`);
-    await delay(10);
+  for (;;) {
+    try {
+      await createCommandBridge(endpoint).list();
+      return;
+    } catch (err) {
+      if (Date.now() > deadline) {
+        throw new Error(`the bridge never answered ${endpoint}: ${String(err)}`);
+      }
+      await delay(10);
+    }
   }
 }
 
@@ -103,11 +110,11 @@ const DESCRIPTORS: BridgeCommandDescriptor[] = [
 
 test("the plugin and the client round-trip over a real socket", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-bridge-"));
-  const socket = join(dir, "b.sock");
+  const socket = bridgeSocketPath(dir);
   const host = fakeHost(DESCRIPTORS, new Map([["sess-1", { id: "sess-1" }]]));
   try {
     apply(host.ctx, { socket });
-    await waitForPath(socket);
+    await waitForBridge(socket);
     const bridge = createCommandBridge(socket);
 
     assert.deepEqual(await bridge.list(), [
@@ -132,7 +139,11 @@ test("the plugin and the client round-trip over a real socket", async () => {
     assert.match(failed.status === "unavailable" ? failed.message : "", /handler exploded/);
 
     host.dispose();
-    assert.equal(existsSync(socket), false, "the disposer removes the socket");
+    if (process.platform === "win32") {
+      await assert.rejects(() => createCommandBridge(socket).list());
+    } else {
+      assert.equal(existsSync(socket), false, "the disposer removes the socket");
+    }
   } finally {
     host.dispose();
     await rm(dir, { recursive: true, force: true });
@@ -141,7 +152,7 @@ test("the plugin and the client round-trip over a real socket", async () => {
 
 test("a command prompt is run by the registry and its step is rejected", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-bridge-"));
-  const socket = join(dir, "b.sock");
+  const socket = bridgeSocketPath(dir);
   const agent = { id: "sess-1" };
   const host = fakeHost(DESCRIPTORS, new Map([["sess-1", agent]]));
   try {
@@ -211,11 +222,11 @@ test("a command prompt is run by the registry and its step is rejected", async (
 
 test("listing never invents an agent: with none live the catalog is empty", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-bridge-"));
-  const socket = join(dir, "b.sock");
+  const socket = bridgeSocketPath(dir);
   const host = fakeHost(DESCRIPTORS);
   try {
     apply(host.ctx, { socket });
-    await waitForPath(socket);
+    await waitForBridge(socket);
     assert.deepEqual(await createCommandBridge(socket).list(), []);
   } finally {
     host.dispose();
@@ -250,11 +261,11 @@ test("a client pointed at a dead socket names the endpoint it could not reach", 
 
 test("the child forwards live assistant frames as NDJSON over the bridge socket", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-bridge-"));
-  const socket = join(dir, "b.sock");
+  const socket = bridgeSocketPath(dir);
   const host = fakeHost(DESCRIPTORS, new Map([["sess-1", { id: "sess-1" }]]));
   try {
     apply(host.ctx, { socket });
-    await waitForPath(socket);
+    await waitForBridge(socket);
     const messages: { sessionId: string; frame: unknown }[] = [];
     const close = createCommandBridge(socket).subscribeAssistantStream!((message) => messages.push(message));
     // The plugin registers its listener when the adapter's GET arrives.
@@ -305,7 +316,7 @@ test("the child forwards live assistant frames as NDJSON over the bridge socket"
 
 test("interrupt cancels the exact session's agent over the bridge", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-bridge-"));
-  const socket = join(dir, "b.sock");
+  const socket = bridgeSocketPath(dir);
   const cancelled: Array<[unknown, unknown]> = [];
   const agent = {
     id: "sess-1",
@@ -316,7 +327,7 @@ test("interrupt cancels the exact session's agent over the bridge", async () => 
   const host = fakeHost(DESCRIPTORS, new Map([["sess-1", agent]]));
   try {
     apply(host.ctx, { socket });
-    await waitForPath(socket);
+    await waitForBridge(socket);
     const bridge = createCommandBridge(socket);
 
     assert.equal(await bridge.interrupt("sess-1"), "ok");
@@ -334,7 +345,7 @@ test("interrupt cancels the exact session's agent over the bridge", async () => 
 
 test("interrupt reports an agent without a cancel method, and resolves by session id", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dsh-bridge-"));
-  const socket = join(dir, "b.sock");
+  const socket = bridgeSocketPath(dir);
   const cancelled: string[] = [];
   // Registered under a DIFFERENT key than the session id; only `session.id`
   // matches, so the fallback scan is what must resolve it.
@@ -349,7 +360,7 @@ test("interrupt reports an agent without a cancel method, and resolves by sessio
   const host = fakeHost(DESCRIPTORS, new Map([["agent-1", agent], ["sess-3", noCancel]]));
   try {
     apply(host.ctx, { socket });
-    await waitForPath(socket);
+    await waitForBridge(socket);
     const bridge = createCommandBridge(socket);
 
     assert.equal(await bridge.interrupt("sess-2"), "ok", "resolved through agent.session.id");

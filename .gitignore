@@ -15,3 +15,6 @@ packages/plugins/*/skill/
 
 # Linked git worktrees (dev isolation)
 .worktrees/
+# the dsh plugin resolves its harness peers from the root node_modules; a local
+# lock (from an out-of-repo `npm install`) is not tracked
+packages/plugins/molql-tool-dsh/package-lock.json

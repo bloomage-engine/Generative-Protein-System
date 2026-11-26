@@ -6,6 +6,7 @@
 import {
   RuntimeBindingError,
   bindingOptionalString,
+  type McpServerSettings,
   type RuntimeBinding,
   type RuntimeCapabilities,
 } from "@science-studio/transport";
@@ -31,6 +32,8 @@ export interface DshBinding {
   defaultSession?: string;
   /** Reference to the API key in a secret store (`apiKeyRef`, never the key). */
   apiKeyRef?: string;
+  /** Deployment MCP catalog, filtered per Project by the adapter (docs/adr/0026). */
+  mcpServers?: McpServerSettings[];
 }
 
 /** Validate an opaque binding against the dsh shape, or throw. */
@@ -51,6 +54,9 @@ export function parseDshBinding(binding: RuntimeBinding): DshBinding {
     transcriptDir: bindingOptionalString(binding, "transcriptDir"),
     defaultSession: bindingOptionalString(binding, "defaultSession"),
     apiKeyRef: bindingOptionalString(binding, "apiKeyRef"),
+    mcpServers: Array.isArray(binding.config["mcpServers"])
+      ? (binding.config["mcpServers"] as McpServerSettings[])
+      : undefined,
   };
 }
 
@@ -82,6 +88,15 @@ export function dshLocalBinding(
   copy("defaultSession", "DSH_DEFAULT_SESSION");
   const maxTokens = env["DSH_MAX_TOKENS"];
   if (maxTokens && /^\d+$/.test(maxTokens)) config["maxTokens"] = Number(maxTokens);
+  const mcpRaw = env["SS_MCP_SECRET_CONFIG"];
+  if (mcpRaw) {
+    try {
+      const parsed = JSON.parse(mcpRaw);
+      if (Array.isArray(parsed)) config["mcpServers"] = parsed;
+    } catch {
+      // The service serializes this; a malformed value means no MCP tools.
+    }
+  }
   return { runtime: "dsh", config };
 }
 
@@ -99,4 +114,6 @@ export const DSH_CAPABILITIES: RuntimeCapabilities = {
   subagents: true,
   /** Child-session record reads are implemented (docs/adr/0016 addendum). */
   subagentTranscript: true,
+  /** The adapter injects deployment MCP servers into the child (docs/adr/0026). */
+  mcp: true,
 };

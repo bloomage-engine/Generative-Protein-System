@@ -13,10 +13,9 @@
 import { request, type IncomingMessage } from "node:http";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { McpServerSettings } from "@science-studio/transport/seams";
 import type { HarnessBridgeOutcome } from "./commands.js";
 import type { DshAssistantStreamMessage } from "./assistant-stream.js";
 
@@ -273,75 +272,6 @@ export function bridgeSocketPath(dir: string): string {
 }
 
 /**
- * The launch-patch directory is shared by every adapter generation, and an MCP
- * patch written into it embeds plaintext server secrets (docs/adr/0026): keep
- * it owner-only. `mkdir`'s mode applies only on creation, so the `chmod` pins
- * an existing (default-mode) dir too. The child reads these as the SAME user,
- * so nothing else needs the bits.
- */
-async function ensureLaunchPatchDir(dir: string): Promise<void> {
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  await chmod(dir, 0o700);
-}
-
-/** Write one patch file owner-only — `chmod` explicit so an existing file's looser mode can never leak in. */
-async function writeLaunchPatchFile(file: string, document: string): Promise<void> {
-  await writeFile(file, document, { encoding: "utf8", mode: 0o600 });
-  await chmod(file, 0o600);
-}
-
-/** The pinned harness's own MCP client plugin — a dependency of the dsh CLI, so a bare specifier resolves from its install closure. */
-const MCP_PLUGIN_NAME = "@deepseek-ai/dsh-mcp-client";
-
-/**
- * Write the launch patch that inserts the deployment's external MCP servers
- * into the child's profile (docs/adr/0026): the harness's OWN
- * `@deepseek-ai/dsh-mcp-client` plugin, one row per server (the plugin is
- * per-server by design — it namespaces its tools as `mcp__<serverName>__<tool>`).
- * Unlike the sibling patches, the row `name` is a bare package specifier, not a
- * `file:` URL: the package ships inside the dsh CLI's install closure, which is
- * the FIRST anchor `dsh-app-boot` resolves names against. The config embeds
- * plaintext server secrets (stdio `env` / http `headers`), which is why the
- * patch file lands 0600 in the 0700 bridge dir.
- */
-export async function writeMcpPatch(opts: { dir: string; servers: McpServerSettings[] }): Promise<string> {
-  const { dir, servers } = opts;
-  await ensureLaunchPatchDir(dir);
-  const file = join(dir, `mcp-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
-  const document = [
-    "- insert:",
-    ...servers.map((server) => {
-      // Exactly the plugin's own fields — `enabled` is OUR storage flag, never
-      // sent to the child.
-      const config =
-        server.transport === "stdio"
-          ? {
-              serverName: server.serverName,
-              transport: "stdio" as const,
-              command: server.command,
-              ...(server.args === undefined ? {} : { args: server.args }),
-              ...(server.cwd === undefined ? {} : { cwd: server.cwd }),
-              ...(server.env === undefined ? {} : { env: server.env }),
-            }
-          : {
-              serverName: server.serverName,
-              transport: "streamable-http" as const,
-              url: server.url,
-              ...(server.headers === undefined ? {} : { headers: server.headers }),
-            };
-      return [
-        `    - id: science-studio-mcp-${server.serverName}`,
-        `      name: ${JSON.stringify(MCP_PLUGIN_NAME)}`,
-        `      config: ${JSON.stringify(config)}`,
-      ].join("\n");
-    }),
-    "",
-  ].join("\n");
-  await writeLaunchPatchFile(file, document);
-  return file;
-}
-
-/**
  * Write the launch patch that inserts the bridge plugin into the child's
  * profile, and return its path (for `--patch`). Both value nodes go through
  * `JSON.stringify`: a JSON string is a valid YAML scalar, so this needs no YAML
@@ -350,7 +280,7 @@ export async function writeMcpPatch(opts: { dir: string; servers: McpServerSetti
  */
 export async function writeBridgePatch(opts: { dir: string; pluginPath: string; socket: string }): Promise<string> {
   const { dir, pluginPath, socket } = opts;
-  await ensureLaunchPatchDir(dir);
+  await mkdir(dir, { recursive: true });
   const file = join(dir, `${basename(socket)}.cordis.patch.yml`);
   const document = [
     "- insert:",
@@ -360,7 +290,7 @@ export async function writeBridgePatch(opts: { dir: string; pluginPath: string; 
     `        socket: ${JSON.stringify(socket)}`,
     "",
   ].join("\n");
-  await writeLaunchPatchFile(file, document);
+  await writeFile(file, document, "utf8");
   return file;
 }
 
@@ -386,7 +316,7 @@ export async function writeProjectPatch(opts: {
   config: ProjectPluginLaunchConfig;
 }): Promise<string> {
   const { dir, pluginPath, config } = opts;
-  await ensureLaunchPatchDir(dir);
+  await mkdir(dir, { recursive: true });
   const file = join(dir, `project-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
   const document = [
     "- insert:",
@@ -395,7 +325,7 @@ export async function writeProjectPatch(opts: {
     `      config: ${JSON.stringify(config)}`,
     "",
   ].join("\n");
-  await writeLaunchPatchFile(file, document);
+  await writeFile(file, document, "utf8");
   return file;
 }
 
@@ -417,7 +347,7 @@ export async function writeCronPatch(opts: {
   config: CronPluginLaunchConfig;
 }): Promise<string> {
   const { dir, pluginPath, config } = opts;
-  await ensureLaunchPatchDir(dir);
+  await mkdir(dir, { recursive: true });
   const file = join(dir, `cron-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
   const document = [
     "- insert:",
@@ -426,7 +356,7 @@ export async function writeCronPatch(opts: {
     `      config: ${JSON.stringify(config)}`,
     "",
   ].join("\n");
-  await writeLaunchPatchFile(file, document);
+  await writeFile(file, document, "utf8");
   return file;
 }
 
@@ -440,7 +370,7 @@ export async function writeCronPatch(opts: {
  */
 export async function writeSubagentPatch(opts: { dir: string; pluginPath: string }): Promise<string> {
   const { dir, pluginPath } = opts;
-  await ensureLaunchPatchDir(dir);
+  await mkdir(dir, { recursive: true });
   const file = join(dir, `subagent-reporting-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
   const document = [
     "- insert:",
@@ -449,7 +379,7 @@ export async function writeSubagentPatch(opts: { dir: string; pluginPath: string
     "      config: {}",
     "",
   ].join("\n");
-  await writeLaunchPatchFile(file, document);
+  await writeFile(file, document, "utf8");
   return file;
 }
 
@@ -476,7 +406,7 @@ export async function writeHpcPatch(opts: {
   config: HpcPluginLaunchConfig;
 }): Promise<string> {
   const { dir, pluginPath, config } = opts;
-  await ensureLaunchPatchDir(dir);
+  await mkdir(dir, { recursive: true });
   const file = join(dir, `hpc-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
   const document = [
     "- insert:",
@@ -485,7 +415,7 @@ export async function writeHpcPatch(opts: {
     `      config: ${JSON.stringify(config)}`,
     "",
   ].join("\n");
-  await writeLaunchPatchFile(file, document);
+  await writeFile(file, document, "utf8");
   return file;
 }
 
@@ -514,7 +444,7 @@ export async function writeWorktreePatch(opts: {
   config: WorktreePluginLaunchConfig;
 }): Promise<string> {
   const { dir, pluginPath, config } = opts;
-  await ensureLaunchPatchDir(dir);
+  await mkdir(dir, { recursive: true });
   const file = join(dir, `worktree-${randomUUID().slice(0, 8)}.cordis.patch.yml`);
   const document = [
     "- insert:",
@@ -523,6 +453,6 @@ export async function writeWorktreePatch(opts: {
     `      config: ${JSON.stringify(config)}`,
     "",
   ].join("\n");
-  await writeLaunchPatchFile(file, document);
+  await writeFile(file, document, "utf8");
   return file;
 }

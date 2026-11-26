@@ -8,7 +8,7 @@ import {
   INTERACTION_DESCRIPTION,
   MEASUREMENTS_TOOL_NAME,
   MEASUREMENTS_DESCRIPTION,
-  createMolqlResult,
+  executeMolqlTool,
   fetchInteractions,
   fetchMeasurements,
 } from "@science-studio/molql-shared";
@@ -60,11 +60,6 @@ export function apply(ctx: Context): void {
           type: "boolean",
           description: "Move the camera to the selection. Defaults to true.",
         },
-        mode: {
-          type: "string",
-          description:
-            'How to show the selection: "select" (persistent, default) or "highlight" (transient).',
-        },
       },
       output: {
         schema: {
@@ -83,7 +78,7 @@ export function apply(ctx: Context): void {
         ],
       },
       async execute(args) {
-        return createMolqlResult(args);
+        return executeMolqlTool(args);
       },
     }),
   );
@@ -95,13 +90,13 @@ export function apply(ctx: Context): void {
       parameters: {
         project: {
           type: "string",
-          required: true,
-          description: 'The Project id from the mention, e.g. "project-default".',
+          description:
+            'Optional. The Project id from a mention, e.g. "project-default". Omit when the user named no file: the service targets the file the user has open.',
         },
         path: {
           type: "string",
-          required: true,
-          description: 'The workspace-relative structure file path, e.g. "boltz_holo.pdb".',
+          description:
+            'Optional. The workspace-relative structure file path, e.g. "boltz_holo.pdb". Omit when the user named no file.',
         },
         molql: {
           type: "string",
@@ -145,11 +140,13 @@ export function apply(ctx: Context): void {
         },
         project: {
           type: "string",
-          description: "The Project id; read from the first mention when omitted.",
+          description:
+            "Optional Project id; read from the first mention when omitted. Omit when the user named no file.",
         },
         path: {
           type: "string",
-          description: "The workspace-relative structure file path; read from the first mention when omitted.",
+          description:
+            "Optional workspace-relative structure file path; read from the first mention when omitted. Omit when the user named no file.",
         },
         description: {
           type: "string",

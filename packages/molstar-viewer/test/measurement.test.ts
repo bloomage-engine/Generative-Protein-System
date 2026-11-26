@@ -33,6 +33,10 @@ test("parses the canonical tool JSON string, keeping selection order", () => {
   assert.deepEqual(parseMeasurementToolResult(raw), {
     kind: "distance",
     selections: ["(sel.atom.atoms (= atom.name N))", "(sel.atom.atoms (= atom.name O))"],
+    // The file the numbers belong to rides the directive so the viewer can
+    // target that file (not merely the active tab).
+    project: "project-default",
+    path: "boltz_holo.pdb",
   });
 });
 

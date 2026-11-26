@@ -171,3 +171,77 @@ test("parseSettingsPatch validates subagents.visibleWindowHours", () => {
   );
   assert.equal(errorOf(parseSettingsPatch({ subagents: [] })), "subagents must be an object");
 });
+
+test("loadSettings drops invalid MCP rows and keeps valid ones", async () => {
+  const dir = await tempDir();
+  try {
+    const path = join(dir, "settings.json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        model: {},
+        plugins: {},
+        agent: {},
+        mcp: {
+          servers: [
+            { id: "ok", scope: "global", enabled: true, transport: "stdio", command: "srv" },
+            { id: "bad id", scope: "global", enabled: true, transport: "stdio", command: "srv" },
+            { id: "ok", scope: "global", enabled: true, transport: "stdio", command: "dup" },
+          ],
+        },
+      }),
+    );
+    const loaded = await loadSettings(path);
+    assert.deepEqual(loaded.mcp?.servers.map((server) => server.id), ["ok"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("applySettingsToEnv carries the enabled MCP catalog in the secret env", () => {
+  const next = applySettingsToEnv(
+    { SS_MCP_SECRET_CONFIG: "stale" },
+    {
+      model: {},
+      plugins: {},
+      agent: {},
+      mcp: {
+        servers: [
+          {
+            id: "a",
+            scope: "global",
+            enabled: true,
+            transport: "stdio",
+            command: "a",
+            env: { TOKEN: "x" },
+          },
+          {
+            id: "b",
+            scope: "project",
+            projectId: "p",
+            enabled: false,
+            transport: "stdio",
+            command: "b",
+          },
+        ],
+      },
+    },
+  );
+  const parsed = JSON.parse(next.SS_MCP_SECRET_CONFIG ?? "[]") as { id: string }[];
+  assert.deepEqual(parsed.map((server) => server.id), ["a"]);
+  assert.equal(
+    applySettingsToEnv({ SS_MCP_SECRET_CONFIG: "stale" }, emptySettings()).SS_MCP_SECRET_CONFIG,
+    undefined,
+  );
+});
+
+test("mergeSettings preserves the MCP catalog untouched", () => {
+  const mcp = {
+    servers: [
+      { id: "a", scope: "global" as const, enabled: true, transport: "stdio" as const, command: "a" },
+    ],
+  };
+  const base = { ...emptySettings(), mcp };
+  const merged = mergeSettings(base, { model: { model: "m" } });
+  assert.deepEqual(merged.mcp, mcp);
+});

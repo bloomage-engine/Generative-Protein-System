@@ -57,19 +57,15 @@ export {
   WorkspaceUnavailableError,
 } from "./workspace.js";
 export { RuntimeBindingError } from "./runtime.js";
-export { MCP_SERVER_NAME_GRAMMAR } from "./settings.js";
 export type {
   HpcEndpointSettings,
   HpcSettings,
   HpcSettingsPatch,
+  McpScope,
+  McpServerDraft,
   McpServerSettings,
-  McpStdioServerSettings,
-  McpHttpServerSettings,
   McpServerView,
   McpSettings,
-  McpSettingsView,
-  McpServerPatch,
-  McpSettingsPatch,
   ModelSettings,
   ModelSettingsPatch,
   RuntimeSettings,

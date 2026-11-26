@@ -75,6 +75,7 @@ export function StructureRenderer({ path, name }: { path: string; name: string }
   return (
     <div className="relative h-full min-h-0 bg-background">
       <MolqlViewerPanel
+        path={path}
         fileUrl={url}
         fileName={name}
         className="h-full w-full"

@@ -81,6 +81,7 @@ testRuntimeFactory("fake runtime factory", () => {
       perSessionCwd: false,
       subagents: false,
       subagentTranscript: false,
+      mcp: false,
     },
     create: (): RuntimeAdapter => ({
       runtime: "fake",
