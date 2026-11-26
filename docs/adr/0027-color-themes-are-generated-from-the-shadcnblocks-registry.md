@@ -72,6 +72,13 @@ be switchable at runtime.
     seven most-used across the 37 themes (Inter, Plus Jakarta Sans, Outfit,
     DM Sans, Lora, JetBrains Mono, IBM Plex Mono), all `preload: false` so only
     the active theme's faces are fetched.
+  - **The Mol* structure canvas follows the theme too.** The viewer clears its
+    WebGL canvas to transparent and `renderers/StructureRenderer.tsx` paints
+    `bg-background` behind it (`renderers/structure-theme.css` clears the light
+    skin's own opaque container backgrounds), so the preview tracks light/dark
+    and any color theme without the viewer knowing themes exist.
+    `test/structure-theme.test.mjs` screenshots an empty canvas corner and pins
+    it to the resolved `--background`.
 - **Consequences**: adding or refreshing a theme is a NETWORK step
   (`node scripts/generate-shadcnblocks-themes.mjs`), run by a developer and
   committed — the build itself never reaches the registry. `next/font`

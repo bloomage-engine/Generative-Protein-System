@@ -1,0 +1,15 @@
+/*
+ * The Mol* skin paints its own opaque background on the plugin container and on
+ * the viewport (`.msp-plugin { background: #eeece7 }`, `.msp-viewport { … }`).
+ * This viewer clears the WebGL canvas to TRANSPARENT instead
+ * (packages/molstar-viewer/src/viewer.ts) and the host pane paints
+ * `bg-background`, so those two surfaces must not cover it — otherwise a
+ * light/dark switch or a color theme stops at the canvas edge.
+ *
+ * The doubled class is deliberate: it outranks the skin's own rule whatever
+ * order the two stylesheets end up loading in.
+ */
+.msp-plugin.msp-plugin,
+.msp-plugin.msp-plugin .msp-viewport {
+  background: transparent;
+}

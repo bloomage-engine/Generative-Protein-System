@@ -113,6 +113,18 @@ export class MolqlViewer implements MolqlSelectionTarget {
 
     this.plugin = plugin;
     this.initialized = true;
+
+    // The canvas clears to transparent, so the preview pane's own background
+    // shows through: the structure view follows light/dark AND every color theme
+    // with no per-theme code. `ViewportCanvas` turns Mol*'s checkerboard on while
+    // it mounts (`mountAsync(..., { checkeredCanvasBackground: true })`), and
+    // this runs after `createPluginUI` resolves — i.e. after that mount — so the
+    // checker has to be cleared here too.
+    plugin.canvas3d?.setProps({
+      transparentBackground: true,
+      checkeredTransparentBackground: false,
+    });
+
     this.clickSub = plugin.behaviors.interaction.click.subscribe((event) => {
       this.handleClick(event.current);
     });

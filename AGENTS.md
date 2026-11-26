@@ -371,8 +371,12 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
   PDB/CIF, so they arrive as `application/octet-stream`) and lazily mounts
   `renderers/StructureRenderer.tsx` (`dynamic(..., {ssr:false})`, since Mol* is
   browser-only). It loads the file through the workspace URL and embeds Mol* via
-  `PluginUIContext` (`@science-studio/molstar-viewer`). `packages/workspace` is
-  untouched.
+  `PluginUIContext` (`@science-studio/molstar-viewer`). The Mol* canvas clears to
+  TRANSPARENT (`packages/molstar-viewer/src/viewer.ts`) and the renderer paints
+  `bg-background` (`renderers/structure-theme.css` clears the light skin's own
+  opaque `.msp-plugin`/`.msp-viewport` backgrounds), so the structure view
+  follows the light/dark appearance AND every color theme (docs/adr/0027).
+  `packages/workspace` is untouched.
 - **`@science-studio/molstar-viewer` is the browser boundary.** `applyMolqlSelection`
   compiles the expression with `Script.toLoci({expression, language:'mol-script'}, structure)`
   and, by default, applies a PERSISTENT selection (`interactivity.lociSelects.selectOnly`)

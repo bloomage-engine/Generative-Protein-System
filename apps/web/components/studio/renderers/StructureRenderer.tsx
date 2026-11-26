@@ -1,6 +1,7 @@
 "use client";
 
 import "molstar/lib/mol-plugin-ui/skin/light.scss";
+import "./structure-theme.css";
 
 import { useCallback, useMemo, useState } from "react";
 import { useWorkspaceApi, workspaceFileUrl } from "@science-studio/transport-client";
@@ -72,7 +73,7 @@ export function StructureRenderer({ path, name }: { path: string; name: string }
   );
 
   return (
-    <div className="relative h-full min-h-0">
+    <div className="relative h-full min-h-0 bg-background">
       <MolqlViewerPanel
         fileUrl={url}
         fileName={name}
