@@ -1361,7 +1361,7 @@ Expected: PASS, including the new `fold`, `assistant-stream`, `bridge-plugin`, `
 
 - [ ] **Step 4: Manual smoke (optional, needs a live dsh route)**
 
-Run: `npm run dev:dsh`, open the workbench, send a message, and confirm reasoning/text appear progressively instead of in one burst. If no route is configured, skip — the automated tests are the gate.
+Run: `npm run dev`, open the workbench, send a message, and confirm reasoning/text appear progressively instead of in one burst. If no route is configured, skip — the automated tests are the gate.
 
 - [ ] **Step 5: Commit** (only with the user's go-ahead)
 

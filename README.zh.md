@@ -10,104 +10,67 @@ Generative Protein System 是面向蛋白质设计的智能体科研工作台，
 
 ## 安装与快速开始
 
-### Web 部署
+### 前置条件
 
-需要 Node.js 22.12+、npm、Git，以及与项目锁定的
-`@deepseek-ai/dsh-sdk-client`（`0.1.5-alpha.1`）兼容的 `dsh` CLI。模型 route
-在 harness 侧 `~/.dsh/settings.yaml` 中声明。
+- Node.js 22.12+
+- npm 和 Git
+- 已安装 `dsh`，并可在 PATH 中找到
 
-在仓库根目录安装依赖并构建 workspace 包和 service：
+模型 provider、model、endpoint 和凭据在应用启动后通过工作台的
+**Settings → Model** 配置。
+
+### Web 端
+
+安装依赖并构建 workspace 包、service 和 Web：
 
 ```bash
 npm install
 npm run build
+npm run build -w @gps/web
 ```
-
-开发模式下这样已经够用：`next dev` 会按需编译 Web 应用。
 
 参考 [配置示例](./services/transport-service/.env.example)，创建
-`services/transport-service/.env`：
+`services/transport-service/.env`，设置项目目录：
 
 ```dotenv
-TRANSPORT_RUNTIME=dsh
 PROJECT_ROOT=/absolute/path/to/projects
-# 为实际配置的 route 填凭据：
-# OLLAMA_LOCAL_API_KEY=ollama
+# 可选：通过环境变量提供凭据
 # DEEPSEEK_API_KEY=<your-deepseek-api-key>
+# OLLAMA_LOCAL_API_KEY=ollama
 ```
 
-- `PROJECT_ROOT` 是所有 Project workspace 的父目录；default 项目位于
-  `<PROJECT_ROOT>/project-default`。Windows 使用 `D:/GPS/projects`，路径含
-  空格时加引号；WSL 使用 `/mnt/d/GPS/projects`。
-- 服务不会硬编码模型 provider。它会依次采用：工作台
-  Settings → Model、`~/.dsh/settings.yaml` 的 `agent-default-model`、
-  唯一配置的 `llm-pi-ai` route。都没有时才回退到内置的
-  `deepseek-official`/`deepseek-v4-flash`，这需要 `DEEPSEEK_API_KEY`。
-- 如果使用本地 Ollama，需要在 `~/.dsh/settings.yaml` 同时写入默认选择和
-  pi-ai route（见下）。Ollama 会忽略凭据内容，但 harness 要求
-  `OLLAMA_LOCAL_API_KEY` 非空。
-- 如果改用 DeepSeek，在 `.env` 中填 `DEEPSEEK_API_KEY`，并这样启动：
-  `DSH_PROVIDER=deepseek-official DSH_MODEL=deepseek-v4-flash`。
-- `OPENCLAW_*` 变量是 legacy，dsh 模式不需要。
-- `DSH_*` 变量只能放在启动环境里，不能写进 `.env`：harness 子进程会读取
-  该目录的 `.env`，并拒绝这些名字。
+`.env` 只配置路径和可选凭据；模型 route 在工作台中配置，不写入 `.env`。
 
-provider route 本身写在 `~/.dsh/settings.yaml`，例如：
-
-```yaml
-agent-default-model:
-  provider: ollama-local
-  model: qwen3.8:latest
-
-llm-pi-ai:
-  providers:
-    ollama-local:
-      api: openai-completions
-      baseURL: http://localhost:11434/v1
-      models: [{ id: qwen3.8:latest }]
-      apiKeyEnv: OLLAMA_LOCAL_API_KEY
-```
-
-启动 service 和 Web：
+在两个终端分别启动 service 和 Web：
 
 ```bash
-npm run dev
-```
-
-`npm run dev:dsh` 也可以，并且会额外强制使用 dsh runtime。打开
-[http://localhost:3000](http://localhost:3000)，创建项目和会话，即可开始使用。
-
-生产 Web 需要单独构建 `apps/web`；根目录的 `npm run build` 只构建 workspace
-包和 service：
-
-```bash
-npm run build -w @gps/web
+npm start -w @gps/transport-service
 npm start -w @gps/web
 ```
+
+打开 <http://127.0.0.1:3000>。如果尚未配置模型，进入
+**Settings → Model**，填写 provider、model、endpoint 和凭据；保存后按提示
+重启 service。
 
 自然语言结构分析还需要部署
 [MolQL 工具插件](./packages/plugins/molql-tool-dsh/README.md)。外部科学服务和
 远程计算分别在工作台的 MCP、HPC 设置中配置。
 
-### 桌面客户端
+### 客户端
 
-桌面客户端自动启动并管理本地服务，无需另外运行 Web 服务。需要本机能够通过 PATH 找到 `dsh`，并已安装 Git 以使用工作分支功能。
+客户端需要能在 PATH 中找到 `dsh`，并安装 Git 以使用 worktree。客户端会自行
+启动本地 service 和 Web 服务。
 
-完成上述依赖安装和构建后，可从源码构建并启动客户端：
-
-```bash
-npm run start -w @gps/desktop
-```
-
-启动后，在工作台设置中配置模型服务。项目默认保存在用户目录下的 `Documents/Generative Protein System/projects`。
-
-如需生成安装包，在目标操作系统上运行：
+在目标操作系统构建安装包：
 
 ```bash
+npm install
 npm run pack -w @gps/desktop
 ```
 
-支持 Windows x64 NSIS、macOS DMG，以及 Linux AppImage 和 DEB。
+安装包生成在 `apps/desktop/release`（Windows NSIS、macOS DMG、Linux
+AppImage 或 DEB）。安装后直接打开即可，不需要再执行终端命令。首次使用时，
+如果尚未配置模型，在 **Settings → Model** 中配置。
 
 ## 主要功能
 

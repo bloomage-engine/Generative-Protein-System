@@ -12,7 +12,6 @@ const defaults = {
 for (const [key, value] of Object.entries(defaults)) {
   if (!env[key]) env[key] = value;
 }
-if (process.argv.includes("--dsh")) env.TRANSPORT_RUNTIME = "dsh";
 
 const child = spawn(process.execPath, ["--import", "tsx", join(root, "src", "index.ts")], {
   cwd: root,

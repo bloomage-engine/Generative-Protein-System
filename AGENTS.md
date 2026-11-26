@@ -51,21 +51,14 @@ CONTEXT.md                        domain glossary (authoritative vocabulary)
 - `npm install` — install all workspaces
 - `npm run dev` — run service (3001) and web (3000) together via concurrently
 - `npm run dev:service` / `npm run dev:web` — individually
-- `npm run dev:dsh` — the same service+web pair, with the service forced onto the
-  **dsh** runtime (`TRANSPORT_RUNTIME=dsh npm run dev`). The launch env is NOT in
-  the `.env`: the service's own `dev` script exports the launch-only knobs
-  (`DSH_WORKSPACE` default `$HOME/workspace/dsh-workspace`,
-  `DSH_DEFAULT_SESSION` default `gps`; an ambient `DSH_*` wins). The
-  provider/model are resolved from the workbench Settings → Model, then the
-  harness's `agent-default-model`, then a single configured `llm-pi-ai` route;
-  `deepseek-official`/`deepseek-v4-flash` is only the last resort. Those
-  `DSH_*` names cannot be spelled in `.env`: the harness child reads the
-  LAUNCHER's cwd `.env` as its project layer and hard-refuses any
-  `DSH_*`/`XDG_*`/`DYLD_*` key there. Unset knobs are a foot-gun — the adapter
-  falls back to `deepseek-official`/`deepseek-v4-flash` and the agent's cwd
-  becomes this
-  package's source directory. The route's credential NAME (`apiKeyEnv`, e.g.
-  `OLLAMA_LOCAL_API_KEY`) is a legal `.env` line and is inherited by the child.
+- The service runs **dsh**. Provider/model resolve from the workbench Settings →
+  Model, then the harness's `agent-default-model`, then a single configured
+  `llm-pi-ai` route; `deepseek-official`/`deepseek-v4-flash` is the last resort
+  (with a warning). `DSH_*` launch knobs cannot be spelled in `.env`: the
+  harness child reads the LAUNCHER's cwd `.env` as its project layer and
+  hard-refuses any `DSH_*`/`XDG_*`/`DYLD_*` key there; an exported `DSH_*` wins.
+  The route's credential NAME (`apiKeyEnv`, e.g. `OLLAMA_LOCAL_API_KEY`) is a
+  legal `.env` line and is inherited by the child.
 - `npm run dev:desktop` — the Electron shell against the already-running dev pair
   (`DESKTOP_DEV_URL`, default http://localhost:3000). The packaged app instead
   builds `apps/web` with `NEXT_OUTPUT=standalone` (`npm run build:web:standalone`,

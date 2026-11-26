@@ -10,110 +10,71 @@ It supports browser access and desktop clients for Windows, macOS, and Linux.
 
 ## Installation and quick start
 
-### Web deployment
+### Prerequisites
 
-You need Node.js 22.12+, npm, Git, and a `dsh` CLI compatible with the pinned
-`@deepseek-ai/dsh-sdk-client` (`0.1.5-alpha.1`). The model route is declared
-harness-side in `~/.dsh/settings.yaml`.
+- Node.js 22.12+
+- npm and Git
+- `dsh` installed and available on PATH
 
-Install dependencies and build the workspace packages and service:
+Model provider, model, endpoint, and credentials are configured in the
+workbench **Settings → Model** after the application starts.
+
+### Web application
+
+Install dependencies and build the packages, service, and web app:
 
 ```bash
 npm install
 npm run build
+npm run build -w @gps/web
 ```
-
-For development the root build is enough: `next dev` compiles the web app on
-demand.
 
 Create `services/transport-service/.env` from the
-[configuration example](./services/transport-service/.env.example):
+[configuration example](./services/transport-service/.env.example) and set the
+projects directory:
 
 ```dotenv
-TRANSPORT_RUNTIME=dsh
 PROJECT_ROOT=/absolute/path/to/projects
-# Credential for the route you configure:
-# OLLAMA_LOCAL_API_KEY=ollama
+# Optional: credentials supplied through the environment
 # DEEPSEEK_API_KEY=<your-deepseek-api-key>
+# OLLAMA_LOCAL_API_KEY=ollama
 ```
 
-- `PROJECT_ROOT` is the parent of every Project workspace; the default Project
-  lives at `<PROJECT_ROOT>/project-default`. On Windows use
-  `D:/GPS/projects` and quote paths with spaces. In WSL use
-  `/mnt/d/GPS/projects`.
-- The service does not hardcode a model provider. It uses the workbench
-  Settings → Model, then `agent-default-model` in `~/.dsh/settings.yaml`, then
-  the only configured `llm-pi-ai` route. If none is present it falls back to
-  the built-in `deepseek-official`/`deepseek-v4-flash` route, which needs
-  `DEEPSEEK_API_KEY`.
-- For a local Ollama route, add both the default selection and the pi-ai route
-  to `~/.dsh/settings.yaml` (see below). Any non-empty
-  `OLLAMA_LOCAL_API_KEY` works for Ollama; the harness only requires it to be
-  set.
-- For DeepSeek instead, put `DEEPSEEK_API_KEY` in `.env` and start with
-  `DSH_PROVIDER=deepseek-official DSH_MODEL=deepseek-v4-flash`.
-- `OPENCLAW_*` variables are legacy and are not used by the dsh setup.
-- `DSH_*` variables must be set in the launch environment, never in `.env`:
-  the harness child reads `.env` from its cwd and refuses those names.
+`.env` configures paths and optional credentials only; the model route is
+configured in the workbench, not in `.env`.
 
-The provider route itself lives in `~/.dsh/settings.yaml`, for example:
-
-```yaml
-agent-default-model:
-  provider: ollama-local
-  model: qwen3.8:latest
-
-llm-pi-ai:
-  providers:
-    ollama-local:
-      api: openai-completions
-      baseURL: http://localhost:11434/v1
-      models: [{ id: qwen3.8:latest }]
-      apiKeyEnv: OLLAMA_LOCAL_API_KEY
-```
-
-Start the service and web app:
+Start the service and web app in separate terminals:
 
 ```bash
-npm run dev
-```
-
-`npm run dev:dsh` also works and additionally forces the dsh runtime. Open
-[http://localhost:3000](http://localhost:3000), create a project and a session,
-and start working.
-
-For a production web build, build `apps/web` separately; the root
-`npm run build` only builds the workspace packages and service:
-
-```bash
-npm run build -w @gps/web
+npm start -w @gps/transport-service
 npm start -w @gps/web
 ```
 
+Open <http://127.0.0.1:3000>. If no model is configured yet, open
+**Settings → Model**, enter the provider, model, endpoint, and credentials,
+then save and restart the service if prompted.
+
 Natural-language structure analysis also requires the
-[MolQL tool plugin](./packages/plugins/molql-tool-dsh/README.md). Configure
-external scientific services and remote computation in the workbench's MCP and
-HPC settings, respectively.
+[MolQL tool plugin](./packages/plugins/molql-tool-dsh/README.md). External
+scientific services and remote computation are configured in the workbench's
+MCP and HPC settings.
 
 ### Desktop client
 
-The desktop client starts and manages its local services automatically; no separate Web service is required. The `dsh` executable must be available on PATH, and Git must be installed to use worktrees.
+The desktop client requires `dsh` on PATH and Git for worktrees. It starts its
+own local service and web server.
 
-After installing dependencies and building as above, build and launch the client from source:
-
-```bash
-npm run start -w @gps/desktop
-```
-
-Configure the model provider in the workbench settings. Projects are stored under `Documents/Generative Protein System/projects` in your home directory by default.
-
-To create an installer, run this command on the target operating system:
+Build the installer on the target operating system:
 
 ```bash
+npm install
 npm run pack -w @gps/desktop
 ```
 
-Supported formats are Windows x64 NSIS, macOS DMG, and Linux AppImage and DEB.
+The installer is written to `apps/desktop/release` (Windows NSIS, macOS DMG,
+Linux AppImage or DEB). Install and open it; no further terminal command is
+needed. On first use, configure the model in **Settings → Model** if none is
+set.
 
 ## Features
 
